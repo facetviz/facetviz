@@ -7,6 +7,9 @@ type, scale, and helper is a small, self-contained module.
 
 📖 **[Full API reference → docs/API.md](docs/API.md)** — every option key and value documented.
 
+🎛️ **Playground** — run `npm run dev` and open [`/examples/playground.html`](examples/playground.html):
+a live JSON config editor on the left, the rendered chart on the right, with 20+ presets.
+
 ```ts
 import { JChart } from 'jchart';
 
@@ -37,12 +40,13 @@ npm run typecheck # type-only check
 
 | Category | Types |
 | --- | --- |
-| Bars | `column` (vertical), `bar` (horizontal) |
+| Bars | `column` (vertical), `bar` (horizontal), `waterfall`, `histogram`, `bullet` |
 | Lines | `line`, `spline`, `step`, `area`, `areaspline` |
-| Range | `arearange`, `areasplinerange` (filled band between `low`/`high`) |
-| Circular | `pie`, `donut`, `radialbar` |
-| Points | `scatter`, `jitter`, `dumbbell` |
-| Statistical | `boxplot` (dual-colour, Tableau style) |
+| Range | `arearange`, `areasplinerange` (band), `columnrange` (rounded capsule, vert/horiz) |
+| Circular | `pie`, `donut` (multi-level + variable radius), `radialbar`, `gauge` |
+| Points | `scatter`, `jitter`, `dumbbell`, `timeline` |
+| Statistical | `boxplot` (dual-colour, Tableau style), `candlestick` |
+| Grid / hierarchy | `heatmap`, `funnel`, `treegraph`, `butterfly` |
 
 **Stacking & grouping**: any bar/column/area series supports
 `stacking: 'normal' | 'percent'`. Series sharing a `stack` id pile together;

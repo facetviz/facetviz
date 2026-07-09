@@ -36,7 +36,17 @@ export type ChartType =
   | 'boxplot'
   | 'dumbbell' // two connected points per category (low → high)
   | 'butterfly' // two series mirrored back-to-back around a central axis
-  | 'radialbar'; // bars drawn around a polar centre
+  | 'columnrange' // rounded-capsule range bar (vertical; horizontal when inverted)
+  | 'radialbar' // bars drawn around a polar centre
+  | 'heatmap' // coloured grid of category × category cells
+  | 'bullet' // measure bar with qualitative bands and a target marker
+  | 'candlestick' // OHLC financial candles
+  | 'gauge' // radial dial for a single value
+  | 'waterfall' // running cumulative increases / decreases
+  | 'histogram' // binned distribution of raw values
+  | 'timeline' // events placed along a line
+  | 'funnel' // narrowing stacked stages
+  | 'treegraph'; // hierarchical node-link tree
 
 export type StackingMode = 'normal' | 'percent';
 
@@ -62,6 +72,22 @@ export interface PointOptions {
   max?: number;
   /** Pie / categorical slices. */
   name?: string;
+  /** Variable-radius pie: relative outer radius weight for this slice. */
+  z?: number;
+  /** Heatmap cell value (colour). */
+  value?: number;
+  /** Candlestick OHLC. */
+  open?: number;
+  close?: number;
+  /** Bullet: comparative target marker and qualitative range boundaries. */
+  target?: number;
+  ranges?: number[];
+  /** Waterfall: treat this point as a (running) sum instead of a delta. */
+  isSum?: boolean;
+  isIntermediateSum?: boolean;
+  /** Treegraph node identity / parent link. */
+  id?: string;
+  parent?: string;
   /** Per-point colour override. */
   color?: string;
   /** Freeform payload surfaced back to the user in tooltips and events. */

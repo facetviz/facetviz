@@ -10,7 +10,7 @@ import { FONTS } from '../core/defaults.js';
 
 export class RadialBarSeries extends BaseSeries {
   override capabilities(): SeriesCapabilities {
-    return { grouped: false, cartesian: false, stackable: false };
+    return { grouped: false, cartesian: false, stackable: false, pointLegend: true };
   }
 
   override render(ctx: SeriesRenderContext): void {

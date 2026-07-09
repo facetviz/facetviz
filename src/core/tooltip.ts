@@ -69,6 +69,14 @@ export class Tooltip {
       formatNumber(v, { decimals: opts.valueDecimals, prefix: opts.valuePrefix, suffix: opts.valueSuffix });
     const valueStr = fmt(ctx.y);
 
+    // Shared tooltip: one header (the x) then a row per series.
+    if (ctx.points && ctx.points.length) {
+      const rows = ctx.points.map((r) =>
+        `<span style="color:${r.color}">●</span> ${r.series}: <b>${fmt(r.y)}</b>`,
+      );
+      return `<b>${ctx.x}</b><br/>${rows.join('<br/>')}`;
+    }
+
     if (opts.format) {
       return formatString(opts.format, {
         series: ctx.series,

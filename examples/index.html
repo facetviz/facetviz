@@ -26,6 +26,8 @@
     <script type="module">
       import { JChart, computeBoxStats } from '/src/index.ts';
 
+      window.__errs = [];
+      window.addEventListener('error', (e) => window.__errs.push(String(e.message) + ' | ' + ((e.error && e.error.stack) || '').split('\n').slice(0, 2).join(' ')));
       const log = (msg) => (document.getElementById('eventlog').textContent = msg);
       const grid = document.getElementById('grid');
       function card(title) {
@@ -44,14 +46,23 @@
       };
 
       // Column (grouped)
-      new JChart(card('Column — grouped'), {
+      new JChart(card('Column — grouped (shared tooltip)'), {
         chart: { type: 'column', height: 300 },
         title: { text: 'Monthly sales' }, subtitle: { text: 'by region' },
         xAxis: { categories: months }, yAxis: { title: { text: 'Units' } },
+        tooltip: { shared: true },
         series: [
           { name: 'North', data: [5, 3, 4, 7, 2, 6] },
           { name: 'South', data: [2, 4, 6, 3, 5, 4] },
         ], ...onClick,
+      });
+
+      // Bar (horizontal) with a value-axis title — verifies axis mapping on invert
+      new JChart(card('Bar — value axis moves to bottom'), {
+        chart: { type: 'bar', height: 300 },
+        title: { text: 'Monthly sales' },
+        xAxis: { categories: months }, yAxis: { title: { text: 'Units' } },
+        series: [{ name: 'North', data: [5, 3, 4, 7, 2, 6] }], ...onClick,
       });
 
       // Stacked column
@@ -239,6 +250,116 @@
         ], ...onClick,
       });
 
+      // ---- New chart types ------------------------------------------------
+
+      // Heatmap
+      const days = ['Mon','Tue','Wed','Thu','Fri'];
+      const slots = ['Morning','Noon','Evening'];
+      const heat = [];
+      days.forEach(d => slots.forEach(s => heat.push({ x: d, y: s, value: Math.round(Math.random()*90+10) })));
+      new JChart(card('Heatmap'), {
+        chart: { type: 'heatmap', height: 300 }, title: { text: 'Activity' },
+        series: [{ name: 'Activity', color: '#2caffe', data: heat }], ...onClick,
+      });
+
+      // Bullet
+      new JChart(card('Bullet'), {
+        chart: { type: 'bullet', height: 300 }, title: { text: 'KPIs vs target' },
+        series: [{ name: 'KPI', data: [
+          { name: 'Revenue', y: 275, target: 250, ranges: [150, 225, 300] },
+          { name: 'Profit', y: 22, target: 26, ranges: [20, 25, 30] },
+          { name: 'Orders', y: 1650, target: 2000, ranges: [1400, 2000, 2500] },
+        ] }], ...onClick,
+      });
+
+      // Candlestick
+      const ohlc = [];
+      let price = 100;
+      months.forEach(m => { const o=price, c=o+(Math.random()-0.45)*12; const hi=Math.max(o,c)+Math.random()*5; const lo=Math.min(o,c)-Math.random()*5; price=c; ohlc.push({ x:m, open:+o.toFixed(1), high:+hi.toFixed(1), low:+lo.toFixed(1), close:+c.toFixed(1) }); });
+      new JChart(card('Candlestick'), {
+        chart: { type: 'candlestick', height: 300 }, title: { text: 'Price (OHLC)' },
+        xAxis: { categories: months }, yAxis: { title: { text: 'Price' } },
+        series: [{ name: 'ACME', data: ohlc }], ...onClick,
+      });
+
+      // Gauge
+      new JChart(card('Gauge'), {
+        chart: { type: 'gauge', height: 300 }, title: { text: 'Speed' },
+        series: [{ name: 'km/h', min: 0, max: 120, data: [{ name: 'km/h', y: 82 }],
+          bands: [{ from: 0, to: 60, color: '#26a69a' }, { from: 60, to: 90, color: '#ffca28' }, { from: 90, to: 120, color: '#ef5350' }] }], ...onClick,
+      });
+
+      // Waterfall
+      new JChart(card('Waterfall'), {
+        chart: { type: 'waterfall', height: 300 }, title: { text: 'Cash flow' },
+        xAxis: { categories: ['Start','Sales','Refunds','Services','Costs','Net'] },
+        yAxis: { title: { text: '$k' } },
+        series: [{ name: 'Flow', data: [
+          { x:'Start', y: 120 }, { x:'Sales', y: 80 }, { x:'Refunds', y: -30 },
+          { x:'Services', y: 45 }, { x:'Costs', y: -60 }, { x:'Net', isSum: true },
+        ] }], ...onClick,
+      });
+
+      // Histogram
+      const rnd = [];
+      for (let i=0;i<400;i++){ rnd.push(Math.round((Math.random()+Math.random()+Math.random())/3*100)); }
+      new JChart(card('Histogram'), {
+        chart: { type: 'histogram', height: 300 }, title: { text: 'Distribution' },
+        yAxis: { title: { text: 'Count' } },
+        series: [{ name: 'Values', color: '#544fc5', data: rnd }], ...onClick,
+      });
+
+      // Timeline
+      new JChart(card('Timeline'), {
+        chart: { type: 'timeline', height: 300 }, title: { text: 'Roadmap' },
+        series: [{ name: 'Milestones', data: [
+          { x: '2023', name: 'Kickoff' }, { x: '2024', name: 'Beta' },
+          { x: '2025', name: 'GA' }, { x: '2026', name: 'v2' },
+        ] }], ...onClick,
+      });
+
+      // Funnel
+      new JChart(card('Funnel'), {
+        chart: { type: 'funnel', height: 320 }, title: { text: 'Conversion' },
+        legend: { enabled: false },
+        series: [{ name: 'Users', data: [
+          { name: 'Visits', y: 1500 }, { name: 'Signups', y: 900 },
+          { name: 'Trials', y: 500 }, { name: 'Paid', y: 220 },
+        ] }], ...onClick,
+      });
+
+      // Treegraph
+      new JChart(card('Treegraph'), {
+        chart: { type: 'treegraph', height: 320 }, title: { text: 'Org chart' },
+        series: [{ name: 'Org', data: [
+          { id: 'ceo', name: 'CEO' },
+          { id: 'cto', parent: 'ceo', name: 'CTO' }, { id: 'cfo', parent: 'ceo', name: 'CFO' },
+          { id: 'eng', parent: 'cto', name: 'Eng' }, { id: 'qa', parent: 'cto', name: 'QA' },
+          { id: 'fin', parent: 'cfo', name: 'Finance' },
+        ] }], ...onClick,
+      });
+
+      // Column range (rounded capsule) — vertical & horizontal
+      new JChart(card('Column range — rounded (vertical)'), {
+        chart: { type: 'columnrange', height: 300 }, title: { text: 'Temp range' },
+        xAxis: { categories: months }, yAxis: { title: { text: '°C' } },
+        series: [{ name: 'Range', color: '#fe6a35', data: [[ 'Jan',-2,7],['Feb',-1,9],['Mar',2,12],['Apr',5,16],['May',9,20],['Jun',13,24]] }], ...onClick,
+      });
+      new JChart(card('Column range — rounded (horizontal)'), {
+        chart: { type: 'columnrange', height: 300, inverted: true }, title: { text: 'Temp range' },
+        xAxis: { categories: months }, yAxis: { title: { text: '°C' } },
+        series: [{ name: 'Range', color: '#2caffe', data: [['Jan',-2,7],['Feb',-1,9],['Mar',2,12],['Apr',5,16],['May',9,20],['Jun',13,24]] }], ...onClick,
+      });
+
+      // Variable-radius pie (z drives each slice's radius)
+      new JChart(card('Pie — variable radius (per slice)'), {
+        chart: { type: 'pie', height: 320 }, title: { text: 'Share × intensity' },
+        series: [{ name: 'V', data: [
+          { name: 'A', y: 30, z: 100 }, { name: 'B', y: 25, z: 60 },
+          { name: 'C', y: 25, z: 90 }, { name: 'D', y: 20, z: 40 },
+        ], dataLabels: { enabled: true, format: '{name}' } }], ...onClick,
+      });
+
       // Legend on the right (vertical)
       new JChart(card('Legend — right (vertical)'), {
         chart: { type: 'donut', height: 300 }, title: { text: 'Share' },
@@ -349,6 +470,18 @@
         xAxis: { dimensions: ['Region', 'Category'], aggregate: 'sum', opposite: true },
         yAxis: { title: { text: 'Sum of Sales' } },
         series: [{ name: 'Sales', data: nestedData }], ...onClick,
+      });
+
+      // Tableau nested axis: column + line — the line breaks per first dimension
+      new JChart(card('Tableau — column + line (line per group)'), {
+        chart: { type: 'column', height: 340 },
+        title: { text: 'Sales & trend by Region ▸ Category' },
+        xAxis: { dimensions: ['Region', 'Category'], aggregate: 'sum' },
+        yAxis: { title: { text: 'Sum of Sales' } },
+        series: [
+          { name: 'Sales', data: nestedData },
+          { type: 'line', name: 'Trend', color: '#e6394d', marker: { enabled: true }, data: nestedData },
+        ], ...onClick,
       });
 
       // Trellis small multiples (2-D grid) — the other Tableau layout.

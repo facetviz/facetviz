@@ -50,6 +50,8 @@ export interface SeriesCapabilities {
   cartesian: boolean;
   /** Can be stacked. */
   stackable: boolean;
+  /** Legend lists this series' points/slices (pie, donut, radialbar, funnel). */
+  pointLegend?: boolean;
 }
 
 export abstract class BaseSeries {

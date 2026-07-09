@@ -44,3 +44,13 @@ export function alpha(hex: string, a: number): string {
   if (!rgb) return hex;
   return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${a})`;
 }
+
+/** Linearly interpolate between two hex colours (`t` in 0..1). */
+export function lerpColor(from: string, to: string, t: number): string {
+  const a = parseHex(from);
+  const b = parseHex(to);
+  if (!a || !b) return from;
+  const k = Math.max(0, Math.min(1, t));
+  const c = a.map((v, i) => Math.round(v + (b[i] - v) * k));
+  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+}

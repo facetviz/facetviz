@@ -189,7 +189,7 @@ export class Axis {
     switch (position) {
       case 'bottom':
         x = pos;
-        y = plot.y + plot.height + LAYOUT.tickLength + 12;
+        y = plot.y + plot.height + LAYOUT.tickLength + 7;
         baseline = 'hanging';
         break;
       case 'top':
@@ -219,19 +219,40 @@ export class Axis {
   private drawTitle(g: SVGGElement, text: string): void {
     const { renderer, plot, position } = this.cfg;
     const style = FONTS.axisTitle;
+    // Place the title just beyond the tick labels so the two never overlap,
+    // regardless of how wide/tall the labels are.
+    const labelsEnabled = this.cfg.options.labels?.enabled !== false;
+    const gap = labelsEnabled ? this.labelExtent() : 0;
     if (this.horizontal) {
       const x = plot.x + plot.width / 2;
       const y = position === 'bottom'
-        ? plot.y + plot.height + LAYOUT.axisTitleGap + 16
-        : plot.y - LAYOUT.axisTitleGap - 8;
+        ? plot.y + plot.height + LAYOUT.tickLength + gap + 14
+        : plot.y - LAYOUT.tickLength - gap - 10;
       renderer.text(text, x, y, { 'text-anchor': 'middle', ...style }, g);
     } else {
       const x = position === 'left'
-        ? plot.x - LAYOUT.defaultLeftAxisWidth + 2
-        : plot.x + plot.width + LAYOUT.defaultLeftAxisWidth - 2;
+        ? plot.x - LAYOUT.tickLength - 4 - gap - 8
+        : plot.x + plot.width + LAYOUT.tickLength + 4 + gap + 8;
       const y = plot.y + plot.height / 2;
       const rot = position === 'left' ? -90 : 90;
       renderer.text(text, x, y, { 'text-anchor': 'middle', transform: `rotate(${rot} ${x} ${y})`, ...style }, g);
     }
+  }
+
+  /**
+   * Estimated size of the tick labels along the axis-title direction: the
+   * widest label (px) for vertical axes, or the label height for horizontal
+   * axes. Used to offset the title clear of the labels.
+   */
+  labelExtent(): number {
+    const { scale, options } = this.cfg;
+    const fontPx = parseFloat(options.labels?.style?.['font-size'] ?? FONTS.axisLabel['font-size'] ?? '11') || 11;
+    if (this.horizontal) return fontPx + 2; // single line of labels
+    const charW = fontPx * 0.6;
+    let max = 0;
+    for (const t of scale.ticks()) {
+      max = Math.max(max, this.labelText(scale, t).length * charW);
+    }
+    return max;
   }
 }

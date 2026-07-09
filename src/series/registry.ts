@@ -16,6 +16,16 @@ import { PieSeries } from './pie.js';
 import { BoxplotSeries } from './boxplot.js';
 import { DumbbellSeries } from './dumbbell.js';
 import { RadialBarSeries } from './radialbar.js';
+import { ColumnRangeSeries } from './columnrange.js';
+import { HeatmapSeries } from './heatmap.js';
+import { BulletSeries } from './bullet.js';
+import { CandlestickSeries } from './candlestick.js';
+import { GaugeSeries } from './gauge.js';
+import { WaterfallSeries } from './waterfall.js';
+import { HistogramSeries } from './histogram.js';
+import { TimelineSeries } from './timeline.js';
+import { FunnelSeries } from './funnel.js';
+import { TreegraphSeries } from './treegraph.js';
 
 type SeriesCtor = new (options: SeriesOptions, categories?: string[]) => BaseSeries;
 
@@ -37,7 +47,17 @@ const REGISTRY: Record<ChartType, SeriesCtor> = {
   dumbbell: DumbbellSeries,
   // Butterfly is laid out by the chart (back-to-back); series just hold data.
   butterfly: ColumnSeries,
+  columnrange: ColumnRangeSeries,
   radialbar: RadialBarSeries,
+  heatmap: HeatmapSeries,
+  bullet: BulletSeries,
+  candlestick: CandlestickSeries,
+  gauge: GaugeSeries,
+  waterfall: WaterfallSeries,
+  histogram: HistogramSeries,
+  timeline: TimelineSeries,
+  funnel: FunnelSeries,
+  treegraph: TreegraphSeries,
 };
 
 export function createSeries(

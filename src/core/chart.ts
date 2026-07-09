@@ -308,6 +308,33 @@ export class JChart {
     return out;
   }
 
+  /** Estimated px width of the widest category-axis label. */
+  private catLabelWidth(visible: BaseSeries[]): number {
+    const cats = this.currentCategories(visible) ?? [];
+    return cats.reduce((m, c) => Math.max(m, String(c).length), 0) * 6.6;
+  }
+
+  /** Estimated px width of the widest value-axis label. */
+  private valueLabelWidth(visible: BaseSeries[], valOpts: AxisOptions): number {
+    const [dmin, dmax] = this.valueDomain(visible);
+    const fmt = (v: number) => {
+      if (valOpts.labels?.formatter) return String(valOpts.labels.formatter(v));
+      const r = Math.abs(v) >= 100 ? Math.round(v) : Math.round(v * 100) / 100;
+      return String(r);
+    };
+    return Math.max(fmt(dmin).length, fmt(dmax).length, fmt((dmin + dmax) / 2).length) * 6.6;
+  }
+
+  /** Space to reserve for an axis on a given side (vertical → width, else height). */
+  private axisReserve(opts: AxisOptions, side: 'top' | 'bottom' | 'left' | 'right', labelW: number): number {
+    if (opts.visible === false) return 6;
+    const title = opts.title?.text ? 1 : 0;
+    if (side === 'left' || side === 'right') {
+      return Math.max(LAYOUT.defaultLeftAxisWidth, LAYOUT.tickLength + 8 + labelW + (title ? 18 : 0));
+    }
+    return LAYOUT.defaultBottomAxisHeight + (title ? 24 : 0);
+  }
+
   private renderPanel(panel: PanelSpec): void {
     const visible = panel.series.filter((s) => s.visible && s.points.length);
     if (!visible.length) return;
@@ -329,35 +356,37 @@ export class JChart {
       return;
     }
 
-    const xOpts = this.firstAxis(this.options.xAxis) ?? {};
-    const yOpts = this.firstAxis(this.options.yAxis) ?? {};
+    // xAxis is the category axis, yAxis the value axis. When the chart is
+    // inverted the category axis becomes vertical (left/right) and the value
+    // axis horizontal (bottom/top) — so their options and reserved sides swap.
+    const catOpts = this.firstAxis(this.options.xAxis) ?? {};
+    const valOpts = this.firstAxis(this.options.yAxis) ?? {};
+    const catSide = inverted ? (catOpts.opposite ? 'right' : 'left') : (catOpts.opposite ? 'top' : 'bottom');
+    const valSide = inverted ? (valOpts.opposite ? 'top' : 'bottom') : (valOpts.opposite ? 'right' : 'left');
 
-    // Axis placement: y can move to the right, x to the top (Highcharts-style
-    // `opposite`). Reserve space only on the side an axis actually occupies, and
-    // nothing when the axis is hidden.
-    const yRight = !!yOpts.opposite;
-    const xTop = !!xOpts.opposite;
-    const yReserve = yOpts.visible === false ? 6 : LAYOUT.defaultLeftAxisWidth + (yOpts.title?.text ? 16 : 0);
-    const xReserve = xOpts.visible === false ? 6 : LAYOUT.defaultBottomAxisHeight + (xOpts.title?.text ? 22 : 0);
-    const padLeft = yRight ? 8 : yReserve;
-    const padRight = yRight ? yReserve : 8;
-    const padTop = xTop ? xReserve : 6;
-    const padBottom = xTop ? 6 : xReserve;
+    const catReserve = this.axisReserve(catOpts, catSide, this.catLabelWidth(visible));
+    const valReserve = this.axisReserve(valOpts, valSide, this.valueLabelWidth(visible, valOpts));
+    const pad = { left: 8, right: 8, top: 6, bottom: 6 };
+    pad[catSide] = catReserve;
+    pad[valSide] = valReserve;
     const axisPlot: Rect = {
-      x: plot.x + padLeft,
-      y: plot.y + padTop,
-      width: plot.width - padLeft - padRight,
-      height: plot.height - padTop - padBottom,
+      x: plot.x + pad.left,
+      y: plot.y + pad.top,
+      width: plot.width - pad.left - pad.right,
+      height: plot.height - pad.top - pad.bottom,
     };
 
     this.computeStacks(visible);
     const { xScale, yScale } = this.buildScales(visible, axisPlot, inverted);
     const group = this.groupInfo(visible);
+    // Category scale is vertical (yScale) when inverted, else horizontal (xScale).
+    const catScale = inverted ? yScale : xScale;
+    const valScale = inverted ? xScale : yScale;
 
     // Axes.
     const axisLayer = this.renderer.group({ class: 'jchart-axes' }, this.renderer.root);
-    new Axis({ renderer: this.renderer, scale: xScale, position: xTop ? 'top' : 'bottom', plot: axisPlot, options: xOpts, grid: false }).render(axisLayer);
-    new Axis({ renderer: this.renderer, scale: yScale, position: yRight ? 'right' : 'left', plot: axisPlot, options: yOpts, grid: true }).render(axisLayer);
+    new Axis({ renderer: this.renderer, scale: catScale, position: catSide, plot: axisPlot, options: catOpts, grid: false }).render(axisLayer);
+    new Axis({ renderer: this.renderer, scale: valScale, position: valSide, plot: axisPlot, options: valOpts, grid: true }).render(axisLayer);
 
     // Series.
     for (const s of visible) {
@@ -542,9 +571,23 @@ export class JChart {
     new NestedAxis({ renderer: this.renderer, scale: xScale, plot, leaves, keys, position: split ? 'split' : 'bottom' }).render(axisLayer);
 
     const group = this.groupInfo(aggSeries);
+    const lineFamily = new Set(['line', 'spline', 'step', 'area', 'areaspline']);
     for (const s of aggSeries) {
       const ctx = this.seriesContext(s, plot, xScale, yScale, group, false, false);
-      s.render(ctx);
+      if (lineFamily.has(s.type)) {
+        // Draw a separate line per first-dimension group so the line does not
+        // run continuously across group boundaries.
+        let segStart = 0;
+        for (let i = 1; i <= s.points.length; i++) {
+          const boundary = i === s.points.length || leaves[s.points[i].index][0] !== leaves[s.points[segStart].index][0];
+          if (boundary) {
+            s.withPoints(s.points.slice(segStart, i)).render(ctx);
+            segStart = i;
+          }
+        }
+      } else {
+        s.render(ctx);
+      }
     }
   }
 
@@ -882,19 +925,39 @@ export class JChart {
     this.applyHover(el, s);
 
     if (!this.tooltip) return;
-    const ctx: TooltipContext = {
-      series: s.name,
-      x: p.name ?? p.x,
-      y: p.y ?? p.high,
-      low: p.low,
-      high: p.high,
-      box: p.box,
-      point: p.options,
-      color: p.color ?? s.color,
+    const build = (): TooltipContext => {
+      const ctx: TooltipContext = {
+        series: s.name,
+        x: p.name ?? p.x,
+        y: p.y ?? p.high,
+        low: p.low,
+        high: p.high,
+        box: p.box,
+        point: p.options,
+        color: p.color ?? s.color,
+      };
+      // Shared tooltip: gather every visible series' value at this x into one box.
+      if (this.options.tooltip?.shared) ctx.points = this.pointsAtX(p.x);
+      return ctx;
     };
-    el.addEventListener('mouseenter', () => this.tooltip!.show(ctx, s.options.tooltip));
+    el.addEventListener('mouseenter', () => this.tooltip!.show(build(), s.options.tooltip));
     el.addEventListener('mousemove', (e) => this.tooltip!.move(e.clientX, e.clientY));
     el.addEventListener('mouseleave', () => this.tooltip!.hide());
+  }
+
+  /** All visible series' points sharing an x value (for the shared tooltip). */
+  private pointsAtX(x: number | string): TooltipContext[] {
+    const rows: TooltipContext[] = [];
+    for (const s of this.series) {
+      if (!s.visible || !s.capabilities().cartesian) continue;
+      const match = s.points.find((pp) => String(pp.x) === String(x));
+      if (!match) continue;
+      rows.push({
+        series: s.name, x: match.name ?? match.x, y: match.y ?? match.high,
+        low: match.low, high: match.high, point: match.options, color: match.color ?? s.color,
+      });
+    }
+    return rows;
   }
 
   /**
@@ -954,7 +1017,7 @@ export class JChart {
    *  series (pie / donut / radial bar) rather than one item per series. */
   private isPointLegend(): boolean {
     const first = this.series[0];
-    return this.series.length === 1 && !!first && !first.capabilities().cartesian;
+    return this.series.length === 1 && !!first && first.capabilities().pointLegend === true;
   }
 
   private buildLegendItems(): LegendItem[] {

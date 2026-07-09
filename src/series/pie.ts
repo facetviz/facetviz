@@ -13,7 +13,7 @@ interface PieCenter { cx: number; cy: number; radius: number; margin: number; ou
 
 export class PieSeries extends BaseSeries {
   override capabilities(): SeriesCapabilities {
-    return { grouped: false, cartesian: false, stackable: false };
+    return { grouped: false, cartesian: false, stackable: false, pointLegend: true };
   }
 
   private dims(): string[] | undefined {
@@ -70,6 +70,19 @@ export class PieSeries extends BaseSeries {
     const total = sum(points.map((p) => p.y ?? 0));
     if (total <= 0) return;
 
+    // Variable-radius pie: when points carry a `z`, each slice's outer radius
+    // scales with z (angle still comes from y). Smallest slice keeps 45% radius.
+    const zs = points.map((p) => p.options.z).filter((z): z is number => typeof z === 'number');
+    const variable = zs.length > 0;
+    const zMin = variable ? Math.min(...zs) : 0;
+    const zMax = variable ? Math.max(...zs) : 1;
+    const minR = innerR + (c.radius - innerR) * 0.45;
+    const radiusFor = (p: Point) => {
+      const z = p.options.z;
+      if (!variable || typeof z !== 'number') return c.radius;
+      return minR + (c.radius - minR) * (zMax === zMin ? 1 : (z - zMin) / (zMax - zMin));
+    };
+
     let angle = -Math.PI / 2; // start at 12 o'clock
     points.forEach((p) => {
       const value = p.y ?? 0;
@@ -77,8 +90,9 @@ export class PieSeries extends BaseSeries {
       const sweep = (value / total) * Math.PI * 2;
       const end = angle + sweep;
       const color = p.color ?? paletteColor(ctx.colors, this.points.indexOf(p));
+      const rr = radiusFor(p);
 
-      const path = this.slicePath(c.cx, c.cy, c.radius, innerR, angle, end);
+      const path = this.slicePath(c.cx, c.cy, rr, innerR, angle, end);
       const el = renderer.create('path', { d: path, fill: color, stroke: '#ffffff', 'stroke-width': 1, class: 'jchart-point' }, g);
       ctx.registerHover(el, p);
       el.addEventListener('click', (e: Event) => ctx.onPointEvent('click', p, e));
@@ -86,7 +100,7 @@ export class PieSeries extends BaseSeries {
       el.addEventListener('mouseout', (e: Event) => ctx.onPointEvent('mouseOut', p, e));
 
       const label = this.labelText(p, p.name ?? p.x, value, total);
-      this.drawLabel(ctx, g, c, c.radius, (angle + end) / 2, label, color);
+      this.drawLabel(ctx, g, c, rr, (angle + end) / 2, label, color);
       angle = end;
     });
   }
@@ -122,11 +136,18 @@ export class PieSeries extends BaseSeries {
       // Inner slice (the group itself).
       const innerPath = this.slicePath(c.cx, c.cy, midR, holeR, angle, end);
       renderer.create('path', { d: innerPath, fill: base, stroke: '#ffffff', 'stroke-width': 1, class: 'jchart-point' }, g);
-      // Inner label centred within its band.
+      // Inner label centred within its band, abbreviated to fit the wedge.
       const innerLabelR = (holeR + midR) / 2;
-      renderer.text(g0, c.cx + innerLabelR * Math.cos((angle + end) / 2), c.cy + innerLabelR * Math.sin((angle + end) / 2), {
-        'text-anchor': 'middle', 'dominant-baseline': 'middle', ...FONTS.dataLabel, fill: '#ffffff', 'font-weight': '600',
-      }, g);
+      const mid = (angle + end) / 2;
+      // Available width ≈ chord across the wedge at the label radius.
+      const chord = 2 * innerLabelR * Math.sin(Math.min(Math.PI, sweep) / 2);
+      const bandThickness = midR - holeR;
+      const fitted = this.fitText(g0, Math.max(chord, bandThickness) - 4, 6.8);
+      if (fitted) {
+        renderer.text(fitted, c.cx + innerLabelR * Math.cos(mid), c.cy + innerLabelR * Math.sin(mid), {
+          'text-anchor': 'middle', 'dominant-baseline': 'middle', ...FONTS.dataLabel, fill: '#ffffff', 'font-weight': '600',
+        }, g);
+      }
 
       // Outer slices (breakdown), shaded variants of the base colour.
       let a2 = angle;
@@ -174,6 +195,18 @@ export class PieSeries extends BaseSeries {
       if (anyVisible) this.hiddenPoints.add(p.index);
       else this.hiddenPoints.delete(p.index);
     }
+  }
+
+  /**
+   * Truncate `text` with an ellipsis to fit `availablePx`. Returns '' when even
+   * a single character won't fit (label omitted entirely).
+   */
+  private fitText(text: string, availablePx: number, charW: number): string {
+    const maxChars = Math.floor(availablePx / charW);
+    if (maxChars < 1) return '';
+    if (text.length <= maxChars) return text;
+    if (maxChars === 1) return text.slice(0, 1);
+    return text.slice(0, maxChars - 1) + '…';
   }
 
   /** Build the label string for a slice from the series' dataLabels config. */

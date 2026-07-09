@@ -421,6 +421,9 @@ xAxis: { dimensions: ['Region', 'Category'], aggregate: 'sum', opposite: true },
 - `opposite: true` → **split** layout: the innermost dimension is labelled at the
   bottom, outer grouping dimensions move to the top, and full-height lines
   separate each top-level group (the classic Tableau columns-shelf look).
+- A `line`/`area`-type series on a nested axis is drawn as one segment **per
+  first-dimension group** (it does not run continuously across group boundaries),
+  so a column+line combo reads correctly.
 
 ---
 
@@ -499,8 +502,24 @@ raw array for boxplots.
 | `scatter` / `jitter` | Point clouds (jitter adds horizontal spread). |
 | `boxplot` | Five-number distribution; dual-colour, horizontal & groupable. |
 | `dumbbell` | Two connected points per category; horizontal & groupable. |
+| `columnrange` | Rounded-capsule range bar (vertical; horizontal via `chart.inverted`); groupable. |
 | `butterfly` | Two series mirrored back-to-back around a central axis. |
 | `radialbar` | Bars around a polar centre (0→270°). |
+| `heatmap` | Category × category grid coloured by `value`; draws its own row/column labels. |
+| `bullet` | Measure bar per row against qualitative `ranges` bands and a `target` marker. |
+| `candlestick` | OHLC candles (`open`/`high`/`low`/`close`); up/down coloured. |
+| `gauge` | 270° radial dial for one value; `min`/`max` and coloured `bands`. |
+| `waterfall` | Running cumulative bars; `isSum` for total bars, coloured rises/falls. |
+| `histogram` | Bins an array of raw numbers (`bins` to override the bin count). |
+| `timeline` | Events placed in order along a line, labels alternating above/below. |
+| `funnel` | Narrowing stages sized by value. |
+| `treegraph` | Hierarchy from flat `{ id, parent, name }` points, laid out left→right. |
+
+**Data fields for the new types** — set on each point: heatmap `{ x, y, value }`;
+candlestick `{ x, open, high, low, close }`; bullet `{ name, y, target, ranges }`;
+gauge series `{ min, max, bands }` + one point `{ y }`; waterfall `{ x, y }` or
+`{ x, isSum: true }`; histogram raw `number[]`; treegraph `{ id, parent, name }`;
+variable-radius pie adds `z` per slice (drives its outer radius).
 
 **Stacking & grouping**: any bar/column/area series stacks with `stacking` and a
 shared `stack` id; series without stacking are grouped side-by-side
