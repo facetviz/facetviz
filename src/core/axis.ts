@@ -5,6 +5,7 @@ import type { Scale } from './scale.js';
 import type { AxisOptions } from './options.js';
 import { CategoryScale } from './scale.js';
 import { FONTS, LAYOUT } from './defaults.js';
+import { THEME } from './theme.js';
 import { formatString } from './utils.js';
 
 export interface Rect {
@@ -44,17 +45,18 @@ export class Axis {
     this.drawPlotBands(group);
 
     // Axis baseline.
+    const axisColor = options.lineColor ?? THEME.axis.lineColor;
     if (options.lineWidth !== 0) {
       const line = this.axisLineCoords();
       renderer.create('line', {
         ...line,
-        stroke: options.lineColor ?? '#ccd6eb',
+        stroke: axisColor,
         'stroke-width': options.lineWidth ?? 1,
       }, group);
     }
 
     const labelsEnabled = options.labels?.enabled !== false;
-    const gridColor = options.gridLineColor ?? '#e6e6e6';
+    const gridColor = options.gridLineColor ?? THEME.axis.gridLineColor;
     const gridWidth = options.gridLineWidth ?? (this.horizontal ? 0 : 1);
 
     for (const tick of ticks) {
@@ -66,7 +68,7 @@ export class Axis {
       }
 
       // Tick mark.
-      this.drawTick(group, pos, options.lineColor ?? '#ccd6eb');
+      this.drawTick(group, pos, axisColor);
 
       // Label.
       if (labelsEnabled) {

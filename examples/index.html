@@ -129,6 +129,23 @@
         ], dataLabels: { enabled: true, format: '{name}' } }], ...onClick,
       });
 
+      // Two-dimension (multi-level) pie: Region ▸ Device
+      const twoDim = [
+        { Region: 'Americas', Device: 'Mobile', y: 30 }, { Region: 'Americas', Device: 'Desktop', y: 22 }, { Region: 'Americas', Device: 'Tablet', y: 8 },
+        { Region: 'EMEA', Device: 'Mobile', y: 24 }, { Region: 'EMEA', Device: 'Desktop', y: 18 }, { Region: 'EMEA', Device: 'Tablet', y: 6 },
+        { Region: 'APAC', Device: 'Mobile', y: 28 }, { Region: 'APAC', Device: 'Desktop', y: 12 }, { Region: 'APAC', Device: 'Tablet', y: 5 },
+      ];
+      new JChart(card('Pie — two dimensions (Region ▸ Device)'), {
+        chart: { type: 'pie', height: 320 }, title: { text: 'Sessions' },
+        series: [{ name: 'Sessions', dimensions: ['Region', 'Device'], data: twoDim,
+          dataLabels: { enabled: true, format: '{name}: {percentage}%' } }], ...onClick,
+      });
+      new JChart(card('Donut — two dimensions (Region ▸ Device)'), {
+        chart: { type: 'donut', height: 320 }, title: { text: 'Sessions' },
+        series: [{ name: 'Sessions', innerSize: '35%', dimensions: ['Region', 'Device'], data: twoDim,
+          dataLabels: { enabled: true, format: '{name}' } }], ...onClick,
+      });
+
       // Scatter & Jitter
       new JChart(card('Scatter'), {
         chart: { type: 'scatter', height: 300 }, title: { text: 'Scatter' },
@@ -257,6 +274,44 @@
         legend: { enabled: false },
         xAxis: { visible: false }, yAxis: { visible: false },
         series: [{ name: 'S', data: [3,5,4,7,6,8,7,9], color: '#00b894' }],
+      });
+
+      // Theme — dark (built-in)
+      new JChart(card('Theme — dark'), {
+        chart: { type: 'column', height: 300 }, theme: 'dark',
+        title: { text: 'Monthly sales' }, xAxis: { categories: months },
+        yAxis: { title: { text: 'Units' } },
+        series: [
+          { name: 'North', data: [5, 3, 4, 7, 2, 6] },
+          { name: 'South', data: [2, 4, 6, 3, 5, 4] },
+        ], ...onClick,
+      });
+
+      // Theme — pastel (built-in)
+      new JChart(card('Theme — pastel'), {
+        chart: { type: 'area', height: 300 }, theme: 'pastel',
+        title: { text: 'Trend' }, xAxis: { categories: months },
+        series: [
+          { name: 'A', data: [3, 5, 4, 7, 6, 8] },
+          { name: 'B', data: [2, 3, 5, 4, 6, 5] },
+        ], ...onClick,
+      });
+
+      // Theme — custom (extends dark, overrides palette + grid)
+      new JChart(card('Theme — custom (extends dark)'), {
+        chart: { type: 'spline', height: 300 },
+        theme: {
+          base: 'dark',
+          backgroundColor: '#0b1021',
+          colors: ['#00f5d4', '#f15bb5', '#fee440'],
+          axis: { gridLineColor: '#1c2540', labelColor: '#8ea2c6' },
+        },
+        title: { text: 'Custom theme' }, xAxis: { categories: months },
+        series: [
+          { name: 'X', data: [4, 6, 5, 8, 7, 9], marker: { enabled: true } },
+          { name: 'Y', data: [2, 3, 4, 3, 5, 6], marker: { enabled: true } },
+          { name: 'Z', data: [1, 2, 2, 4, 3, 5], marker: { enabled: true } },
+        ], ...onClick,
       });
 
       // Radial bar

@@ -14,6 +14,13 @@ import type { Point } from '../core/point.js';
 import type { SeriesOptions, ChartType, JChartPointEvent } from '../core/options.js';
 import { normalizePoints } from '../core/point.js';
 
+/** A single legend entry produced by a series' custom legend provider. */
+export interface LegendEntry {
+  label: string;
+  color: string;
+  visible: boolean;
+}
+
 export interface SeriesRenderContext {
   renderer: Renderer;
   plot: Rect;
@@ -101,6 +108,16 @@ export abstract class BaseSeries {
   }
 
   abstract render(ctx: SeriesRenderContext): void;
+
+  /**
+   * Optional custom legend items (e.g. a multi-level pie whose legend lists the
+   * inner-dimension groups rather than every raw point). Return `undefined` to
+   * fall back to the default point/series legend.
+   */
+  legendItems?(colors: string[]): LegendEntry[] | undefined;
+
+  /** Handle a click on a custom legend item (paired with {@link legendItems}). */
+  onLegendToggle?(index: number): void;
 
   /**
    * Return a shallow clone of this series containing only the points whose

@@ -10,6 +10,7 @@
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
 import { CategoryScale } from '../core/scale.js';
 import { drawMarker } from './marker.js';
+import { THEME } from '../core/theme.js';
 import type { Point } from '../core/point.js';
 
 export class DumbbellSeries extends BaseSeries {
@@ -33,7 +34,7 @@ export class DumbbellSeries extends BaseSeries {
     const radius = this.options.marker?.radius ?? 5;
     const lowColor = this.options.lowColor ?? this.color;
     const highColor = this.options.highColor ?? this.color;
-    const connColor = this.options.connectorColor ?? '#b0b0b0';
+    const connColor = this.options.connectorColor ?? THEME.neutralColor;
     const connWidth = this.options.connectorWidth ?? 3;
 
     for (const p of this.points) {

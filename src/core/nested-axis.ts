@@ -15,6 +15,7 @@ import type { Renderer } from './renderer.js';
 import type { CategoryScale } from './scale.js';
 import type { Rect } from './axis.js';
 import { FONTS, LAYOUT } from './defaults.js';
+import { THEME } from './theme.js';
 
 export interface NestedAxisConfig {
   renderer: Renderer;
@@ -53,7 +54,7 @@ export class NestedAxis {
   /** All tiers on one side (below or above the plot). */
   private renderStacked(g: SVGGElement, top: boolean): void {
     const { renderer, scale, plot, leaves, keys } = this.cfg;
-    const color = this.cfg.lineColor ?? '#ccd6eb';
+    const color = this.cfg.lineColor ?? THEME.axis.lineColor;
     const levels = leaves[0]?.length ?? 0;
     const dir = top ? -1 : 1; // +1 grows rows downward, -1 upward
     const baseY = top ? plot.y : plot.y + plot.height;
@@ -92,7 +93,7 @@ export class NestedAxis {
    */
   private renderSplit(g: SVGGElement): void {
     const { renderer, scale, plot, leaves, keys } = this.cfg;
-    const color = this.cfg.lineColor ?? '#ccd6eb';
+    const color = this.cfg.lineColor ?? THEME.axis.lineColor;
     const levels = leaves[0]?.length ?? 0;
     const rowH = 18;
     const leafCenter = (i: number) => scale.scale(keys[i]);

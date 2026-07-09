@@ -16,6 +16,8 @@
  * sensible defaults live in `defaults.ts`.
  */
 
+import type { ThemeInput } from './theme.js';
+
 /** Every built-in series/chart type. */
 export type ChartType =
   | 'bar' // horizontal bars
@@ -80,6 +82,13 @@ export interface SeriesOptions {
   visible?: boolean;
   /** Pie/donut inner radius as a percentage string e.g. '60%'. */
   innerSize?: string;
+  /**
+   * Pie/donut multi-level (two-dimension) rings: field names read from each
+   * point. The first is the inner ring (grouped totals), the second the outer
+   * ring (breakdown within each inner slice). Outer slices are shaded variants
+   * of their parent's colour.
+   */
+  dimensions?: string[];
   /** Line width in px for line-family series. */
   lineWidth?: number;
   /** Marker configuration for point-based series. */
@@ -239,6 +248,8 @@ export interface TooltipOptions {
   shared?: boolean;
   backgroundColor?: string;
   borderColor?: string;
+  /** Tooltip text colour. */
+  color?: string;
   valueSuffix?: string;
   valuePrefix?: string;
   valueDecimals?: number;
@@ -354,6 +365,12 @@ export interface ChartOptions {
   series: SeriesOptions[];
   colors?: string[];
   trellis?: TrellisOptions;
+  /**
+   * Visual theme. A built-in name (`'light'` | `'dark'` | `'high-contrast'` |
+   * `'pastel'`), or a custom object (optionally extending a built-in via `base`).
+   * Explicit `colors` / `chart.backgroundColor` / axis colours still win.
+   */
+  theme?: ThemeInput;
   /** Wire series-level events without repeating on every series. */
   seriesEvents?: SeriesEvents;
 }

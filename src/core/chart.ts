@@ -29,6 +29,7 @@ import { LinearScale, LogScale, CategoryScale, Scale } from './scale.js';
 import { DEFAULT_OPTIONS, LAYOUT, FONTS } from './defaults.js';
 import { merge, extent } from './utils.js';
 import { paletteColor } from './colors.js';
+import { Theme, resolveTheme, applyTheme } from './theme.js';
 import { BaseSeries, SeriesRenderContext } from '../series/base.js';
 import { createSeries } from '../series/registry.js';
 import { drawDataLabel, labelString } from '../series/data-label.js';
@@ -42,6 +43,7 @@ export class JChart {
   readonly events = new EventEmitter();
   series: BaseSeries[] = [];
   private colors: string[];
+  private theme: Theme;
   private width: number;
   private height: number;
 
@@ -50,7 +52,9 @@ export class JChart {
     if (!el) throw new Error('JChart: container element not found');
     this.container = el as HTMLElement;
     this.options = this.resolveOptions(options);
-    this.colors = this.options.chart?.colors ?? this.options.colors ?? [];
+    this.theme = resolveTheme(this.options.theme);
+    // Explicit colours win; otherwise fall back to the theme palette.
+    this.colors = this.options.chart?.colors ?? this.options.colors ?? this.theme.colors;
     // Default to the container's width so the chart never overflows its parent.
     this.width = this.options.chart?.width ?? (this.container.clientWidth || 640);
     this.height = this.options.chart?.height ?? 400;
@@ -138,15 +142,24 @@ export class JChart {
       this.renderer.setSize(this.width, this.height);
     }
 
+    // Apply the theme (updates shared FONTS + the live THEME read by axes etc.).
+    applyTheme(this.theme);
+
     // Background.
     this.renderer.create('rect', {
       x: 0, y: 0, width: this.width, height: this.height,
-      fill: this.options.chart?.backgroundColor ?? '#fff',
+      fill: this.options.chart?.backgroundColor ?? this.theme.backgroundColor,
     }, this.renderer.root);
 
     if (this.tooltip) this.tooltip.destroy();
     if (this.options.tooltip?.enabled !== false) {
-      this.tooltip = new Tooltip(this.container, this.options.tooltip ?? {});
+      // Theme tooltip colours as defaults; user tooltip options still win.
+      this.tooltip = new Tooltip(this.container, {
+        backgroundColor: this.theme.tooltip.backgroundColor,
+        borderColor: this.theme.tooltip.borderColor,
+        color: this.theme.tooltip.color,
+        ...this.options.tooltip,
+      });
     }
 
     const spacing = this.options.chart?.spacing ?? [16, 16, 16, 16];
@@ -946,6 +959,11 @@ export class JChart {
 
   private buildLegendItems(): LegendItem[] {
     const first = this.series[0];
+    // A series may supply its own legend (e.g. multi-level pie → inner groups).
+    if (this.series.length === 1 && first?.legendItems) {
+      const custom = first.legendItems(this.colors);
+      if (custom) return custom;
+    }
     if (this.isPointLegend() && first) {
       return first.points.map((p, i) => ({
         label: String(p.name ?? p.x),
@@ -957,9 +975,15 @@ export class JChart {
   }
 
   private toggleSeries(index: number): void {
+    const first = this.series[0];
+    // Custom legend provider (e.g. multi-level pie groups).
+    if (this.series.length === 1 && first?.legendItems && first.onLegendToggle && first.legendItems(this.colors)) {
+      first.onLegendToggle(index);
+      this.render();
+      return;
+    }
     // Point-legend charts toggle an individual slice/ring; others toggle a series.
     if (this.isPointLegend()) {
-      const first = this.series[0];
       const p = first.points[index];
       if (!p) return;
       if (first.hiddenPoints.has(p.index)) first.hiddenPoints.delete(p.index);

@@ -24,7 +24,7 @@ export class Tooltip {
       border: `1px solid ${options.borderColor ?? '#ccc'}`,
       borderRadius: '4px',
       boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
-      color: '#333',
+      color: options.color ?? '#333',
       whiteSpace: 'nowrap',
       transition: 'opacity 0.08s',
       opacity: '0',

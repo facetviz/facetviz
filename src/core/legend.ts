@@ -10,6 +10,7 @@
 import type { Renderer } from './renderer.js';
 import type { LegendOptions } from './options.js';
 import { FONTS } from './defaults.js';
+import { THEME } from './theme.js';
 
 export interface LegendItem {
   label: string;
@@ -56,11 +57,11 @@ export class Legend {
     const item = renderer.group({ class: 'jchart-legend-item', style: 'cursor:pointer' }, g);
     renderer.create('rect', {
       x, y, width: SWATCH, height: SWATCH, rx: 2,
-      fill: it.visible ? it.color : '#cccccc',
+      fill: it.visible ? it.color : THEME.legend.hiddenColor,
     }, item);
     const label = renderer.text(it.label, x + SWATCH + 6, y + SWATCH - 2, {
       ...FONTS.legend,
-      fill: it.visible ? FONTS.legend.fill : '#999',
+      fill: it.visible ? FONTS.legend.fill : THEME.legend.hiddenColor,
       'text-decoration': it.visible ? 'none' : 'line-through',
     }, item);
     label.style.userSelect = 'none';

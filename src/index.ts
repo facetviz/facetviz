@@ -42,6 +42,10 @@ export type {
   JChartPointEvent,
 } from './core/options.js';
 
+// Theming.
+export { resolveTheme, registerTheme, LIGHT_THEME } from './core/theme.js';
+export type { Theme, ThemeInput } from './core/theme.js';
+
 // Extensibility.
 export { registerSeriesType, createSeries } from './series/registry.js';
 export { BaseSeries } from './series/base.js';

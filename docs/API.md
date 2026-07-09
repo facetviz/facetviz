@@ -39,7 +39,8 @@ The root object passed to `new JChart(container, options)`.
 | `legend` | [`LegendOptions`](#legendoptions) | enabled | Legend config and placement. |
 | `plotOptions` | [`PlotOptions`](#plotoptions) | – | Defaults applied to all series or per type. |
 | `series` | [`SeriesOptions[]`](#seriesoptions) | **required** | One entry per data series. |
-| `colors` | `string[]` | built-in palette | Colours cycled through by series lacking an explicit colour. |
+| `colors` | `string[]` | theme palette | Colours cycled through by series lacking an explicit colour. |
+| `theme` | `string \| ThemeInput` | `'light'` | Visual theme — see [Theming](#theming). |
 | `trellis` | [`TrellisOptions`](#trellisoptions) | – | Small-multiples / Tableau table split. |
 | `seriesEvents` | [`SeriesEvents`](#events) | – | Event callbacks applied to every series. |
 
@@ -166,6 +167,7 @@ One object per series in the `series` array.
 | `yAxis` | `number` | `0` | Index of the bound y-axis (combo charts). |
 | `lineWidth` | `number` | `2` | Stroke width (line/area/range). |
 | `innerSize` | `string` | – | Pie inner radius, e.g. `'60%'` (makes a donut). |
+| `dimensions` | `string[]` | – | Pie/donut **two-dimension** rings — see [Multi-level pie](#multi-level-two-dimension-pie). |
 | `marker` | [`MarkerOptions`](#markeroptions) | – | Point markers (line/area/scatter). |
 | `dataLabels` | [`DataLabelOptions`](#datalabeloptions) | disabled | On-chart value labels. |
 | `jitter` | `number` | `0.5` | Horizontal spread (in band widths) for `jitter` charts. |
@@ -235,6 +237,35 @@ scatter/jitter, pie/donut and butterfly.
 
 `LabelContext` (passed to `formatter`): `{ x, y, point, series }`.
 
+### Multi-level (two-dimension) pie
+
+Give a pie/donut series two field names in `dimensions` to render concentric
+rings: the **inner** ring groups by the first field (labelled inside), the
+**outer** ring breaks each group down by the second field (shaded variants of the
+parent colour, with leader-line labels). The legend lists the inner groups and
+toggling one hides its whole wedge.
+
+```ts
+{
+  chart: { type: 'donut' },
+  series: [{
+    dimensions: ['Region', 'Device'],   // inner ▸ outer
+    innerSize: '35%',
+    data: [
+      { Region: 'Americas', Device: 'Mobile',  y: 30 },
+      { Region: 'Americas', Device: 'Desktop', y: 22 },
+      { Region: 'EMEA',     Device: 'Mobile',  y: 24 },
+      // …
+    ],
+    dataLabels: { enabled: true, format: '{name}' },
+  }],
+}
+```
+
+Outside pie/donut labels are always joined to their slice with a **leader line**
+so the label↔slice mapping is unambiguous. Use `dataLabels.position: 'inside'`
+to place labels on the slice instead (no leader line).
+
 ### HoverStateOptions
 
 `SeriesOptions.states.hover` — subtle brightness highlight by default; scaling is
@@ -296,6 +327,53 @@ Clicking a legend item toggles that series (or, for pie/donut/radialbar, that
 slice) — re-rendering with the value re-distributed.
 
 ---
+
+## Theming
+
+Set `theme` to a built-in name or a custom object. Explicit `colors`,
+`chart.backgroundColor`, and per-axis colours always override the theme.
+
+**Built-in themes:** `'light'` (default), `'dark'`, `'high-contrast'`, `'pastel'`.
+
+```ts
+{ theme: 'dark', series: [...] }
+```
+
+**Custom theme** — pass a partial `Theme`, optionally extending a built-in via `base`:
+
+```ts
+{
+  theme: {
+    base: 'dark',                                  // start from a built-in
+    backgroundColor: '#0b1021',
+    colors: ['#00f5d4', '#f15bb5', '#fee440'],     // series palette
+    axis: { gridLineColor: '#1c2540', labelColor: '#8ea2c6' },
+  },
+}
+```
+
+A `Theme` has these tokens (all optional in a custom object):
+
+| Token | Description |
+|-------|-------------|
+| `colors` | `string[]` categorical series palette. |
+| `backgroundColor` | Chart background. |
+| `fontFamily` | Font stack for all text. |
+| `title` | `{ color, fontSize, fontWeight }`. |
+| `subtitle` | `{ color, fontSize }`. |
+| `axis` | `{ labelColor, titleColor, lineColor, gridLineColor }`. |
+| `dataLabel` | `{ color }`. |
+| `legend` | `{ color, hiddenColor }`. |
+| `tooltip` | `{ backgroundColor, borderColor, color }`. |
+| `neutralColor` | Muted colour for connectors / neutral marks. |
+
+Register a reusable named theme at runtime:
+
+```ts
+import { registerTheme, LIGHT_THEME } from 'jchart';
+registerTheme('corp', { ...LIGHT_THEME, colors: ['#003f5c', '#bc5090', '#ffa600'] });
+// then: { theme: 'corp' }
+```
 
 ## PlotOptions
 

@@ -94,6 +94,28 @@ yAxis: {
 }
 ```
 
+## Theming
+
+Pick a built-in theme or supply your own:
+
+```ts
+new JChart('#c', { theme: 'dark', series: [...] });          // light | dark | high-contrast | pastel
+
+new JChart('#c', {                                            // custom, extending a built-in
+  theme: {
+    base: 'dark',
+    backgroundColor: '#0b1021',
+    colors: ['#00f5d4', '#f15bb5', '#fee440'],
+    axis: { gridLineColor: '#1c2540', labelColor: '#8ea2c6' },
+  },
+  series: [...],
+});
+```
+
+Explicit `colors` / `chart.backgroundColor` / axis colours still win over the
+theme. Register reusable themes with `registerTheme(name, theme)`. Full token
+list in the [API reference](docs/API.md#theming).
+
 ## Hover highlight
 
 Points brighten subtly on hover. Scaling is opt-in (set `scale`); disable entirely with `enabled: false`:
