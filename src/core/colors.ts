@@ -1,4 +1,4 @@
-/** Default categorical palette (Highcharts-inspired) plus colour helpers. */
+/** Default categorical palette (vibrant, high-contrast) plus colour helpers. */
 
 export const DEFAULT_COLORS = [
   '#2caffe',

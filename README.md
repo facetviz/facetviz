@@ -1,14 +1,33 @@
 # JChart
 
-A modular, dependency-free **TypeScript + SVG** charting library with a
-**Highcharts-like API**, Tableau-style small multiples (trellising), and a wide
+A modular, dependency-free **TypeScript + SVG** charting library with
+**a declarative config API**, small multiples (trellising), and a wide
 range of chart types. Designed to be read and maintained by hand — every chart
 type, scale, and helper is a small, self-contained module.
 
+🌐 **Documentation website** — the [`docs/`](docs/) folder is a self-contained GitHub Pages site
+(tutorial, live examples, chart-type gallery, full API reference, and an interactive playground).
+Once Pages is enabled it is served at `https://<user>.github.io/<repo>/`.
+
 📖 **[Full API reference → docs/API.md](docs/API.md)** — every option key and value documented.
 
-🎛️ **Playground** — run `npm run dev` and open [`/examples/playground.html`](examples/playground.html):
-a live JSON config editor on the left, the rendered chart on the right, with 20+ presets.
+🎛️ **Playground** — [`docs/playground.html`](docs/playground.html): a live JSON config editor on
+the left, the rendered chart on the right, with 25+ presets.
+
+### Publishing the docs site
+
+The site under `docs/` is fully self-contained — no CDN. `docs/lib/` holds the vendored assets:
+the bundled library (`jchart.js`), plus `marked.esm.js` and `highlight.min.js` / `hljs-github-dark.css`
+used to render the API reference and highlight code. Regenerate the library bundle whenever the
+library changes:
+
+```bash
+npm run build:site   # bundles src/index.ts → docs/lib/jchart.js
+```
+
+Then either commit `docs/` and enable **GitHub Pages → Deploy from branch → `main` / `docs`**, or use
+the included workflow ([`.github/workflows/pages.yml`](.github/workflows/pages.yml)) which rebuilds the
+bundle and deploys on every push to `main` (set Pages source to **GitHub Actions**).
 
 ```ts
 import { JChart } from 'jchart';
@@ -40,20 +59,20 @@ npm run typecheck # type-only check
 
 | Category | Types |
 | --- | --- |
-| Bars | `column` (vertical), `bar` (horizontal), `waterfall`, `histogram`, `bullet` |
-| Lines | `line`, `spline`, `step`, `area`, `areaspline` |
-| Range | `arearange`, `areasplinerange` (band), `columnrange` (rounded capsule, vert/horiz) |
-| Circular | `pie`, `donut` (multi-level + variable radius), `radialbar`, `gauge` |
-| Points | `scatter`, `jitter`, `dumbbell`, `timeline` |
-| Statistical | `boxplot` (dual-colour, Tableau style), `candlestick` |
-| Grid / hierarchy | `heatmap`, `funnel`, `treegraph`, `butterfly` |
+| Bars | `column`, `bar`, `waterfall`, `histogram`, `bullet`, `marimekko` |
+| Lines | `line`, `spline`, `step`, `area`, `areaspline`, `radar` |
+| Range | `arearange`, `areasplinerange`, `columnrange` (capsule), `errorbar` |
+| Circular | `pie`, `donut` (multi-level + variable radius), `radialbar`, `gauge`, `sunburst` |
+| Points | `scatter`, `jitter`, `bubble`, `dumbbell`, `timeline` |
+| Statistical | `boxplot` (dual-colour), `candlestick` |
+| Grid / hierarchy | `heatmap`, `calendar`, `funnel`, `treegraph`, `sankey`, `gantt`, `butterfly` |
 
 **Stacking & grouping**: any bar/column/area series supports
 `stacking: 'normal' | 'percent'`. Series sharing a `stack` id pile together;
 otherwise same-type series are drawn side-by-side (grouped). **Combination
 charts** work by giving each series its own `type`.
 
-## Tableau-style small multiples (trellis)
+## Small multiples (trellis)
 
 Split one dataset into a grid of panels by data dimensions:
 
@@ -69,7 +88,7 @@ new JChart('#el', {
 ```
 
 Each point's `region` / `category` fields route it into the matching panel.
-By default (`table: true`) this renders as a **Tableau-style table**: one shared
+By default (`table: true`) this renders as a **cross-tab table**: one shared
 y-axis on the left, one shared x-axis on the bottom, and the dimension values as
 column headers (top) and row headers (right) — no repeated axes. Set
 `trellis: { columns, rows, table: false }` for fully independent panels instead.
@@ -85,7 +104,7 @@ xAxis: { dimensions: ['Region', 'Category'], aggregate: 'sum', opposite: true }
 - Default: all dimension tiers stack below the plot.
 - `opposite: true` → **split** layout: the innermost dimension is labelled at the
   bottom, the outer grouping dimensions move to the top, and full-height lines
-  separate each top-level group (the classic Tableau look).
+  separate each top-level group (the classic nested-axis look).
 
 ## Plot lines & bands
 
@@ -119,6 +138,46 @@ new JChart('#c', {                                            // custom, extendi
 Explicit `colors` / `chart.backgroundColor` / axis colours still win over the
 theme. Register reusable themes with `registerTheme(name, theme)`. Full token
 list in the [API reference](docs/API.md#theming).
+
+## Interactivity & data
+
+```ts
+new JChart('#c', {
+  chart: {
+    animation: true,        // enter animation (bars grow, lines draw in) — default on
+    zoom: 'x',              // drag-select on the plot to zoom the x-axis
+    reflow: true,           // auto re-render when the container resizes (default on)
+  },
+  xAxis: { type: 'datetime', crosshair: true },  // date ticks + hover guide line
+  series: [{ name: 'S', data: [[Date.UTC(2026,0,1), 5], /* … */] }],
+  drilldown: { series: [{ id: 'apples', name: 'Apples', data: [['Gala', 5]] }] },
+});
+```
+
+- **Drill-down** — give a point `drilldown: '<id>'` and list the child series under
+  `drilldown.series`; clicking expands it, with an automatic **← Back** control.
+- **Export** — `chart.getSVG()`, `chart.downloadSVG()`, `chart.downloadPNG()`, `chart.toPNGBlob()`.
+- **Live updates** — `chart.setData(i, data)`, `chart.addPoint(i, point)`, `chart.update(options)`.
+- **Accessibility** — the root SVG gets `role="img"`, an `aria-label`, and a `<title>` (from the chart
+  title or `accessibility.description`).
+
+### High-volume data (boost)
+
+Point/line series (`scatter`, `bubble`, `line`, `spline`, `step`, `area`) with more than
+`boost.threshold` points (default 1500) are automatically drawn to a **single canvas overlay**
+instead of one SVG node per point, and lines are **min/max-decimated** to the pixel resolution.
+Hover uses a nearest-point lookup, so tooltips still work without per-point listeners.
+
+```ts
+chart: { boost: true }                 // force on
+chart: { boost: { threshold: 5000 } }  // raise the auto threshold
+chart: { boost: false }                // always use SVG
+```
+
+In practice this takes **100,000 scatter points from “freezes the tab” to ~100 ms and ~40 DOM
+nodes** (vs. thousands of nodes + seconds in plain SVG). Axes, gridlines and the legend stay SVG.
+Note: boosted marks are canvas, so they aren't captured by `getSVG()` (use `downloadPNG()` to
+rasterise a boosted chart).
 
 ## Hover highlight
 

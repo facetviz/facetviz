@@ -51,6 +51,6 @@ export class ScatterSeries extends BaseSeries {
       el.addEventListener('mouseover', (e: Event) => ctx.onPointEvent('mouseOver', p, e));
       el.addEventListener('mouseout', (e: Event) => ctx.onPointEvent('mouseOut', p, e));
     }
-    drawPointLabels(renderer, g, this.options.dataLabels, this.name, labelData);
+    drawPointLabels(renderer, g, this.options.dataLabels, this.name, labelData, this.color);
   }
 }

@@ -26,6 +26,14 @@ import { HistogramSeries } from './histogram.js';
 import { TimelineSeries } from './timeline.js';
 import { FunnelSeries } from './funnel.js';
 import { TreegraphSeries } from './treegraph.js';
+import { BubbleSeries } from './bubble.js';
+import { ErrorBarSeries } from './errorbar.js';
+import { SunburstSeries } from './sunburst.js';
+import { SankeySeries } from './sankey.js';
+import { CalendarSeries } from './calendar.js';
+import { GanttSeries } from './gantt.js';
+import { RadarSeries } from './radar.js';
+import { MarimekkoSeries } from './marimekko.js';
 
 type SeriesCtor = new (options: SeriesOptions, categories?: string[]) => BaseSeries;
 
@@ -58,6 +66,15 @@ const REGISTRY: Record<ChartType, SeriesCtor> = {
   timeline: TimelineSeries,
   funnel: FunnelSeries,
   treegraph: TreegraphSeries,
+  bubble: BubbleSeries,
+  errorbar: ErrorBarSeries,
+  sunburst: SunburstSeries,
+  sankey: SankeySeries,
+  calendar: CalendarSeries,
+  gantt: GanttSeries,
+  // Radar & marimekko share a frame across series → laid out by the chart.
+  radar: RadarSeries,
+  marimekko: MarimekkoSeries,
 };
 
 export function createSeries(

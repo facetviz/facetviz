@@ -48,7 +48,7 @@ export class LineSeries extends BaseSeries {
     }, g);
 
     this.renderMarkers(ctx, g, data);
-    drawPointLabels(ctx.renderer, g, this.options.dataLabels, this.name, data);
+    drawPointLabels(ctx.renderer, g, this.options.dataLabels, this.name, data, this.color);
   }
 
   protected renderMarkers(

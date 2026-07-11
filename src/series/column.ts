@@ -89,7 +89,12 @@ export class ColumnSeries extends BaseSeries {
   private drawDataLabel(ctx: SeriesRenderContext, p: Point, rect: { x: number; y: number; width: number; height: number }): void {
     const dl = this.options.dataLabels;
     if (!dl?.enabled) return;
-    const text = labelString(dl, { x: p.x, y: p.y, point: p.options, series: this.name });
+    const total = this.points.reduce((s, pt) => s + (pt.y ?? 0), 0);
+    const text = labelString(dl, {
+      x: p.x, y: p.y, point: p.options, series: this.name,
+      name: p.name ?? p.x, index: p.index, color: p.color ?? this.color,
+      total, percentage: total ? ((p.y ?? 0) / total) * 100 : undefined,
+    });
     const d = dl.distance ?? 0;
     const pos = dl.position ?? 'outside';
     let place: LabelPlacement;

@@ -73,9 +73,10 @@
 </head>
 <body>
   <header>
-    <h1>JChart Playground</h1>
+    <h1><a href="./" style="color:inherit;text-decoration:none">JChart</a> Playground</h1>
     <span class="badge">edit the JSON — the chart updates live</span>
     <div class="spacer"></div>
+    <a href="./" class="field" style="text-decoration:none">← Docs</a>
     <label class="field">Example
       <select id="preset"></select>
     </label>
@@ -103,7 +104,7 @@
   </main>
 
   <script type="module">
-    import { JChart } from '/src/index.ts';
+    import { JChart } from './lib/jchart.js';
 
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
 

@@ -15,7 +15,7 @@ export function linePath(pts: Pt[]): string {
 
 /**
  * Smooth curve using a Catmull-Rom spline converted to cubic beziers.
- * Produces the characteristic Highcharts "spline" look without overshoot
+ * Produces the characteristic smooth "spline" look without overshoot
  * tuning knobs — good enough for a hand-maintained library.
  */
 export function splinePath(pts: Pt[], tension = 0.5): string {

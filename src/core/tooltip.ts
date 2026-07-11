@@ -78,12 +78,19 @@ export class Tooltip {
     }
 
     if (opts.format) {
+      // Provide raw numbers so format specs (`{y:,.1f}`) work, plus `{yFormatted}`
+      // for the value with the tooltip's prefix/suffix/decimals already applied.
       return formatString(opts.format, {
         series: ctx.series,
         x: ctx.x,
-        y: valueStr,
-        low: fmt(ctx.low),
-        high: fmt(ctx.high),
+        name: ctx.name ?? ctx.point?.name ?? ctx.x,
+        y: ctx.y,
+        yFormatted: valueStr,
+        index: ctx.index,
+        percentage: ctx.percentage,
+        total: ctx.total,
+        low: ctx.low,
+        high: ctx.high,
         point: ctx.point,
         color: ctx.color,
       });

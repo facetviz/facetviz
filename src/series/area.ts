@@ -61,6 +61,6 @@ export class AreaSeries extends LineSeries {
     }
 
     this.renderMarkers(ctx, g, hover);
-    drawPointLabels(ctx.renderer, g, this.options.dataLabels, this.name, hover);
+    drawPointLabels(ctx.renderer, g, this.options.dataLabels, this.name, hover, this.color);
   }
 }

@@ -131,7 +131,9 @@ export class Axis {
     const opts = this.cfg.options.labels;
     if (opts?.formatter) return opts.formatter(tick);
     const base = scale.tickLabel(tick);
-    if (opts?.format) return formatString(opts.format, { value: base });
+    // Pass the raw numeric tick so format specs (`{value:,.0f}`) apply on value
+    // axes; category ticks stay as their label string.
+    if (opts?.format) return formatString(opts.format, { value: typeof tick === 'number' ? tick : base });
     return base;
   }
 
@@ -180,7 +182,7 @@ export class Axis {
   private drawLabel(g: SVGGElement, pos: number, text: string, options: AxisOptions): void {
     const { renderer, plot, position } = this.cfg;
     const style = { ...FONTS.axisLabel, ...(options.labels?.style ?? {}) };
-    const rotation = options.labels?.rotation;
+    const rotation = options.labels?.rotation ?? 0;
     let x = 0;
     let y = 0;
     let anchor = 'middle';
@@ -189,12 +191,17 @@ export class Axis {
     switch (position) {
       case 'bottom':
         x = pos;
-        y = plot.y + plot.height + LAYOUT.tickLength + 7;
-        baseline = 'hanging';
+        // Rotated labels pivot from a point right below the tick; unrotated ones
+        // hang from their top edge.
+        y = plot.y + plot.height + LAYOUT.tickLength + (rotation ? 8 : 7);
+        baseline = rotation ? 'middle' : 'hanging';
+        // Anchor the tick-side end of the label at the tick so it reads cleanly.
+        anchor = rotation ? (rotation < 0 ? 'end' : 'start') : 'middle';
         break;
       case 'top':
         x = pos;
-        y = plot.y - LAYOUT.tickLength - 6;
+        y = plot.y - LAYOUT.tickLength - (rotation ? 8 : 6);
+        anchor = rotation ? (rotation < 0 ? 'start' : 'end') : 'middle';
         break;
       case 'left':
         x = plot.x - LAYOUT.tickLength - 4;
@@ -247,12 +254,16 @@ export class Axis {
   labelExtent(): number {
     const { scale, options } = this.cfg;
     const fontPx = parseFloat(options.labels?.style?.['font-size'] ?? FONTS.axisLabel['font-size'] ?? '11') || 11;
-    if (this.horizontal) return fontPx + 2; // single line of labels
     const charW = fontPx * 0.6;
-    let max = 0;
+    let maxW = 0;
     for (const t of scale.ticks()) {
-      max = Math.max(max, this.labelText(scale, t).length * charW);
+      maxW = Math.max(maxW, this.labelText(scale, t).length * charW);
     }
-    return max;
+    const rot = options.labels?.rotation ?? 0;
+    if (this.horizontal) {
+      // Rotated labels take vertical room proportional to their width.
+      return rot ? Math.abs(Math.sin((rot * Math.PI) / 180)) * maxW + fontPx : fontPx + 2;
+    }
+    return maxW;
   }
 }

@@ -7,7 +7,7 @@
  * or horizontal when `chart.inverted` is set. Multiple boxplot series group
  * side-by-side within each category band.
  *
- * Rendered "Tableau style" with a dual-colour interquartile box: the lower half
+ * Rendered with a dual-colour interquartile box: the lower half
  * (q1→median) and upper half (median→q3) use two shades of the series colour so
  * the median split reads clearly.
  */

@@ -57,3 +57,13 @@ export type { Scale } from './core/scale.js';
 export { Renderer } from './core/renderer.js';
 export { computeBoxStats } from './series/boxplot.js';
 export { DEFAULT_COLORS } from './core/colors.js';
+
+// Text formatting helpers (usable standalone).
+export {
+  formatString,
+  formatValue,
+  formatNumber,
+  formatDate,
+  abbreviateNumber,
+  groupThousands,
+} from './core/utils.js';

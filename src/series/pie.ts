@@ -211,13 +211,16 @@ export class PieSeries extends BaseSeries {
 
   /** Build the label string for a slice from the series' dataLabels config. */
   private labelText(p: Point, name: string | number | undefined, value: number, total: number): string {
-    const dl = this.options.dataLabels!;
-    const pct = ((value / total) * 100).toFixed(1);
-    return dl.formatter
-      ? dl.formatter({ x: p.x, y: p.y, point: p.options, series: this.name })
-      : formatString(dl.format ?? '{name}: {percentage}%', {
-          name: name ?? '', y: value, percentage: pct, point: p.options,
-        });
+    const dl = this.options.dataLabels;
+    if (!dl?.enabled) return ''; // labels disabled → nothing to draw
+    const percentage = total ? (value / total) * 100 : 0;
+    const label = name ?? '';
+    if (dl.formatter) {
+      return dl.formatter({ x: p.x, y: value, point: p.options, series: this.name, name: label, index: p.index, color: p.color, percentage, total });
+    }
+    return formatString(dl.format ?? '{name}: {percentage:.1f}%', {
+      name: label, x: p.x, y: value, percentage, total, series: this.name, index: p.index, color: p.color, point: p.options,
+    });
   }
 
   /**

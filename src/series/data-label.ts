@@ -11,10 +11,20 @@ import type { Pt } from './paths.js';
 import { FONTS } from '../core/defaults.js';
 import { formatString } from '../core/utils.js';
 
-/** Resolve the label text from `formatter` or the `{token}` format string. */
+/**
+ * Resolve the label text from `formatter` or the `{token}` format string.
+ * Every field on the context is available as a token: `{x}`, `{y}`, `{name}`,
+ * `{series}`, `{index}`, `{color}`, `{percentage}`, `{total}`, `{low}`, `{high}`
+ * and `{point.<field>}` — each accepting a format spec, e.g. `{y:,.1f}`.
+ */
 export function labelString(dl: DataLabelOptions, ctx: LabelContext): string {
   if (dl.formatter) return dl.formatter(ctx);
-  return formatString(dl.format ?? '{y}', { x: ctx.x, y: ctx.y ?? '', point: ctx.point });
+  const data: Record<string, unknown> = {
+    ...ctx,
+    y: ctx.y ?? '',
+    name: ctx.name ?? ctx.point?.name ?? ctx.x,
+  };
+  return formatString(dl.format ?? '{y}', data);
 }
 
 export interface LabelPlacement {
@@ -62,12 +72,18 @@ export function drawPointLabels(
   dl: DataLabelOptions | undefined,
   seriesName: string,
   data: Array<{ pt: Pt; p: Point }>,
+  seriesColor?: string,
 ): void {
   if (!dl?.enabled) return;
   const d = dl.distance ?? 0;
   const pos = dl.position ?? 'top';
+  const total = data.reduce((sum, { p }) => sum + (p.y ?? 0), 0);
   for (const { pt, p } of data) {
-    const text = labelString(dl, { x: p.x, y: p.y, point: p.options, series: seriesName });
+    const text = labelString(dl, {
+      x: p.x, y: p.y, point: p.options, series: seriesName,
+      name: p.name ?? p.x, index: p.index, color: p.color ?? seriesColor,
+      total, percentage: total ? ((p.y ?? 0) / total) * 100 : undefined,
+    });
     let place: LabelPlacement;
     switch (pos) {
       case 'bottom': place = { x: pt.x, y: pt.y + 16 + d, anchor: 'middle' }; break;

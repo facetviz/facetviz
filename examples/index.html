@@ -18,7 +18,7 @@
   <body>
     <header>
       <h1>JChart</h1>
-      <p>A modular TypeScript + SVG charting library with a Highcharts-like API.</p>
+      <p>A modular TypeScript + SVG charting library with a declarative config API.</p>
     </header>
     <div id="eventlog">click any point &rarr; event callback output appears here</div>
     <div class="grid" id="grid"></div>
@@ -26,8 +26,6 @@
     <script type="module">
       import { JChart, computeBoxStats } from '/src/index.ts';
 
-      window.__errs = [];
-      window.addEventListener('error', (e) => window.__errs.push(String(e.message) + ' | ' + ((e.error && e.error.stack) || '').split('\n').slice(0, 2).join(' ')));
       const log = (msg) => (document.getElementById('eventlog').textContent = msg);
       const grid = document.getElementById('grid');
       function card(title) {
@@ -63,6 +61,19 @@
         title: { text: 'Monthly sales' },
         xAxis: { categories: months }, yAxis: { title: { text: 'Units' } },
         series: [{ name: 'North', data: [5, 3, 4, 7, 2, 6] }], ...onClick,
+      });
+
+      // Rotated x-axis tick labels
+      new JChart(card('Column — rotated x-axis labels'), {
+        chart: { type: 'column', height: 320 },
+        title: { text: 'Sales by country' },
+        xAxis: {
+          categories: ['United States', 'United Kingdom', 'Germany', 'France', 'Japan', 'Australia'],
+          labels: { rotation: -45 },
+          title: { text: 'Country' },
+        },
+        yAxis: { title: { text: 'Units' } },
+        series: [{ name: 'Sales', data: [5, 3, 4, 7, 2, 6] }], ...onClick,
       });
 
       // Stacked column
@@ -149,7 +160,7 @@
       new JChart(card('Pie — two dimensions (Region ▸ Device)'), {
         chart: { type: 'pie', height: 320 }, title: { text: 'Sessions' },
         series: [{ name: 'Sessions', dimensions: ['Region', 'Device'], data: twoDim,
-          dataLabels: { enabled: true, format: '{name}: {percentage}%' } }], ...onClick,
+          dataLabels: { enabled: true, format: '{name}: {percentage:.2}%' } }], ...onClick,
       });
       new JChart(card('Donut — two dimensions (Region ▸ Device)'), {
         chart: { type: 'donut', height: 320 }, title: { text: 'Sessions' },
@@ -453,7 +464,7 @@
         ], ...onClick,
       });
 
-      // Tableau-style nested x-axis: two dimensions on x, measure on y.
+      // Nested x-axis: two dimensions on x, measure on y.
       const nestedData = [];
       for (const region of ['East', 'West', 'Central']) {
         for (const cat of ['Tech', 'Furniture', 'Office']) {
@@ -463,7 +474,7 @@
           }
         }
       }
-      new JChart(card('Tableau — two dims on x-axis (headers on top)'), {
+      new JChart(card('Nested x-axis — two dims (headers on top)'), {
         chart: { type: 'column', height: 340 },
         title: { text: 'Sales by Region ▸ Category' },
         // opposite: true moves the Region / Category headers to the TOP.
@@ -472,8 +483,8 @@
         series: [{ name: 'Sales', data: nestedData }], ...onClick,
       });
 
-      // Tableau nested axis: column + line — the line breaks per first dimension
-      new JChart(card('Tableau — column + line (line per group)'), {
+      // Nested axis: column + line — the line breaks per first dimension
+      new JChart(card('Nested axis — column + line (line per group)'), {
         chart: { type: 'column', height: 340 },
         title: { text: 'Sales & trend by Region ▸ Category' },
         xAxis: { dimensions: ['Region', 'Category'], aggregate: 'sum' },
@@ -484,7 +495,28 @@
         ], ...onClick,
       });
 
-      // Trellis small multiples (2-D grid) — the other Tableau layout.
+      // Nested axis with a SECONDARY (right) y-axis — dual-axis combo.
+      const marginData = [];
+      for (const region of ['East', 'West', 'Central']) {
+        for (const cat of ['Tech', 'Furniture', 'Office']) {
+          marginData.push({ Region: region, Category: cat, y: Math.round(45 + Math.random() * 45) });
+        }
+      }
+      new JChart(card('Nested axis — secondary y-axis (Sales + Margin %)'), {
+        chart: { type: 'column', height: 360 },
+        title: { text: 'Sales & Margin by Region ▸ Category' },
+        xAxis: { dimensions: ['Region', 'Category'], aggregate: 'sum' },
+        yAxis: [
+          { title: { text: 'Sum of Sales' } },
+          { title: { text: 'Margin %' } },   // secondary axis (drawn on the right)
+        ],
+        series: [
+          { name: 'Sales', data: nestedData },
+          { type: 'spline', name: 'Margin %', yAxis: 1, color: '#00b894', marker: { enabled: true }, data: marginData },
+        ], ...onClick,
+      });
+
+      // Trellis small multiples (2-D grid) — the other nested layout.
       const trellisData = [];
       for (const region of ['East', 'West']) {
         for (const cat of ['Tech', 'Furniture']) {
@@ -501,6 +533,158 @@
         trellis: { columns: 'cat', rows: 'region', gap: 14 },
         series: [{ name: 'Sales', data: trellisData }], ...onClick,
       });
+
+      // Trellis table combo — column + line rendered together in every cell.
+      new JChart(card('Trellis table — combo (column + line per cell)'), {
+        chart: { type: 'column', height: 380 },
+        title: { text: 'Sales & trend small multiples' },
+        xAxis: { title: { text: 'Month' } },
+        yAxis: { title: { text: 'Sales' } },
+        trellis: { columns: 'cat', rows: 'region', gap: 14 },
+        series: [
+          { type: 'column', name: 'Sales', data: trellisData },
+          { type: 'spline', name: 'Trend', color: '#e6394d', data: trellisData },
+        ], ...onClick,
+      });
+
+      // ===== New chart types =====
+      new JChart(card('Bubble'), {
+        chart: { type: 'bubble', height: 320 }, title: { text: 'Bubble (x, y, z→size)' },
+        xAxis: { title: { text: 'GDP/capita' } }, yAxis: { title: { text: 'Life expectancy' } },
+        series: [{ name: 'Countries', data: [
+          { x: 12, y: 72, z: 80, name: 'A' }, { x: 45, y: 81, z: 320, name: 'B' },
+          { x: 28, y: 76, z: 140, name: 'C' }, { x: 60, y: 83, z: 60, name: 'D' },
+          { x: 8, y: 65, z: 210, name: 'E' }, { x: 35, y: 79, z: 25, name: 'F' },
+        ] }], ...onClick,
+      });
+
+      new JChart(card('Radar'), {
+        chart: { type: 'radar', height: 340 }, title: { text: 'Skills' },
+        xAxis: { categories: ['Speed', 'Power', 'Range', 'Control', 'Stamina', 'Agility'] },
+        series: [
+          { name: 'Alpha', data: [8, 6, 7, 9, 5, 8] },
+          { name: 'Bravo', type: 'area', data: [6, 8, 5, 6, 9, 6] },
+        ], ...onClick,
+      });
+
+      new JChart(card('Sunburst'), {
+        chart: { type: 'sunburst', height: 340 }, title: { text: 'Org' },
+        series: [{ name: 'Org', data: [
+          { id: 'eng', name: 'Eng' }, { id: 'fe', parent: 'eng', name: 'FE', value: 8 }, { id: 'be', parent: 'eng', name: 'BE', value: 12 },
+          { id: 'sales', name: 'Sales' }, { id: 'in', parent: 'sales', name: 'Inbound', value: 6 }, { id: 'out', parent: 'sales', name: 'Outbound', value: 5 },
+          { id: 'ops', name: 'Ops', value: 4 },
+        ] }], ...onClick,
+      });
+
+      new JChart(card('Sankey'), {
+        chart: { type: 'sankey', height: 340 }, title: { text: 'Energy flow' },
+        legend: { enabled: false },
+        series: [{ name: 'Flow', data: [
+          { from: 'Coal', to: 'Grid', weight: 40 }, { from: 'Solar', to: 'Grid', weight: 25 }, { from: 'Wind', to: 'Grid', weight: 20 },
+          { from: 'Grid', to: 'Homes', weight: 45 }, { from: 'Grid', to: 'Industry', weight: 40 },
+        ] }], ...onClick,
+      });
+
+      new JChart(card('Calendar heatmap'), {
+        chart: { type: 'calendar', height: 220 }, title: { text: 'Activity (12 weeks)' }, legend: { enabled: false },
+        series: [{ name: 'Commits', color: '#2caffe', data: (() => {
+          const out = []; const t0 = Date.UTC(2026, 0, 1);
+          for (let i = 0; i < 84; i++) out.push({ date: t0 + i * 86400000, value: Math.round(Math.random() * 10) });
+          return out;
+        })() }], ...onClick,
+      });
+
+      new JChart(card('Gantt'), {
+        chart: { type: 'gantt', height: 260 }, title: { text: 'Project plan' }, legend: { enabled: false },
+        series: [{ name: 'Tasks', data: [
+          // Sequential phases: each starts when the previous ends.
+          { name: 'Research', start: Date.UTC(2026, 0, 1), end: Date.UTC(2026, 0, 8) },
+          { name: 'Design', start: Date.UTC(2026, 0, 8), end: Date.UTC(2026, 0, 20) },
+          { name: 'Build', start: Date.UTC(2026, 0, 20), end: Date.UTC(2026, 1, 6) },
+          { name: 'Launch', start: Date.UTC(2026, 1, 6), end: Date.UTC(2026, 1, 14) },
+        ] }], ...onClick,
+      });
+
+      new JChart(card('Marimekko'), {
+        chart: { type: 'marimekko', height: 320 }, title: { text: 'Share by segment' },
+        xAxis: { categories: ['Enterprise', 'SMB', 'Consumer'] },
+        series: [
+          { name: 'Product A', data: [40, 20, 10] },
+          { name: 'Product B', data: [25, 30, 25] },
+          { name: 'Product C', data: [15, 25, 45] },
+        ], ...onClick,
+      });
+
+      new JChart(card('Error bars (column + errorbar)'), {
+        chart: { type: 'column', height: 300 }, title: { text: 'Measurements ± error' },
+        xAxis: { categories: months },
+        series: [
+          { name: 'Mean', data: [5, 6, 4, 8, 7, 9] },
+          { type: 'errorbar', name: 'Error', color: '#333', data: [[months[0],4,6],[months[1],5,7.5],[months[2],3,5],[months[3],7,9],[months[4],6,8],[months[5],8,10]] },
+        ], ...onClick,
+      });
+
+      // ===== New interaction features =====
+      new JChart(card('Datetime axis + drag-zoom + crosshair'), {
+        chart: { type: 'line', height: 300, zoom: 'x' }, title: { text: 'Drag on the plot to zoom' },
+        xAxis: { type: 'datetime', crosshair: true },
+        yAxis: { title: { text: 'Value' } },
+        tooltip: { shared: true, format: '{x:%b %d}<br/><b>{y}</b>' },
+        series: [{ name: 'Signal', marker: { enabled: true }, data: (() => {
+          const out = []; const t0 = Date.UTC(2026, 0, 1);
+          for (let i = 0; i < 40; i++) out.push([t0 + i * 86400000, Math.round(50 + 30 * Math.sin(i / 4) + Math.random() * 8)]);
+          return out;
+        })() }],
+      });
+
+      new JChart(card('Drill-down (click a column)'), {
+        chart: { type: 'column', height: 300 }, title: { text: 'Fruit → varieties' },
+        legend: { enabled: false }, xAxis: { categories: ['Apples', 'Pears', 'Bananas'] },
+        series: [{ name: 'Fruit', data: [
+          { y: 12, name: 'Apples', drilldown: 'apples' },
+          { y: 8, name: 'Pears', drilldown: 'pears' },
+          { y: 15, name: 'Bananas' },
+        ] }],
+        drilldown: { series: [
+          { id: 'apples', name: 'Apple varieties', data: [{ x: 'Gala', y: 5 }, { x: 'Fuji', y: 4 }, { x: 'Granny', y: 3 }] },
+          { id: 'pears', name: 'Pear varieties', data: [{ x: 'Bartlett', y: 5 }, { x: 'Bosc', y: 3 }] },
+        ] },
+      });
+
+      // High-volume boost: 30k scatter points on a canvas overlay
+      new JChart(card('Boost — 30,000 scatter points (canvas)'), {
+        chart: { type: 'scatter', height: 320 }, title: { text: '30k points, single canvas' },
+        xAxis: { title: { text: 'x' } }, yAxis: { title: { text: 'y' } },
+        series: [{ name: 'Cloud', color: '#2caffe', data: (() => {
+          const out = [];
+          for (let i = 0; i < 30000; i++) { const a = Math.random() * 6.28, r = Math.random() * 50; out.push([50 + r * Math.cos(a) + (Math.random()-0.5)*20, 50 + r * Math.sin(a)]); }
+          return out;
+        })() }],
+      });
+
+      // High-volume boost: 50k-point line (min/max decimated)
+      new JChart(card('Boost — 50,000-point line (decimated)'), {
+        chart: { type: 'line', height: 300, zoom: 'x' }, title: { text: '50k points, drag to zoom' },
+        xAxis: { title: { text: 'sample' } }, yAxis: { title: { text: 'signal' } },
+        series: [{ name: 'Signal', color: '#fe6a35', data: (() => {
+          const out = [];
+          for (let i = 0; i < 50000; i++) out.push([i, Math.sin(i / 400) * 40 + Math.sin(i / 37) * 10 + (Math.random()-0.5)*6 + 50]);
+          return out;
+        })() }],
+      });
+
+      // Export buttons (SVG / PNG)
+      (() => {
+        const body = card('Export — download this chart');
+        const chart = new JChart(body, {
+          chart: { type: 'area', height: 260 }, title: { text: 'Exportable' },
+          xAxis: { categories: months }, series: [{ name: 'S', data: [3, 5, 4, 7, 6, 8] }],
+        });
+        const bar = document.createElement('div'); bar.style.cssText = 'display:flex;gap:8px;padding:8px';
+        const mk = (label, fn) => { const b = document.createElement('button'); b.textContent = label; b.style.cssText = 'padding:6px 12px;border:1px solid #ccc;border-radius:6px;cursor:pointer;background:#fff'; b.onclick = fn; return b; };
+        bar.append(mk('⬇ SVG', () => chart.downloadSVG()), mk('⬇ PNG', () => chart.downloadPNG()));
+        body.append(bar);
+      })();
     </script>
   </body>
 </html>

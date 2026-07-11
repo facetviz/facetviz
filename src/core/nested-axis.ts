@@ -1,6 +1,6 @@
 /**
- * Multi-tier ("nested") category x-axis — the hierarchical axis Tableau draws
- * when two or more dimensions sit on the columns shelf.
+ * Multi-tier ("nested") category x-axis — the hierarchical axis drawn
+ * when two or more dimensions are placed on one axis.
  *
  * Given the ordered leaf combinations (each an array of dimension values) and a
  * {@link CategoryScale} placing those leaves, this renders one label row per

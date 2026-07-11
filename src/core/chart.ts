@@ -5,7 +5,7 @@
  *   1. Resolve user options against defaults + plotOptions.
  *   2. Build series objects from the registry.
  *   3. Compute shared layout: stacking, grouping, axis domains, scales.
- *   4. Render one or many panels (Tableau-style small multiples via trellis).
+ *   4. Render one or many panels (small multiples via trellis).
  *   5. Wire tooltips and event callbacks.
  *
  * Heavy layout lives here so individual series stay small and declarative.
@@ -16,6 +16,7 @@ import type {
   SeriesOptions,
   AxisOptions,
   ChartType,
+  TitleOptions,
   TooltipContext,
   TrellisOptions,
 } from './options.js';
@@ -27,9 +28,9 @@ import { Legend, LegendItem } from './legend.js';
 import { EventEmitter } from './events.js';
 import { LinearScale, LogScale, CategoryScale, Scale } from './scale.js';
 import { DEFAULT_OPTIONS, LAYOUT, FONTS } from './defaults.js';
-import { merge, extent } from './utils.js';
-import { paletteColor } from './colors.js';
-import { Theme, resolveTheme, applyTheme } from './theme.js';
+import { merge, extent, niceDateTicks, formatDate, decimateLine } from './utils.js';
+import { paletteColor, alpha, shade } from './colors.js';
+import { Theme, resolveTheme, applyTheme, THEME } from './theme.js';
 import { BaseSeries, SeriesRenderContext } from '../series/base.js';
 import { createSeries } from '../series/registry.js';
 import { drawDataLabel, labelString } from '../series/data-label.js';
@@ -46,6 +47,17 @@ export class JChart {
   private theme: Theme;
   private width: number;
   private height: number;
+  private resizeObserver?: ResizeObserver;
+  /** Play the enter animation on the next render (first render + data updates). */
+  private animateNext = true;
+  /** Horizontal scale + plot captured for drag-zoom. */
+  private zoomState?: { plot: Rect; xScale: Scale };
+  /** Plot + scales of the last cartesian panel (for crosshair). */
+  private plotCtx?: { plot: Rect; xScale: Scale; yScale: Scale; inverted: boolean };
+  private crosshairEl?: SVGElement;
+  private clipSeq = 0;
+  /** Saved series/title/xAxis levels for drill-down navigation. */
+  private drillStack: Array<{ series: SeriesOptions[]; title?: TitleOptions; xAxis?: AxisOptions | AxisOptions[] }> = [];
 
   constructor(container: HTMLElement | string, options: ChartOptions) {
     const el = typeof container === 'string' ? document.querySelector(container) : container;
@@ -60,6 +72,21 @@ export class JChart {
     this.height = this.options.chart?.height ?? 400;
     this.build();
     this.render();
+    this.setupReflow();
+  }
+
+  /** Re-render to the container's width when it resizes (unless width is fixed). */
+  private setupReflow(): void {
+    if (this.options.chart?.reflow === false || this.options.chart?.width || typeof ResizeObserver === 'undefined') return;
+    let raf = 0;
+    this.resizeObserver = new ResizeObserver(() => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const w = this.container.clientWidth;
+        if (w && Math.abs(w - this.width) > 1) { this.width = w; this.animateNext = false; this.render(); }
+      });
+    });
+    this.resizeObserver.observe(this.container);
   }
 
   // -- Option resolution -------------------------------------------------
@@ -131,6 +158,12 @@ export class JChart {
     return Array.isArray(a) ? a[0] : a;
   }
 
+  /** The axis options at index `i` (for secondary/dual axes). */
+  private axisAt(a: AxisOptions | AxisOptions[] | undefined, i: number): AxisOptions {
+    if (Array.isArray(a)) return a[i] ?? {};
+    return i === 0 ? a ?? {} : {};
+  }
+
   // -- Rendering ---------------------------------------------------------
 
   render(): void {
@@ -186,15 +219,21 @@ export class JChart {
       height: this.height - top - spacing[2] - legendReserveH,
     };
 
-    // Nested (Tableau hierarchical x-axis) takes precedence over trellis grids.
+    // Nested (hierarchical x-axis) takes precedence over trellis grids.
     const nestedDims = this.firstAxis(this.options.xAxis)?.dimensions;
     const t = this.options.trellis;
-    if (this.options.chart?.type === 'butterfly') {
-      this.renderButterflyPanel(outer, this.series.filter((s) => s.visible && s.points.length));
+    const chartType = this.options.chart?.type;
+    const vis = () => this.series.filter((s) => s.visible && s.points.length);
+    if (chartType === 'butterfly') {
+      this.renderButterflyPanel(outer, vis());
+    } else if (chartType === 'radar') {
+      this.renderRadarPanel(outer, vis());
+    } else if (chartType === 'marimekko') {
+      this.renderMarimekkoPanel(outer, vis());
     } else if (nestedDims && nestedDims.length >= 1) {
       this.renderNestedPanel(outer, this.series.filter((s) => s.visible && s.points.length), nestedDims);
     } else if (t && (t.columns || t.rows) && t.table !== false) {
-      // Tableau-style table: shared axes, dimension names as row/column headers.
+      // Cross-tab table: shared axes, dimension names as row/column headers.
       this.renderTrellisTable(outer, t);
     } else {
       // Independent small-multiple panels (or a single panel when no trellis).
@@ -221,8 +260,130 @@ export class JChart {
       }).render(this.renderer.group({}, this.renderer.root));
     }
 
+    this.applyAccessibility();
+    this.installZoom(outer);
+    this.drawDrillUp(outer);
+    if (this.animateNext) this.animateEnter();
+    this.animateNext = false;
+
     this.events.emit('render', this);
     this.options.chart?.events?.render?.(this);
+  }
+
+  /** Set root ARIA role + a <title>/<desc> for screen readers. */
+  private applyAccessibility(): void {
+    if (this.options.accessibility?.enabled === false) return;
+    const root = this.renderer.root;
+    const label = this.options.accessibility?.description
+      ?? this.options.title?.text
+      ?? `${this.options.chart?.type ?? 'chart'} chart with ${this.series.length} series`;
+    root.setAttribute('role', 'img');
+    root.setAttribute('aria-label', label);
+    const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+    title.textContent = label;
+    root.insertBefore(title, root.firstChild);
+  }
+
+  /** Enter animation: bars grow from the baseline, lines draw in, the rest fade. */
+  private animateEnter(): void {
+    const opt = this.options.chart?.animation;
+    if (opt === false) return;
+    const cfg = typeof opt === 'object' ? opt : {};
+    if (cfg.enabled === false || typeof (Element.prototype as { animate?: unknown }).animate !== 'function') return;
+    const duration = cfg.duration ?? 600;
+    const easing = cfg.easing ?? 'cubic-bezier(0.22, 1, 0.36, 1)';
+    const inverted = this.isInverted(this.series);
+
+    const groups = this.renderer.root.querySelectorAll<SVGGElement>('.jchart-series');
+    groups.forEach((g, gi) => {
+      const delay = Math.min(gi * 60, 240);
+      const cls = g.getAttribute('class') ?? '';
+      if (cls.includes('jchart-column') || cls.includes('jchart-marimekko')) {
+        g.querySelectorAll<SVGElement>('rect.jchart-point, rect').forEach((r) => {
+          r.style.transformBox = 'fill-box';
+          r.style.transformOrigin = inverted ? 'left center' : 'center bottom';
+          r.animate([{ transform: inverted ? 'scaleX(0)' : 'scaleY(0)' }, { transform: 'none' }], { duration, easing, delay, fill: 'backwards' });
+        });
+      } else if (cls.includes('jchart-line') || cls.includes('jchart-arearange') || cls.includes('jchart-radar')) {
+        g.querySelectorAll<SVGPathElement>('path').forEach((p) => {
+          if (p.getAttribute('fill') !== 'none') { p.animate([{ opacity: 0 }, { opacity: 1 }], { duration, easing, delay, fill: 'backwards' }); return; }
+          const len = p.getTotalLength?.() ?? 0;
+          if (!len) return;
+          p.style.strokeDasharray = `${len}`;
+          const anim = p.animate([{ strokeDashoffset: len }, { strokeDashoffset: 0 }], { duration: duration + 200, easing, delay, fill: 'backwards' });
+          anim.onfinish = () => { p.style.strokeDasharray = ''; };
+        });
+      } else {
+        g.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration, easing, delay, fill: 'backwards' });
+      }
+    });
+  }
+
+  /** Convert a client X coordinate to the SVG's internal x (accounts for CSS scaling). */
+  private localX(clientX: number): number {
+    const r = this.renderer.root.getBoundingClientRect();
+    return r.width ? (clientX - r.left) * (this.width / r.width) : clientX;
+  }
+
+  private localY(clientY: number): number {
+    const r = this.renderer.root.getBoundingClientRect();
+    return r.height ? (clientY - r.top) * (this.height / r.height) : clientY;
+  }
+
+  /**
+   * Drag-select on a numeric/datetime x-axis to zoom. Sets the x-axis min/max
+   * and re-renders; a "Reset zoom" control restores the full range.
+   */
+  private installZoom(outer: Rect): void {
+    const z = this.options.chart?.zoom;
+    const type = typeof z === 'object' ? z.type : z;
+    if (!type) return;
+    const st = this.zoomState;
+    const xScale = st?.xScale as (Scale & { invert?(p: number): number }) | undefined;
+    if (!st || !xScale?.invert || xScale.bandwidth() > 0) return; // only continuous x
+    const plot = st.plot;
+    const root = this.renderer.root;
+
+    const overlay = this.renderer.create('rect', {
+      x: plot.x, y: plot.y, width: plot.width, height: plot.height,
+      fill: 'transparent', style: 'cursor:crosshair', class: 'jchart-zoom-overlay',
+    }, root);
+
+    let startX = 0;
+    let band: SVGRectElement | null = null;
+    const clamp = (v: number) => Math.max(plot.x, Math.min(plot.x + plot.width, v));
+
+    overlay.addEventListener('mousedown', (e: MouseEvent) => {
+      startX = clamp(this.localX(e.clientX));
+      band = this.renderer.create('rect', { x: startX, y: plot.y, width: 0, height: plot.height, fill: 'rgba(37,99,235,0.15)', stroke: 'rgba(37,99,235,0.6)' }, root) as SVGRectElement;
+      const move = (ev: MouseEvent) => { const x = clamp(this.localX(ev.clientX)); band!.setAttribute('x', String(Math.min(startX, x))); band!.setAttribute('width', String(Math.abs(x - startX))); };
+      const up = (ev: MouseEvent) => {
+        window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up);
+        const endX = clamp(this.localX(ev.clientX));
+        band?.remove(); band = null;
+        if (Math.abs(endX - startX) < 6) return;
+        const a = xScale.invert!(Math.min(startX, endX)), b = xScale.invert!(Math.max(startX, endX));
+        const xa = this.axisAt(this.options.xAxis, 0);
+        this.options.xAxis = Array.isArray(this.options.xAxis) ? this.options.xAxis : { ...xa, min: a, max: b };
+        this.animateNext = false; this.render();
+      };
+      window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+    });
+
+    // Reset control when a zoom is active.
+    const xa = this.axisAt(this.options.xAxis, 0);
+    if (xa.min !== undefined || xa.max !== undefined) {
+      const g = this.renderer.group({ class: 'jchart-zoom-reset', style: 'cursor:pointer' }, root);
+      const bx = outer.x + outer.width - 92, by = outer.y + 2;
+      this.renderer.create('rect', { x: bx, y: by, width: 90, height: 22, rx: 5, fill: this.theme.tooltip.backgroundColor, stroke: THEME.axis.lineColor }, g);
+      this.renderer.text('⟲ Reset zoom', bx + 45, by + 15, { 'text-anchor': 'middle', ...FONTS.axisLabel, fill: this.theme.axis.labelColor }, g);
+      g.addEventListener('click', () => {
+        const cur = this.axisAt(this.options.xAxis, 0);
+        const { min, max, ...rest } = cur;
+        this.options.xAxis = rest;
+        this.animateNext = true; this.render();
+      });
+    }
   }
 
   private renderTitles(top: number): number {
@@ -332,7 +493,11 @@ export class JChart {
     if (side === 'left' || side === 'right') {
       return Math.max(LAYOUT.defaultLeftAxisWidth, LAYOUT.tickLength + 8 + labelW + (title ? 18 : 0));
     }
-    return LAYOUT.defaultBottomAxisHeight + (title ? 24 : 0);
+    // Horizontal axis: rotated labels project downward, so grow the band by the
+    // label's vertical extent at that angle.
+    const rot = opts.labels?.rotation ?? 0;
+    const rotExtra = rot ? Math.abs(Math.sin((rot * Math.PI) / 180)) * labelW : 0;
+    return LAYOUT.defaultBottomAxisHeight + (title ? 24 : 0) + rotExtra;
   }
 
   private renderPanel(panel: PanelSpec): void {
@@ -388,15 +553,143 @@ export class JChart {
     new Axis({ renderer: this.renderer, scale: catScale, position: catSide, plot: axisPlot, options: catOpts, grid: false }).render(axisLayer);
     new Axis({ renderer: this.renderer, scale: valScale, position: valSide, plot: axisPlot, options: valOpts, grid: true }).render(axisLayer);
 
-    // Series.
+    // Remember the plot + scales for drag-zoom and crosshair (single-panel).
+    this.plotCtx = { plot: axisPlot, xScale, yScale, inverted };
+    this.zoomState = !inverted ? { plot: axisPlot, xScale } : undefined;
+
+    // Series. High-volume point/line series are drawn to a canvas overlay.
+    const boost = !inverted && this.boostEnabled(visible);
+    const cctx = boost ? this.createBoostCanvas(axisPlot) : null;
+    const hits: BoostHit[] = [];
+    const existing = new Set(this.renderer.root.children);
     for (const s of visible) {
-      const ctx = this.seriesContext(s, axisPlot, xScale, yScale, group, inverted, false);
-      s.render(ctx);
+      if (cctx && this.isBoostable(s)) {
+        this.drawBoostSeries(s, cctx, xScale, yScale, hits);
+      } else {
+        const ctx = this.seriesContext(s, axisPlot, xScale, yScale, group, inverted, false);
+        s.render(ctx);
+      }
+    }
+    // Clip series content to the plot so off-range data (e.g. after zoom) can't
+    // spill past the axes.
+    this.clipToPlot(axisPlot, existing);
+    if (cctx) this.installBoostHover(axisPlot, hits);
+  }
+
+  /** Clip the series groups added since `existing` was captured to the plot rect. */
+  private clipToPlot(plot: Rect, existing: Set<Element>): void {
+    const NS = 'http://www.w3.org/2000/svg';
+    const root = this.renderer.root;
+    let defs = root.querySelector('defs');
+    if (!defs) { defs = document.createElementNS(NS, 'defs'); root.insertBefore(defs, root.firstChild); }
+    const id = `jchart-clip-${++this.clipSeq}`;
+    const cp = document.createElementNS(NS, 'clipPath');
+    cp.setAttribute('id', id);
+    const rect = document.createElementNS(NS, 'rect');
+    // A couple of px of slack so edge markers aren't harshly cut.
+    rect.setAttribute('x', String(plot.x - 2)); rect.setAttribute('y', String(plot.y - 2));
+    rect.setAttribute('width', String(plot.width + 4)); rect.setAttribute('height', String(plot.height + 4));
+    cp.appendChild(rect); defs.appendChild(cp);
+
+    for (const el of Array.from(root.children)) {
+      if (existing.has(el)) continue;
+      const cls = el.getAttribute('class') ?? '';
+      if (cls.includes('jchart-series') || cls.includes('jchart-boost')) el.setAttribute('clip-path', `url(#${id})`);
     }
   }
 
+  // -- Boost (high-volume canvas rendering) ------------------------------
+
+  private static readonly BOOSTABLE = new Set(['scatter', 'jitter', 'bubble', 'line', 'spline', 'step', 'area', 'areaspline']);
+
+  private isBoostable(s: BaseSeries): boolean {
+    return JChart.BOOSTABLE.has(s.type);
+  }
+
+  private boostEnabled(visible: BaseSeries[]): boolean {
+    const b = this.options.chart?.boost;
+    if (b === false) return false;
+    const enabled = typeof b === 'object' ? b.enabled : b;
+    if (enabled) return true;
+    const threshold = (typeof b === 'object' && b.threshold) || 1500;
+    return visible.some((s) => this.isBoostable(s) && s.points.length > threshold);
+  }
+
+  /** A canvas overlay sized to the plot, drawing in the SVG coordinate system. */
+  private createBoostCanvas(plot: Rect): CanvasRenderingContext2D | null {
+    const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+    fo.setAttribute('x', String(plot.x)); fo.setAttribute('y', String(plot.y));
+    fo.setAttribute('width', String(plot.width)); fo.setAttribute('height', String(plot.height));
+    fo.setAttribute('class', 'jchart-boost');
+    const canvas = document.createElement('canvas');
+    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+    canvas.width = Math.max(1, Math.round(plot.width * dpr));
+    canvas.height = Math.max(1, Math.round(plot.height * dpr));
+    canvas.style.width = `${plot.width}px`; canvas.style.height = `${plot.height}px`;
+    fo.appendChild(canvas);
+    this.renderer.root.appendChild(fo);
+    let c: CanvasRenderingContext2D | null = null;
+    try { c = canvas.getContext('2d'); } catch { c = null; }
+    if (!c) { fo.remove(); return null; } // no canvas support → fall back to SVG
+    c.scale(dpr, dpr);
+    c.translate(-plot.x, -plot.y); // draw using SVG coordinates
+    return c;
+  }
+
+  private drawBoostSeries(s: BaseSeries, c: CanvasRenderingContext2D, xScale: Scale, yScale: Scale, hits: BoostHit[]): void {
+    const color = s.color;
+    if (['line', 'spline', 'step', 'area', 'areaspline'].includes(s.type)) {
+      const raw = s.points.filter((p) => p.y !== undefined).map((p) => ({ x: xScale.scale(p.x), y: yScale.scale(p.y as number), point: p }));
+      const pts = decimateLine(raw);
+      c.beginPath();
+      pts.forEach((p, i) => (i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)));
+      c.strokeStyle = color; c.lineWidth = s.options.lineWidth ?? 2; c.lineJoin = 'round'; c.stroke();
+      if (s.type.startsWith('area')) {
+        const zeroY = yScale.scale(0);
+        c.lineTo(pts[pts.length - 1].x, zeroY); c.lineTo(pts[0].x, zeroY); c.closePath();
+        c.fillStyle = alpha(color, 0.25); c.fill();
+      }
+      for (const p of raw) hits.push({ x: p.x, y: p.y, point: p.point, series: s });
+    } else {
+      // scatter / jitter / bubble
+      const zs = s.type === 'bubble' ? s.points.map((p) => (p.options.z as number) ?? 1) : [];
+      const zMin = zs.length ? Math.min(...zs) : 0, zMax = zs.length ? Math.max(...zs) : 1;
+      const [rMin, rMax] = s.options.sizeRange ?? [3, 22];
+      c.fillStyle = alpha(color, 0.6);
+      for (const p of s.points) {
+        if (p.y === undefined) continue;
+        const px = xScale.scale(p.x), py = yScale.scale(p.y);
+        let r = s.options.marker?.radius ?? 3;
+        if (s.type === 'bubble') { const t = zMax === zMin ? 1 : (((p.options.z as number) ?? 1) - zMin) / (zMax - zMin); r = Math.sqrt(rMin * rMin + t * (rMax * rMax - rMin * rMin)); }
+        c.beginPath(); c.arc(px, py, r, 0, Math.PI * 2); c.fill();
+        hits.push({ x: px, y: py, point: p, series: s });
+      }
+    }
+  }
+
+  /** Nearest-point hover for boosted series (no per-point DOM nodes). */
+  private installBoostHover(plot: Rect, hits: BoostHit[]): void {
+    if (!this.tooltip || !hits.length) return;
+    let marker: SVGElement | undefined;
+    const root = this.renderer.root;
+    const onMove = (e: MouseEvent) => {
+      const mx = this.localX(e.clientX), my = this.localY(e.clientY);
+      if (mx < plot.x || mx > plot.x + plot.width || my < plot.y || my > plot.y + plot.height) return;
+      let best: BoostHit | null = null, bd = 400; // 20px radius²
+      for (const h of hits) { const dx = h.x - mx, dy = h.y - my, d = dx * dx + dy * dy; if (d < bd) { bd = d; best = h; } }
+      marker?.remove(); marker = undefined;
+      if (!best) { this.tooltip!.hide(); return; }
+      marker = this.renderer.create('circle', { cx: best.x, cy: best.y, r: 5, fill: 'none', stroke: best.series.color, 'stroke-width': 2, 'pointer-events': 'none' }, root);
+      const p = best.point, s = best.series;
+      this.tooltip!.show({ series: s.name, x: p.name ?? p.x, y: p.y, name: p.name ?? p.x, point: p.options, color: p.color ?? s.color }, s.options.tooltip);
+      this.tooltip!.move(e.clientX, e.clientY);
+    };
+    root.addEventListener('mousemove', onMove);
+    root.addEventListener('mouseleave', () => { marker?.remove(); marker = undefined; this.tooltip!.hide(); });
+  }
+
   /**
-   * Tableau-style trellis table. All cells share one y-scale and one x-scale;
+   * Cross-tab trellis table. All cells share one y-scale and one x-scale;
    * the y-axis is labelled only on the leftmost column and the x-axis only on
    * the bottom row. Dimension values become column headers (top) and row
    * headers (right), with the dimension name shown once.
@@ -533,7 +826,7 @@ export class JChart {
     }
   }
 
-  // -- Nested (Tableau hierarchical x-axis) ------------------------------
+  // -- Nested (hierarchical x-axis) ------------------------------
 
   private renderNestedPanel(outer: Rect, visible: BaseSeries[], dims: string[]): void {
     if (!visible.length) return;
@@ -544,35 +837,50 @@ export class JChart {
     // Series carrying only their aggregated leaf points.
     const aggSeries = visible.map((s) => s.withPoints(seriesPoints.get(s.index) ?? []));
 
+    // Dual axis: series binding to yAxis index 1 use a secondary (right) scale.
+    const yOpts0 = this.axisAt(this.options.yAxis, 0);
+    const yOpts1 = this.axisAt(this.options.yAxis, 1);
+    const onAxis = (s: BaseSeries, i: number) => (s.options.yAxis ?? 0) === i;
+    const secondary = aggSeries.filter((s) => onAxis(s, 1));
+    const hasSecondary = secondary.length > 0;
+
     // Reserve axis space. In split mode (opposite) the innermost dimension is
     // labelled at the bottom while the outer grouping dimensions sit on top.
     const xOpts = this.firstAxis(this.options.xAxis) ?? {};
-    const yTitle = !!this.firstAxis(this.options.yAxis)?.title?.text;
     const split = !!xOpts.opposite;
     const rowH = 18;
-    const leftReserve = LAYOUT.defaultLeftAxisWidth + (yTitle ? 16 : 0);
+    const leftReserve = LAYOUT.tickLength + 8 + this.valueLabelWidth(aggSeries.filter((s) => onAxis(s, 0)), yOpts0) + (yOpts0.title?.text ? 18 : 0);
+    const rightReserve = hasSecondary ? LAYOUT.tickLength + 8 + this.valueLabelWidth(secondary, yOpts1) + (yOpts1.title?.text ? 18 : 0) : 8;
     const bottomReserve = LAYOUT.tickLength + (split ? 1 : dims.length) * rowH + 12;
     const topReserve = split ? LAYOUT.tickLength + (dims.length - 1) * rowH + 8 : 6;
     const plot: Rect = {
       x: outer.x + leftReserve,
       y: outer.y + topReserve,
-      width: outer.width - leftReserve - 8,
+      width: outer.width - leftReserve - rightReserve,
       height: outer.height - topReserve - bottomReserve,
     };
 
     const xScale = new CategoryScale({ categories: keys, range: [plot.x, plot.x + plot.width] });
-    let [vMin, vMax] = this.valueDomain(aggSeries);
-    vMin = Math.min(vMin, 0);
-    vMax = Math.max(vMax, 0);
-    const yScale = this.valueScale(this.firstAxis(this.options.yAxis) ?? {}, [vMin, vMax], [plot.y + plot.height, plot.y]);
+    const range: [number, number] = [plot.y + plot.height, plot.y];
+    const scaleFor = (list: BaseSeries[], opts: AxisOptions) => {
+      let [lo, hi] = this.valueDomain(list.length ? list : aggSeries);
+      lo = Math.min(lo, 0); hi = Math.max(hi, 0);
+      return this.valueScale(opts, [lo, hi], range);
+    };
+    const yScale0 = scaleFor(aggSeries.filter((s) => onAxis(s, 0)), yOpts0);
+    const yScale1 = hasSecondary ? scaleFor(secondary, yOpts1) : yScale0;
 
     const axisLayer = this.renderer.group({ class: 'jchart-axes' }, this.renderer.root);
-    new Axis({ renderer: this.renderer, scale: yScale, position: 'left', plot, options: this.firstAxis(this.options.yAxis) ?? {}, grid: true }).render(axisLayer);
+    new Axis({ renderer: this.renderer, scale: yScale0, position: 'left', plot, options: yOpts0, grid: true }).render(axisLayer);
+    if (hasSecondary) {
+      new Axis({ renderer: this.renderer, scale: yScale1, position: 'right', plot, options: yOpts1, grid: false }).render(axisLayer);
+    }
     new NestedAxis({ renderer: this.renderer, scale: xScale, plot, leaves, keys, position: split ? 'split' : 'bottom' }).render(axisLayer);
 
     const group = this.groupInfo(aggSeries);
     const lineFamily = new Set(['line', 'spline', 'step', 'area', 'areaspline']);
     for (const s of aggSeries) {
+      const yScale = onAxis(s, 1) ? yScale1 : yScale0;
       const ctx = this.seriesContext(s, plot, xScale, yScale, group, false, false);
       if (lineFamily.has(s.type)) {
         // Draw a separate line per first-dimension group so the line does not
@@ -682,10 +990,100 @@ export class JChart {
     }
   }
 
+  // -- Radar (spider) ----------------------------------------------------
+
+  private renderRadarPanel(outer: Rect, visible: BaseSeries[]): void {
+    if (!visible.length) return;
+    const cats = this.currentCategories(visible) ?? [];
+    const n = cats.length;
+    if (n < 3) return;
+    const cx = outer.x + outer.width / 2;
+    const cy = outer.y + outer.height / 2 + 4;
+    const R = Math.min(outer.width, outer.height) / 2 - 34;
+    const [, vMaxRaw] = this.valueDomain(visible);
+    const vMax = Math.max(vMaxRaw, 0) || 1;
+    const angle = (i: number) => -Math.PI / 2 + (i / n) * Math.PI * 2;
+    const pt = (i: number, v: number) => ({ x: cx + (v / vMax) * R * Math.cos(angle(i)), y: cy + (v / vMax) * R * Math.sin(angle(i)) });
+    const grid = this.renderer.group({ class: 'jchart-axes' }, this.renderer.root);
+
+    // Concentric grid rings + spokes.
+    for (let r = 1; r <= 4; r++) {
+      const ring = cats.map((_, i) => { const p = pt(i, (vMax * r) / 4); return `${p.x},${p.y}`; }).join(' ');
+      this.renderer.create('polygon', { points: ring, fill: 'none', stroke: THEME.axis.gridLineColor, 'stroke-width': 1 }, grid);
+    }
+    cats.forEach((cat, i) => {
+      const edge = pt(i, vMax);
+      this.renderer.create('line', { x1: cx, y1: cy, x2: edge.x, y2: edge.y, stroke: THEME.axis.gridLineColor }, grid);
+      const lp = pt(i, vMax * 1.12);
+      this.renderer.text(String(cat), lp.x, lp.y, {
+        'text-anchor': Math.abs(lp.x - cx) < 4 ? 'middle' : lp.x > cx ? 'start' : 'end',
+        'dominant-baseline': 'middle', ...FONTS.axisLabel,
+      }, grid);
+    });
+
+    // One polygon per series.
+    for (const s of visible) {
+      const g = this.renderer.group({ class: `jchart-series jchart-radar ${s.name}` }, this.renderer.root);
+      const pts = cats.map((cat, i) => {
+        const p = s.points.find((pp) => String(pp.x) === String(cat)) ?? s.points[i];
+        return pt(i, p?.y ?? 0);
+      });
+      const poly = pts.map((p) => `${p.x},${p.y}`).join(' ');
+      const fillOp = s.options.fillOpacity ?? (s.type === 'area' ? 0.3 : 0.12);
+      this.renderer.create('polygon', { points: poly, fill: alpha(s.color, fillOp), stroke: s.color, 'stroke-width': 2 }, g);
+      pts.forEach((p, i) => {
+        const point = s.points.find((pp) => String(pp.x) === String(cats[i])) ?? s.points[i];
+        if (!point) return;
+        const el = this.renderer.create('circle', { cx: p.x, cy: p.y, r: 3.5, fill: s.color, stroke: '#fff', 'stroke-width': 1, class: 'jchart-point' }, g);
+        this.bindTooltip(el, s, point);
+        el.addEventListener('click', (e) => this.handlePointEvent('click', s, point, e));
+      });
+    }
+  }
+
+  // -- Marimekko (mosaic) ------------------------------------------------
+
+  private renderMarimekkoPanel(outer: Rect, visible: BaseSeries[]): void {
+    if (!visible.length) return;
+    const cats = this.currentCategories(visible) ?? [];
+    if (!cats.length) return;
+    const bottomReserve = 22, plot: Rect = { x: outer.x + 8, y: outer.y + 6, width: outer.width - 16, height: outer.height - bottomReserve - 6 };
+
+    // Column total across series drives column width; grand total normalises x.
+    const colTotal = cats.map((c) => visible.reduce((s, ser) => s + (ser.points.find((p) => String(p.x) === String(c))?.y ?? 0), 0));
+    const grand = colTotal.reduce((a, b) => a + b, 0) || 1;
+    const gap = 2;
+    let x = plot.x;
+    cats.forEach((cat, ci) => {
+      const w = (colTotal[ci] / grand) * (plot.width - gap * (cats.length - 1));
+      let y = plot.y;
+      visible.forEach((s, si) => {
+        const p = s.points.find((pp) => String(pp.x) === String(cat));
+        const val = p?.y ?? 0;
+        const h = colTotal[ci] > 0 ? (val / colTotal[ci]) * plot.height : 0;
+        const el = this.renderer.create('rect', {
+          x, y, width: Math.max(1, w), height: Math.max(0, h),
+          fill: p?.color ?? s.color ?? paletteColor(this.colors, si), stroke: '#fff', 'stroke-width': 1, class: 'jchart-point',
+        }, this.renderer.group({ class: `jchart-series jchart-marimekko ${s.name}` }, this.renderer.root));
+        if (p) { this.bindTooltip(el, s, p); el.addEventListener('click', (e) => this.handlePointEvent('click', s, p, e)); }
+        // Percentage label in roomy segments.
+        if (h > 16 && w > 26 && val > 0) {
+          this.renderer.text(`${Math.round((val / colTotal[ci]) * 100)}%`, x + w / 2, y + h / 2, {
+            'text-anchor': 'middle', 'dominant-baseline': 'middle', ...FONTS.dataLabel, fill: '#fff', 'font-weight': '600',
+          }, this.renderer.root);
+        }
+        y += h;
+      });
+      // Category label + width readout.
+      this.renderer.text(String(cat), x + w / 2, plot.y + plot.height + 14, { 'text-anchor': 'middle', ...FONTS.axisLabel }, this.renderer.root);
+      x += w + gap;
+    });
+  }
+
   /**
    * Collapse each series' points into one aggregated value per unique
    * combination of `dims`. Leaves are ordered so that outer dimensions form
-   * contiguous groups (first-seen order per level), matching Tableau.
+   * contiguous groups (first-seen order per level) so each group stays together.
    */
   private buildNested(
     visible: BaseSeries[],
@@ -769,10 +1167,35 @@ export class JChart {
       vMax = Math.max(vMax, 0);
     }
 
+    // Bubble charts: pad the domains by the largest marker radius so edge
+    // bubbles stay fully inside the axes.
+    const bubble = visible.find((s) => s.type === 'bubble');
+    const bubbleR = bubble ? (bubble.options.sizeRange?.[1] ?? 34) + 2 : 0;
+    if (bubbleR && !categories) {
+      const padY = (bubbleR / Math.max(1, plot.height)) * (vMax - vMin || 1);
+      if (yAxisOpts.min === undefined) vMin -= padY;
+      if (yAxisOpts.max === undefined) vMax += padY;
+    }
+
+    // Datetime x: nice date ticks + auto date label format.
+    const datetime = xAxisOpts.type === 'datetime' && !categories;
+    const xNumeric = (range: [number, number], reversed?: boolean): Scale => {
+      const [dmin, dmax] = this.xNumericDomain(visible);
+      let min = xAxisOpts.min ?? dmin, max = xAxisOpts.max ?? dmax;
+      if (bubbleR) {
+        const padX = (bubbleR / Math.max(1, plot.width)) * (max - min || 1);
+        if (xAxisOpts.min === undefined) min -= padX;
+        if (xAxisOpts.max === undefined) max += padX;
+      }
+      if (datetime) {
+        const { ticks, format } = niceDateTicks(min, max);
+        return new LinearScale({ domain: [min, max], range, reversed, ticks, format: (v) => formatDate(v, format) });
+      }
+      return new LinearScale({ domain: [min, max], range, ...(reversed ? { reversed } : {}) });
+    };
+
     const catScale = (range: [number, number], reversed?: boolean) =>
-      categories
-        ? new CategoryScale({ categories, range, reversed })
-        : new LinearScale({ domain: this.xNumericDomain(visible), range, ...(reversed ? { reversed } : {}) });
+      categories ? new CategoryScale({ categories, range, reversed }) : xNumeric(range, reversed);
 
     if (inverted) {
       // Horizontal bars: value on x (bottom), categories on y (left).
@@ -925,11 +1348,16 @@ export class JChart {
     this.applyHover(el, s);
 
     if (!this.tooltip) return;
+    const total = s.points.reduce((sum, pt) => sum + (pt.y ?? 0), 0);
     const build = (): TooltipContext => {
       const ctx: TooltipContext = {
         series: s.name,
         x: p.name ?? p.x,
         y: p.y ?? p.high,
+        name: p.name ?? p.x,
+        index: p.index,
+        total,
+        percentage: total ? ((p.y ?? 0) / total) * 100 : undefined,
         low: p.low,
         high: p.high,
         box: p.box,
@@ -940,9 +1368,27 @@ export class JChart {
       if (this.options.tooltip?.shared) ctx.points = this.pointsAtX(p.x);
       return ctx;
     };
-    el.addEventListener('mouseenter', () => this.tooltip!.show(build(), s.options.tooltip));
+    el.addEventListener('mouseenter', () => { this.tooltip!.show(build(), s.options.tooltip); this.showCrosshair(p); });
     el.addEventListener('mousemove', (e) => this.tooltip!.move(e.clientX, e.clientY));
-    el.addEventListener('mouseleave', () => this.tooltip!.hide());
+    el.addEventListener('mouseleave', () => { this.tooltip!.hide(); this.hideCrosshair(); });
+  }
+
+  /** Draw a guide line at the hovered point when `xAxis.crosshair` is on. */
+  private showCrosshair(p: Point): void {
+    const ctx = this.plotCtx;
+    if (!this.firstAxis(this.options.xAxis)?.crosshair || !ctx || ctx.inverted) return;
+    this.hideCrosshair();
+    const x = ctx.xScale.scale(p.x);
+    this.crosshairEl = this.renderer.create('line', {
+      x1: x, y1: ctx.plot.y, x2: x, y2: ctx.plot.y + ctx.plot.height,
+      stroke: THEME.axis.labelColor, 'stroke-width': 1, 'stroke-dasharray': '3 3',
+      'pointer-events': 'none', class: 'jchart-crosshair',
+    }, this.renderer.root);
+  }
+
+  private hideCrosshair(): void {
+    this.crosshairEl?.remove();
+    this.crosshairEl = undefined;
   }
 
   /** All visible series' points sharing an x value (for the shared tooltip). */
@@ -999,9 +1445,49 @@ export class JChart {
     };
     this.events.emit(`point:${kind}`, payload);
     const se = this.options.seriesEvents;
-    if (kind === 'click') { se?.click?.(payload); this.options.chart?.events?.click?.(payload); }
+    if (kind === 'click') {
+      se?.click?.(payload); this.options.chart?.events?.click?.(payload);
+      const ddId = p.options.drilldown;
+      if (typeof ddId === 'string') this.drillTo(ddId);
+    }
     if (kind === 'mouseOver') se?.mouseOver?.(payload);
     if (kind === 'mouseOut') se?.mouseOut?.(payload);
+  }
+
+  /** Replace the series with the matching drilldown series (click-to-expand). */
+  private drillTo(id: string): void {
+    const dd = this.options.drilldown?.series.find((s) => s.id === id);
+    if (!dd) return;
+    this.drillStack.push({ series: this.options.series, title: this.options.title, xAxis: this.options.xAxis });
+    this.options.series = [dd];
+    if (dd.name) this.options.title = { text: dd.name };
+    // Derive fresh categories from the drilldown data (drop the parent's).
+    const xa = this.axisAt(this.options.xAxis, 0);
+    const { categories, ...rest } = xa;
+    this.options.xAxis = rest;
+    this.build(); this.animateNext = true; this.render();
+    this.events.emit('drilldown', { id, series: dd });
+  }
+
+  /** Return to the previous level after a drill-down. */
+  drillUp(): void {
+    const prev = this.drillStack.pop();
+    if (!prev) return;
+    this.options.series = prev.series;
+    this.options.title = prev.title;
+    this.options.xAxis = prev.xAxis;
+    this.build(); this.animateNext = true; this.render();
+    this.events.emit('drillup', {});
+  }
+
+  /** Breadcrumb "← Back" control shown while drilled in. */
+  private drawDrillUp(outer: Rect): void {
+    if (!this.drillStack.length) return;
+    const g = this.renderer.group({ class: 'jchart-drillup', style: 'cursor:pointer' }, this.renderer.root);
+    const bx = outer.x, by = outer.y + 2;
+    this.renderer.create('rect', { x: bx, y: by, width: 62, height: 22, rx: 5, fill: this.theme.tooltip.backgroundColor, stroke: THEME.axis.lineColor }, g);
+    this.renderer.text('← Back', bx + 31, by + 15, { 'text-anchor': 'middle', ...FONTS.axisLabel, fill: this.theme.axis.labelColor }, g);
+    g.addEventListener('click', () => this.drillUp());
   }
 
   // -- Legend / visibility ----------------------------------------------
@@ -1069,10 +1555,30 @@ export class JChart {
     return this.events.on(event, listener);
   }
 
-  /** Replace all series data and re-render. */
+  /** Merge new options and re-render (rebuilds series when `series` is given). */
   update(options: Partial<ChartOptions>): void {
     Object.assign(this.options, merge(this.options, options as ChartOptions));
     if (options.series) this.build();
+    this.animateNext = true;
+    this.render();
+  }
+
+  /** Replace one series' data in place and re-render (incremental update). */
+  setData(seriesIndex: number, data: SeriesOptions['data']): void {
+    const opts = this.options.series[seriesIndex];
+    if (!opts) return;
+    opts.data = data;
+    this.build();
+    this.animateNext = true;
+    this.render();
+  }
+
+  /** Append a point to a series and re-render. */
+  addPoint(seriesIndex: number, point: SeriesOptions['data'][number]): void {
+    const opts = this.options.series[seriesIndex];
+    if (!opts) return;
+    opts.data = [...opts.data, point];
+    this.build();
     this.render();
   }
 
@@ -1082,8 +1588,58 @@ export class JChart {
     this.render();
   }
 
+  /** Serialise the chart to a standalone SVG string. */
+  getSVG(): string {
+    const clone = this.renderer.root.cloneNode(true) as SVGSVGElement;
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    clone.setAttribute('width', String(this.width));
+    clone.setAttribute('height', String(this.height));
+    return new XMLSerializer().serializeToString(clone);
+  }
+
+  /** Trigger a download of the chart as an SVG file. */
+  downloadSVG(filename = 'chart.svg'): void {
+    this.triggerDownload(new Blob([this.getSVG()], { type: 'image/svg+xml' }), filename);
+  }
+
+  /** Rasterise to PNG (`scale`× resolution) and download. */
+  async downloadPNG(filename = 'chart.png', scale = 2): Promise<void> {
+    const blob = await this.toPNGBlob(scale);
+    if (blob) this.triggerDownload(blob, filename);
+  }
+
+  /** Rasterise the chart to a PNG Blob. */
+  toPNGBlob(scale = 2): Promise<Blob | null> {
+    return new Promise((resolve) => {
+      const svg = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(this.getSVG());
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = this.width * scale;
+        canvas.height = this.height * scale;
+        const c = canvas.getContext('2d');
+        if (!c) return resolve(null);
+        c.fillStyle = this.options.chart?.backgroundColor ?? this.theme.backgroundColor;
+        c.fillRect(0, 0, canvas.width, canvas.height);
+        c.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(resolve, 'image/png');
+      };
+      img.onerror = () => resolve(null);
+      img.src = svg;
+    });
+  }
+
+  private triggerDownload(blob: Blob, filename: string): void {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   destroy(): void {
     this.tooltip?.destroy();
+    this.resizeObserver?.disconnect();
     this.events.clear();
     this.renderer?.root.remove();
   }
@@ -1098,4 +1654,12 @@ interface PanelSpec {
 interface GroupInfo {
   count: number;
   index: Map<number, number>;
+}
+
+/** A boosted point's pixel position, for nearest-point hover lookup. */
+interface BoostHit {
+  x: number;
+  y: number;
+  point: Point;
+  series: BaseSeries;
 }
