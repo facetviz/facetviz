@@ -16,7 +16,6 @@
       <a href="./" data-page="guide">Guide</a>
       <a href="./examples.html" data-page="examples">Examples</a>
       <a href="./api.html" data-page="api">API</a>
-      <a href="./playground.html" data-page="playground">Playground</a>
     </nav>
     <div class="spacer"></div>
     <a class="btn primary" href="./playground.html">▶ Playground</a>
@@ -37,169 +36,47 @@
 
   <script type="module">
     import { JChart, renderChart, pretty, highlight, initChrome, scrollspy } from './site.js';
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+    import { EXAMPLES, slug } from './examples-data.js';
 
-    const twoDim = [
-      { Region: 'Americas', Device: 'Mobile', y: 30 }, { Region: 'Americas', Device: 'Desktop', y: 22 },
-      { Region: 'EMEA', Device: 'Mobile', y: 24 }, { Region: 'EMEA', Device: 'Desktop', y: 18 },
-      { Region: 'APAC', Device: 'Mobile', y: 28 }, { Region: 'APAC', Device: 'Desktop', y: 12 },
-    ];
-    const nested = [];
-    for (const r of ['East', 'West', 'Central']) for (const c of ['Tech', 'Furniture', 'Office']) nested.push({ Region: r, Category: c, y: Math.round(5 + Math.random() * 20) });
-    const trellis = [];
-    for (const region of ['East', 'West']) for (const cat of ['Tech', 'Furniture']) for (const m of months) trellis.push({ x: m, y: Math.round(2 + Math.random() * 8), region, cat });
-
-    // [category, title, description, config]
-    const EXAMPLES = [
-      ['Bars & columns', 'Grouped column', 'Two series side-by-side.', {
-        chart: { type: 'column', height: 300 }, xAxis: { categories: months }, yAxis: { title: { text: 'Units' } },
-        series: [{ name: 'North', data: [5, 3, 4, 7, 2, 6] }, { name: 'South', data: [2, 4, 6, 3, 5, 4] }] }],
-      ['Bars & columns', 'Stacked column', "stacking: 'normal'.", {
-        chart: { type: 'column', height: 300 }, xAxis: { categories: months },
-        series: [{ name: 'A', stacking: 'normal', data: [5, 3, 4, 7, 2, 6] }, { name: 'B', stacking: 'normal', data: [2, 4, 6, 3, 5, 4] }, { name: 'C', stacking: 'normal', data: [3, 3, 3, 3, 3, 3] }] }],
-      ['Bars & columns', '100% stacked bar', "Horizontal, stacking: 'percent'.", {
-        chart: { type: 'bar', height: 300 }, xAxis: { categories: months },
-        series: [{ name: 'A', stacking: 'percent', data: [5, 3, 4, 7, 2, 6] }, { name: 'B', stacking: 'percent', data: [2, 4, 6, 3, 5, 4] }] }],
-      ['Bars & columns', 'Waterfall', 'Running cumulative with a sum bar.', {
-        chart: { type: 'waterfall', height: 300 }, title: { text: 'Cash flow' }, xAxis: { categories: ['Start', 'Sales', 'Refunds', 'Services', 'Net'] }, yAxis: { title: { text: '$k' } },
-        series: [{ name: 'Flow', data: [{ x: 'Start', y: 120 }, { x: 'Sales', y: 80 }, { x: 'Refunds', y: -30 }, { x: 'Services', y: 45 }, { x: 'Net', isSum: true }] }] }],
-      ['Bars & columns', 'Histogram', 'Bins raw numbers.', {
-        chart: { type: 'histogram', height: 300 }, title: { text: 'Distribution' },
-        series: [{ name: 'obs', data: Array.from({ length: 400 }, () => (Math.random() + Math.random() + Math.random()) * 33) }] }],
-      ['Bars & columns', 'Bullet', 'Measure vs. target + qualitative bands.', {
-        chart: { type: 'bullet', height: 220 }, title: { text: 'KPIs' },
-        series: [{ name: 'KPI', data: [{ name: 'Revenue', y: 275, target: 250, ranges: [150, 225, 300] }, { name: 'Profit', y: 22, target: 26, ranges: [20, 25, 30] }] }] }],
-      ['Bars & columns', 'Marimekko', 'Variable-width 100% stacked columns.', {
-        chart: { type: 'marimekko', height: 320 }, title: { text: 'Share by segment' }, xAxis: { categories: ['Enterprise', 'SMB', 'Consumer'] },
-        series: [{ name: 'A', data: [40, 20, 10] }, { name: 'B', data: [25, 30, 25] }, { name: 'C', data: [15, 25, 45] }] }],
-
-      ['Lines & areas', 'Line / spline / step', 'Three line variants together.', {
-        chart: { height: 300 }, xAxis: { categories: months }, yAxis: { title: { text: 'Value' } },
-        series: [{ type: 'line', name: 'Line', marker: { enabled: true }, data: [3, 5, 4, 7, 6, 8] }, { type: 'spline', name: 'Spline', data: [2, 4, 3, 6, 5, 7] }, { type: 'step', name: 'Step', data: [1, 3, 2, 5, 4, 6] }] }],
-      ['Lines & areas', 'Stacked area', "stacking: 'normal'.", {
-        chart: { type: 'area', height: 300 }, xAxis: { categories: months },
-        series: [{ name: 'A', stacking: 'normal', data: [3, 4, 3, 5, 4, 6] }, { name: 'B', stacking: 'normal', data: [2, 3, 4, 3, 5, 4] }] }],
-      ['Lines & areas', 'Area range', 'Filled band between low & high.', {
-        chart: { type: 'arearange', height: 300 }, title: { text: 'Temperature range' }, xAxis: { categories: months }, yAxis: { title: { text: '°C' } },
-        series: [{ name: 'Temp', data: [['Jan', -3, 7], ['Feb', -1, 9], ['Mar', 2, 12], ['Apr', 5, 16], ['May', 9, 20], ['Jun', 13, 24]] }] }],
-      ['Lines & areas', 'Plot lines & bands', 'Reference line + shaded band.', {
-        chart: { height: 300 }, xAxis: { categories: months },
-        yAxis: { title: { text: 'Value' }, plotBands: [{ from: 5, to: 7, color: 'rgba(0,200,120,0.1)', label: { text: 'target' } }], plotLines: [{ value: 6, color: '#e63946', dashStyle: '5 4', label: { text: 'goal' } }] },
-        series: [{ type: 'spline', name: 'S', data: [3, 5, 4, 7, 6, 8] }] }],
-
-      ['Circular', 'Pie with labels', 'Leader lines to each slice.', {
-        chart: { type: 'pie', height: 320 }, title: { text: 'Browser share' },
-        series: [{ name: 'Share', dataLabels: { enabled: true }, data: [{ name: 'Chrome', y: 63 }, { name: 'Safari', y: 19 }, { name: 'Edge', y: 5 }, { name: 'Firefox', y: 4 }, { name: 'Other', y: 9 }] }] }],
-      ['Circular', 'Donut — two dimensions', 'Inner ring Region ▸ outer Device.', {
-        chart: { type: 'donut', height: 340 }, title: { text: 'Sessions' },
-        series: [{ name: 'Sessions', innerSize: '35%', dimensions: ['Region', 'Device'], dataLabels: { enabled: true, format: '{name}' }, data: twoDim }] }],
-      ['Circular', 'Variable-radius pie', 'z drives each slice radius.', {
-        chart: { type: 'pie', height: 320 }, title: { text: 'Share × intensity' },
-        series: [{ name: 'V', dataLabels: { enabled: true, format: '{name}' }, data: [{ name: 'A', y: 30, z: 100 }, { name: 'B', y: 25, z: 60 }, { name: 'C', y: 25, z: 90 }, { name: 'D', y: 20, z: 40 }] }] }],
-      ['Circular', 'Radial bar', 'Bars around a polar centre (0→270°).', {
-        chart: { type: 'radialbar', height: 320 }, title: { text: 'Activity' },
-        series: [{ name: 'Goals', data: [{ name: 'Move', y: 80 }, { name: 'Exercise', y: 55 }, { name: 'Stand', y: 95 }] }] }],
-      ['Circular', 'Gauge', 'Radial dial with coloured bands.', {
-        chart: { type: 'gauge', height: 320 }, title: { text: 'Speed' },
-        series: [{ name: 'km/h', min: 0, max: 120, data: [{ name: 'km/h', y: 82 }], bands: [{ from: 0, to: 60, color: '#26a69a' }, { from: 60, to: 90, color: '#ffca28' }, { from: 90, to: 120, color: '#ef5350' }] }] }],
-      ['Circular', 'Sunburst', 'Multi-level radial hierarchy.', {
-        chart: { type: 'sunburst', height: 340 }, title: { text: 'Org' },
-        series: [{ name: 'Org', data: [{ id: 'eng', name: 'Eng' }, { id: 'fe', parent: 'eng', name: 'FE', value: 8 }, { id: 'be', parent: 'eng', name: 'BE', value: 12 }, { id: 'sales', name: 'Sales' }, { id: 'in', parent: 'sales', name: 'In', value: 6 }, { id: 'out', parent: 'sales', name: 'Out', value: 5 }, { id: 'ops', name: 'Ops', value: 4 }] }] }],
-
-      ['Points', 'Scatter', 'Point cloud.', {
-        chart: { type: 'scatter', height: 300 }, xAxis: { title: { text: 'x' } }, yAxis: { title: { text: 'y' } },
-        series: [{ name: 'A', data: [[1, 2], [2, 5], [3, 3], [4, 8], [5, 6], [6, 9]] }, { name: 'B', data: [[1, 6], [2, 3], [3, 7], [4, 4], [5, 9], [6, 5]] }] }],
-      ['Points', 'Jitter', 'Categorical scatter with spread.', {
-        chart: { type: 'jitter', height: 300 }, xAxis: { categories: ['A', 'B', 'C'] },
-        series: [{ name: 'obs', data: (() => { const d = []; ['A', 'B', 'C'].forEach((c) => { for (let i = 0; i < 20; i++) d.push({ x: c, y: Math.round(Math.random() * 10) }); }); return d; })() }] }],
-      ['Points', 'Bubble', 'z → marker size (by area).', {
-        chart: { type: 'bubble', height: 320 }, xAxis: { title: { text: 'GDP/capita' } }, yAxis: { title: { text: 'Life expectancy' } },
-        series: [{ name: 'Countries', data: [{ x: 12, y: 72, z: 80 }, { x: 45, y: 81, z: 320 }, { x: 28, y: 76, z: 140 }, { x: 60, y: 83, z: 60 }, { x: 8, y: 65, z: 210 }, { x: 35, y: 79, z: 25 }] }] }],
-      ['Points', 'Dumbbell', 'Two connected points per category.', {
-        chart: { type: 'dumbbell', height: 300 }, xAxis: { categories: ['A', 'B', 'C', 'D', 'E'] }, yAxis: { title: { text: 'Value' } },
-        series: [{ name: 'Change', lowColor: '#adb5bd', highColor: '#2caffe', data: [['A', 20, 45], ['B', 35, 30], ['C', 10, 55], ['D', 40, 60], ['E', 25, 35]] }] }],
-
-      ['Statistical', 'Boxplot', 'Five-number distribution, dual-colour.', {
-        chart: { type: 'boxplot', height: 300 }, xAxis: { categories: ['A', 'B', 'C', 'D'] },
-        series: [{ name: 'obs', boxColors: { lower: '#74c0fc', upper: '#f08c4b' }, data: [{ min: 2, q1: 4, median: 5, q3: 6.5, max: 8 }, { min: 1, q1: 4.5, median: 6, q3: 8, max: 12 }, { min: 3, q1: 5.5, median: 6, q3: 7.5, max: 10 }, { min: 0, q1: 3, median: 6, q3: 9, max: 14 }] }] }],
-      ['Statistical', 'Candlestick', 'OHLC financial candles.', {
-        chart: { type: 'candlestick', height: 300 }, xAxis: { categories: months }, yAxis: { title: { text: 'Price' } },
-        series: [{ name: 'ACME', data: [{ x: 'Jan', open: 100, high: 108, low: 98, close: 106 }, { x: 'Feb', open: 106, high: 110, low: 101, close: 103 }, { x: 'Mar', open: 103, high: 105, low: 95, close: 97 }, { x: 'Apr', open: 97, high: 104, low: 96, close: 102 }, { x: 'May', open: 102, high: 112, low: 100, close: 110 }, { x: 'Jun', open: 110, high: 114, low: 107, close: 108 }] }] }],
-      ['Statistical', 'Error bars', 'Column + overlaid errorbar series.', {
-        chart: { type: 'column', height: 300 }, xAxis: { categories: months },
-        series: [{ name: 'Mean', data: [5, 6, 4, 8, 7, 9] }, { type: 'errorbar', name: 'Error', color: '#333', data: [['Jan', 4, 6], ['Feb', 5, 7.5], ['Mar', 3, 5], ['Apr', 7, 9], ['May', 6, 8], ['Jun', 8, 10]] }] }],
-
-      ['Grid & hierarchy', 'Heatmap', 'Category × category, coloured by value.', {
-        chart: { type: 'heatmap', height: 300 }, title: { text: 'Activity' },
-        series: [{ name: 'Activity', color: '#2caffe', data: [{ x: 'Mon', y: 'AM', value: 74 }, { x: 'Mon', y: 'PM', value: 40 }, { x: 'Tue', y: 'AM', value: 38 }, { x: 'Tue', y: 'PM', value: 55 }, { x: 'Wed', y: 'AM', value: 35 }, { x: 'Wed', y: 'PM', value: 89 }, { x: 'Thu', y: 'AM', value: 53 }, { x: 'Thu', y: 'PM', value: 27 }] }] }],
-      ['Grid & hierarchy', 'Calendar heatmap', 'Day-grid by date.', {
-        chart: { type: 'calendar', height: 220 }, title: { text: 'Commits' }, legend: { enabled: false },
-        series: [{ name: 'Commits', color: '#2caffe', data: (() => { const o = []; const t0 = Date.UTC(2026, 0, 1); for (let i = 0; i < 84; i++) o.push({ date: t0 + i * 86400000, value: Math.round(Math.random() * 10) }); return o; })() }] }],
-      ['Grid & hierarchy', 'Funnel', 'Narrowing stages sized by value.', {
-        chart: { type: 'funnel', height: 320 }, title: { text: 'Conversion' }, legend: { enabled: false },
-        series: [{ name: 'Users', data: [{ name: 'Visits', y: 1500 }, { name: 'Signups', y: 900 }, { name: 'Trials', y: 500 }, { name: 'Paid', y: 220 }] }] }],
-      ['Grid & hierarchy', 'Treegraph', 'Hierarchy from id/parent.', {
-        chart: { type: 'treegraph', height: 320 }, title: { text: 'Org chart' },
-        series: [{ name: 'Org', data: [{ id: 'ceo', name: 'CEO' }, { id: 'cto', parent: 'ceo', name: 'CTO' }, { id: 'cfo', parent: 'ceo', name: 'CFO' }, { id: 'eng', parent: 'cto', name: 'Eng' }, { id: 'qa', parent: 'cto', name: 'QA' }, { id: 'fin', parent: 'cfo', name: 'Finance' }] }] }],
-      ['Grid & hierarchy', 'Sankey', 'Weighted flows between nodes.', {
-        chart: { type: 'sankey', height: 340 }, title: { text: 'Energy flow' }, legend: { enabled: false },
-        series: [{ name: 'Flow', data: [{ from: 'Coal', to: 'Grid', weight: 40 }, { from: 'Solar', to: 'Grid', weight: 25 }, { from: 'Wind', to: 'Grid', weight: 20 }, { from: 'Grid', to: 'Homes', weight: 45 }, { from: 'Grid', to: 'Industry', weight: 40 }] }] }],
-      ['Grid & hierarchy', 'Gantt', 'Duration bars per row.', {
-        chart: { type: 'gantt', height: 260 }, title: { text: 'Project plan' }, legend: { enabled: false },
-        series: [{ name: 'Tasks', data: [{ name: 'Research', start: Date.UTC(2026, 0, 1), end: Date.UTC(2026, 0, 8) }, { name: 'Design', start: Date.UTC(2026, 0, 8), end: Date.UTC(2026, 0, 20) }, { name: 'Build', start: Date.UTC(2026, 0, 20), end: Date.UTC(2026, 1, 6) }, { name: 'Launch', start: Date.UTC(2026, 1, 6), end: Date.UTC(2026, 1, 14) }] }] }],
-      ['Grid & hierarchy', 'Radar', 'Line/area over categories on a polar grid.', {
-        chart: { type: 'radar', height: 340 }, title: { text: 'Skills' }, xAxis: { categories: ['Speed', 'Power', 'Range', 'Control', 'Stamina', 'Agility'] },
-        series: [{ name: 'Alpha', data: [8, 6, 7, 9, 5, 8] }, { name: 'Bravo', type: 'area', data: [6, 8, 5, 6, 9, 6] }] }],
-      ['Grid & hierarchy', 'Butterfly', 'Two series mirrored around a centre.', {
-        chart: { type: 'butterfly', height: 320 }, title: { text: 'Population pyramid' }, xAxis: { categories: ['0–17', '18–34', '35–54', '55–74', '75+'] },
-        series: [{ name: 'Male', color: '#2caffe', data: [30, 42, 38, 28, 18] }, { name: 'Female', color: '#fe6a35', data: [28, 40, 39, 30, 22] }] }],
-
-      ['Advanced', 'Nested x-axis (Tableau-style)', 'Two dimensions on x, headers on top.', {
-        chart: { type: 'column', height: 340 }, title: { text: 'Sales by Region ▸ Category' }, xAxis: { dimensions: ['Region', 'Category'], aggregate: 'sum', opposite: true }, yAxis: { title: { text: 'Sum of Sales' } },
-        series: [{ name: 'Sales', data: nested }] }],
-      ['Advanced', 'Trellis table', 'Small multiples, shared axes.', {
-        chart: { type: 'column', height: 380 }, title: { text: 'Sales small multiples' }, xAxis: { title: { text: 'Month' } }, yAxis: { title: { text: 'Sales' } }, trellis: { columns: 'cat', rows: 'region', gap: 14 },
-        series: [{ name: 'Sales', data: trellis }] }],
-      ['Advanced', 'Dual axis (nested + secondary y)', 'Sales columns + Margin spline on the right.', {
-        chart: { type: 'column', height: 340 }, title: { text: 'Sales & Margin' }, xAxis: { dimensions: ['Region', 'Category'], aggregate: 'sum' }, yAxis: [{ title: { text: 'Sum of Sales' } }, { title: { text: 'Margin %' } }],
-        series: [{ name: 'Sales', data: nested }, { type: 'spline', name: 'Margin %', yAxis: 1, color: '#00b894', marker: { enabled: true }, data: nested.map((d) => ({ Region: d.Region, Category: d.Category, y: 40 + Math.round(Math.random() * 45) })) }] }],
-      ['Advanced', 'Drill-down', 'Click a column to expand.', {
-        chart: { type: 'column', height: 300 }, title: { text: 'Fruit → varieties' }, legend: { enabled: false }, xAxis: { categories: ['Apples', 'Pears', 'Bananas'] },
-        series: [{ name: 'Fruit', data: [{ y: 12, name: 'Apples', drilldown: 'apples' }, { y: 8, name: 'Pears', drilldown: 'pears' }, { y: 15, name: 'Bananas' }] }],
-        drilldown: { series: [{ id: 'apples', name: 'Apple varieties', data: [['Gala', 5], ['Fuji', 4], ['Granny', 3]] }, { id: 'pears', name: 'Pear varieties', data: [['Bartlett', 5], ['Bosc', 3]] }] } }],
-      ['Advanced', 'Datetime axis + zoom + crosshair', 'Drag on the plot to zoom.', {
-        chart: { type: 'line', height: 300, zoom: 'x' }, title: { text: 'Drag to zoom' }, xAxis: { type: 'datetime', crosshair: true }, yAxis: { title: { text: 'Value' } }, tooltip: { shared: true, format: '{x:%b %d}<br/><b>{y}</b>' },
-        series: [{ name: 'Signal', marker: { enabled: true }, data: (() => { const o = []; const t0 = Date.UTC(2026, 0, 1); for (let i = 0; i < 40; i++) o.push([t0 + i * 86400000, Math.round(50 + 30 * Math.sin(i / 4) + Math.random() * 8)]); return o; })() }] }],
-      ['Advanced', 'Boost — 30,000 points', 'High-volume canvas rendering.', {
-        chart: { type: 'scatter', height: 320 }, title: { text: '30k points on one canvas' }, xAxis: { title: { text: 'x' } }, yAxis: { title: { text: 'y' } },
-        series: [{ name: 'Cloud', color: '#2caffe', data: Array.from({ length: 30000 }, () => { const a = Math.random() * 6.28, r = Math.random() * 50; return [50 + r * Math.cos(a) + (Math.random() - 0.5) * 20, 50 + r * Math.sin(a)]; }) }] }],
-      ['Advanced', 'Dark theme', "theme: 'dark'.", {
-        chart: { type: 'column', height: 300 }, theme: 'dark', title: { text: 'Sales' }, xAxis: { categories: months }, yAxis: { title: { text: 'Units' } },
-        series: [{ name: 'North', data: [5, 3, 4, 7, 2, 6] }, { name: 'South', data: [2, 4, 6, 3, 5, 4] }] }],
-    ];
-
-    const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const catSlug = (s) => 'cat-' + s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
     const gallery = document.getElementById('gallery');
     const catNav = document.getElementById('cat-nav');
-    const cats = [...new Set(EXAMPLES.map((e) => e[0]))];
+    const cats = [...new Set(EXAMPLES.map((e) => e.cat))];
+
     for (const cat of cats) {
-      const a = document.createElement('a'); a.href = '#' + slug(cat); a.textContent = cat; catNav.appendChild(a);
-      const h = document.createElement('h2'); h.id = slug(cat); h.textContent = cat; gallery.appendChild(h);
-      for (const [, title, desc, cfg] of EXAMPLES.filter((e) => e[0] === cat)) {
-        const wrap = document.createElement('section'); wrap.className = 'example panel';
-        wrap.innerHTML = `<div class="head"><h4>${title}</h4><p>${desc}</p><span class="spacer"></span>
-          <a href="./playground.html" title="Tweak in the playground">Playground ↗</a></div>
+      const a = document.createElement('a'); a.href = '#' + catSlug(cat); a.textContent = cat; catNav.appendChild(a);
+      const h = document.createElement('h2'); h.id = catSlug(cat); h.textContent = cat; gallery.appendChild(h);
+      for (const ex of EXAMPLES.filter((e) => e.cat === cat)) {
+        const id = slug(ex.title);
+        const wrap = document.createElement('section'); wrap.className = 'example panel'; wrap.id = id;
+        wrap.innerHTML = `<div class="head">
+            <a class="anchor" href="#${id}" title="Link to this example">#</a>
+            <h4>${ex.title}</h4><p>${ex.desc}</p><span class="spacer"></span>
+            <a class="pg-link" href="./playground.html" title="Open this config in the playground">Playground ↗</a>
+          </div>
           <div class="body"><div class="chart"></div>
           <details><summary>Show config</summary><pre><code class="language-js"></code></pre></details></div>`;
         gallery.appendChild(wrap);
-        wrap.querySelector('code').textContent = 'new JChart(el, ' + pretty(cfg) + ');';
-        renderChart(JChart, wrap.querySelector('.chart'), cfg);
+        wrap.querySelector('code').textContent = 'new JChart(el, ' + pretty(ex.cfg) + ');';
+        // Hand THIS config to the playground (via sessionStorage — no giant URLs).
+        wrap.querySelector('.pg-link').addEventListener('click', () => {
+          try { sessionStorage.setItem('jchart:playground', JSON.stringify({ title: ex.title, cfg: ex.cfg })); } catch (e) {}
+        });
+        renderChart(JChart, wrap.querySelector('.chart'), ex.cfg);
       }
     }
+
+    // Highlight the targeted example when arriving via #anchor.
+    const flash = () => {
+      document.querySelectorAll('.example.target').forEach((e) => e.classList.remove('target'));
+      if (location.hash) { const el = document.getElementById(location.hash.slice(1)); if (el) { el.classList.add('target'); el.scrollIntoView(); } }
+    };
+    window.addEventListener('hashchange', flash);
 
     highlight(document);
     initChrome('examples');
     scrollspy('#side');
+    flash();
   </script>
 </body>
 </html>

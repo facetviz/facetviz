@@ -105,7 +105,16 @@ pre code { font-family: var(--mono); background: none; padding: 0; color: #e6edf
 .example > .head h4 { margin: 0; font-size: 15px; }
 .example > .head p { margin: 0; font-size: 13px; color: var(--muted); }
 .example > .head .spacer { flex: 1; }
-.example > .head a { font-size: 12px; font-weight: 600; }
+.example > .head a.pg-link { font-size: 12px; font-weight: 600; }
+.example > .head a.anchor { color: var(--muted); font-weight: 700; opacity: 0; text-decoration: none; }
+.example:hover > .head a.anchor { opacity: .7; }
+.example.target { outline: 2px solid var(--brand); outline-offset: 1px; }
+/* Chart-type link cards (Guide) */
+.type-links { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.type-links a { background: var(--chip); color: var(--chip-fg); font-size: 12.5px; font-weight: 600; padding: 5px 12px; border-radius: 999px; text-decoration: none; border: 1px solid transparent; }
+.type-links a:hover { border-color: var(--brand); text-decoration: none; }
+.type-links a[aria-disabled] { opacity: .55; pointer-events: none; }
+.type-cat { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); font-weight: 700; margin: 16px 0 2px; }
 .example .body { display: grid; grid-template-columns: 1fr 0fr; transition: grid-template-columns .25s ease; }
 .example:has(details[open]) .body { grid-template-columns: 1.15fr 1fr; }
 .example .chart { padding: 16px; min-width: 0; }

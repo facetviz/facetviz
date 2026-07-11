@@ -11,11 +11,11 @@
  *          East          │        West           ← outer dimension (row 1)
  */
 
-import type { Renderer } from './renderer.js';
-import type { CategoryScale } from './scale.js';
-import type { Rect } from './axis.js';
-import { FONTS, LAYOUT } from './defaults.js';
-import { THEME } from './theme.js';
+import type { Renderer } from "./renderer.js";
+import type { CategoryScale } from "./scale.js";
+import type { Rect } from "./axis.js";
+import { FONTS, LAYOUT } from "./defaults.js";
+import { THEME } from "./theme.js";
 
 export interface NestedAxisConfig {
   renderer: Renderer;
@@ -33,7 +33,7 @@ export interface NestedAxisConfig {
    *  - `split`: innermost dimension labelled at the bottom, outer grouping
    *    dimensions on top, with full-height lines separating the top-level groups.
    */
-  position?: 'bottom' | 'top' | 'split';
+  position?: "bottom" | "top" | "split";
 }
 
 interface Segment {
@@ -46,9 +46,12 @@ export class NestedAxis {
   constructor(private cfg: NestedAxisConfig) {}
 
   render(parent: SVGGElement): void {
-    const g = this.cfg.renderer.group({ class: 'jchart-axis jchart-axis-nested' }, parent);
-    if (this.cfg.position === 'split') this.renderSplit(g);
-    else this.renderStacked(g, this.cfg.position === 'top');
+    const g = this.cfg.renderer.group(
+      { class: "jchart-axis jchart-axis-nested" },
+      parent,
+    );
+    if (this.cfg.position === "split") this.renderSplit(g);
+    else this.renderStacked(g, this.cfg.position === "top");
   }
 
   /** All tiers on one side (below or above the plot). */
@@ -61,7 +64,20 @@ export class NestedAxis {
     const rowH = 18;
     const leafCenter = (i: number) => scale.scale(keys[i]);
 
-    renderer.create('line', { x1: plot.x, y1: baseY, x2: plot.x + plot.width, y2: baseY, stroke: color }, g);
+    const bandHalf = scale.fullStep() / 2;
+    const bottomY = plot.y + plot.height;
+
+    renderer.create(
+      "line",
+      {
+        x1: plot.x,
+        y1: baseY,
+        x2: plot.x + plot.width,
+        y2: baseY,
+        stroke: color,
+      },
+      g,
+    );
 
     for (let level = levels - 1; level >= 0; level--) {
       const row = levels - 1 - level; // 0 = innermost
@@ -71,18 +87,56 @@ export class NestedAxis {
 
       for (const seg of segments) {
         const cx = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2;
-        renderer.text(seg.label, cx, labelY, {
-          'text-anchor': 'middle', ...FONTS.axisLabel, 'font-weight': level === 0 ? '600' : '400',
-        }, g);
+        renderer.text(
+          seg.label,
+          cx,
+          labelY,
+          {
+            "text-anchor": "middle",
+            ...FONTS.axisLabel,
+            "font-weight": level === 0 ? "600" : "400",
+          },
+          g,
+        );
       }
 
       if (level < levels - 1) {
         const bandHalf = scale.fullStep() / 2;
         for (let s = 1; s < segments.length; s++) {
           const bx = leafCenter(segments[s].startLeaf) - bandHalf;
-          renderer.create('line', { x1: bx, y1: baseY, x2: bx, y2: rowStart + dir * rowH, stroke: color, 'stroke-width': 1 }, g);
+          renderer.create(
+            "line",
+            {
+              x1: bx,
+              y1: baseY,
+              x2: bx,
+              y2: rowStart + dir * rowH,
+              stroke: color,
+              "stroke-width": 1,
+            },
+            g,
+          );
         }
       }
+    }
+
+    // Full-height separators between the top-level groups.
+    const topExtent = plot.y;
+    const outer = this.segmentsForLevel(leaves, 0);
+    for (let s = 1; s < outer.length; s++) {
+      const bx = leafCenter(outer[s].startLeaf) - bandHalf;
+      renderer.create(
+        "line",
+        {
+          x1: bx,
+          y1: topExtent,
+          x2: bx,
+          y2: bottomY + LAYOUT.tickLength + 20,
+          stroke: color,
+          "stroke-width": 1,
+        },
+        g,
+      );
     }
   }
 
@@ -101,12 +155,29 @@ export class NestedAxis {
     const bottomY = plot.y + plot.height;
 
     // Bottom axis line + innermost dimension labels.
-    renderer.create('line', { x1: plot.x, y1: bottomY, x2: plot.x + plot.width, y2: bottomY, stroke: color }, g);
+    renderer.create(
+      "line",
+      {
+        x1: plot.x,
+        y1: bottomY,
+        x2: plot.x + plot.width,
+        y2: bottomY,
+        stroke: color,
+      },
+      g,
+    );
     for (const seg of this.segmentsForLevel(leaves, levels - 1)) {
       const cx = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2;
-      renderer.text(seg.label, cx, bottomY + LAYOUT.tickLength + 12, {
-        'text-anchor': 'middle', ...FONTS.axisLabel,
-      }, g);
+      renderer.text(
+        seg.label,
+        cx,
+        bottomY + LAYOUT.tickLength + 12,
+        {
+          "text-anchor": "middle",
+          ...FONTS.axisLabel,
+        },
+        g,
+      );
     }
 
     // Outer grouping dimensions on top (outermost furthest up).
@@ -115,9 +186,17 @@ export class NestedAxis {
       const labelY = plot.y - LAYOUT.tickLength - rowFromTop * rowH - 4;
       for (const seg of this.segmentsForLevel(leaves, level)) {
         const cx = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2;
-        renderer.text(seg.label, cx, labelY, {
-          'text-anchor': 'middle', ...FONTS.axisLabel, 'font-weight': level === 0 ? '600' : '400',
-        }, g);
+        renderer.text(
+          seg.label,
+          cx,
+          labelY,
+          {
+            "text-anchor": "middle",
+            ...FONTS.axisLabel,
+            "font-weight": level === 0 ? "600" : "400",
+          },
+          g,
+        );
       }
     }
 
@@ -126,18 +205,37 @@ export class NestedAxis {
     const outer = this.segmentsForLevel(leaves, 0);
     for (let s = 1; s < outer.length; s++) {
       const bx = leafCenter(outer[s].startLeaf) - bandHalf;
-      renderer.create('line', { x1: bx, y1: topExtent, x2: bx, y2: bottomY, stroke: color, 'stroke-width': 1 }, g);
+      renderer.create(
+        "line",
+        {
+          x1: bx,
+          y1: topExtent,
+          x2: bx,
+          y2: bottomY + LAYOUT.tickLength + 20,
+          stroke: color,
+          "stroke-width": 1,
+        },
+        g,
+      );
     }
   }
 
   /** Contiguous runs of leaves sharing the same prefix up to `level`. */
   private segmentsForLevel(leaves: string[][], level: number): Segment[] {
     const segments: Segment[] = [];
-    const prefixKey = (leaf: string[]) => leaf.slice(0, level + 1).join('\u0000');
+    const prefixKey = (leaf: string[]) =>
+      leaf.slice(0, level + 1).join("\u0000");
     let start = 0;
     for (let i = 1; i <= leaves.length; i++) {
-      if (i === leaves.length || prefixKey(leaves[i]) !== prefixKey(leaves[start])) {
-        segments.push({ label: leaves[start][level], startLeaf: start, endLeaf: i - 1 });
+      if (
+        i === leaves.length ||
+        prefixKey(leaves[i]) !== prefixKey(leaves[start])
+      ) {
+        segments.push({
+          label: leaves[start][level],
+          startLeaf: start,
+          endLeaf: i - 1,
+        });
         start = i;
       }
     }

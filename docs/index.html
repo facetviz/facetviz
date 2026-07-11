@@ -17,7 +17,6 @@
       <a href="./" data-page="guide">Guide</a>
       <a href="./examples.html" data-page="examples">Examples</a>
       <a href="./api.html" data-page="api">API</a>
-      <a href="./playground.html" data-page="playground">Playground</a>
     </nav>
     <div class="spacer"></div>
     <a class="btn primary" href="./playground.html">▶ Playground</a>
@@ -122,8 +121,8 @@ new JChart('#container', {
 
       <section id="chart-types">
         <h2>Chart types</h2>
-        <p>Set <code>chart.type</code> or a per-series <code>type</code>. See them all on the <a href="./examples.html">examples page</a>.</p>
-        <div class="chips" id="type-chips"></div>
+        <p>Set <code>chart.type</code> or a per-series <code>type</code>. Each links to a live example that uses it.</p>
+        <div id="type-links"></div>
       </section>
 
       <section id="formatting">
@@ -143,6 +142,7 @@ series: [{
 
   <script type="module">
     import { JChart, renderChart, pretty, highlight, initChrome, scrollspy } from './site.js';
+    import { TYPE_TO_EXAMPLE } from './examples-data.js';
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
     const R = (el, cfg) => renderChart(JChart, el, cfg);
 
@@ -177,10 +177,27 @@ series: [{
       R(chart, cfg);
     });
 
-    const types = ['column','bar','line','spline','step','area','areaspline','arearange','areasplinerange','columnrange',
-      'pie','donut','radialbar','gauge','scatter','jitter','bubble','dumbbell','boxplot','candlestick','errorbar','waterfall',
-      'histogram','heatmap','calendar','bullet','funnel','treegraph','sunburst','sankey','radar','marimekko','gantt','timeline','butterfly'];
-    document.getElementById('type-chips').innerHTML = types.map((t) => `<span class="chip">${t}</span>`).join('');
+    // Chart types grouped into sections; each links to a live example that uses it.
+    const TYPE_CATEGORIES = {
+      'Bars & columns': ['column', 'bar', 'waterfall', 'histogram', 'bullet', 'marimekko'],
+      'Lines & areas': ['line', 'spline', 'step', 'area', 'areaspline', 'arearange', 'areasplinerange', 'columnrange'],
+      'Circular': ['pie', 'donut', 'radialbar', 'gauge', 'sunburst'],
+      'Points': ['scatter', 'jitter', 'bubble', 'dumbbell', 'timeline'],
+      'Statistical': ['boxplot', 'candlestick', 'errorbar'],
+      'Grid & hierarchy': ['heatmap', 'calendar', 'funnel', 'treegraph', 'sankey', 'gantt', 'radar', 'butterfly'],
+    };
+    const typeLinks = document.getElementById('type-links');
+    for (const [cat, list] of Object.entries(TYPE_CATEGORIES)) {
+      const lbl = document.createElement('div'); lbl.className = 'type-cat'; lbl.textContent = cat; typeLinks.appendChild(lbl);
+      const row = document.createElement('div'); row.className = 'type-links';
+      row.innerHTML = list.map((t) => {
+        const anchor = TYPE_TO_EXAMPLE[t];
+        return anchor
+          ? `<a href="./examples.html#${anchor}" title="See the ${t} example">${t}</a>`
+          : `<a href="./examples.html" aria-disabled="true">${t}</a>`;
+      }).join('');
+      typeLinks.appendChild(row);
+    }
 
     highlight(document);
     initChrome('guide');

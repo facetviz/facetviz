@@ -85,7 +85,6 @@
       <a href="./">Guide</a>
       <a href="./examples.html">Examples</a>
       <a href="./api.html">API</a>
-      <a href="./playground.html" class="active">Playground</a>
     </nav>
     <div class="spacer"></div>
     <label class="field">Example
@@ -501,8 +500,22 @@
     let rs;
     window.addEventListener('resize', () => { clearTimeout(rs); rs = setTimeout(render, 200); });
 
-    // Initial load.
-    loadPreset(Object.keys(PRESETS)[0]);
+    // Initial load: a config handed over from the Examples page, else preset #1.
+    function loadHandoff() {
+      try {
+        const raw = sessionStorage.getItem('jchart:playground');
+        if (!raw) return false;
+        sessionStorage.removeItem('jchart:playground');
+        const { title, cfg } = JSON.parse(raw);
+        editor.value = JSON.stringify(cfg, null, 2);
+        // Reflect it in the dropdown if it matches a preset name.
+        if (title && [...presetSel.options].some((o) => o.value === title)) presetSel.value = title;
+        else presetSel.selectedIndex = -1;
+        render();
+        return true;
+      } catch (e) { return false; }
+    }
+    if (!loadHandoff()) loadPreset(Object.keys(PRESETS)[0]);
   </script>
 </body>
 </html>
