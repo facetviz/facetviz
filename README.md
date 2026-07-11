@@ -5,9 +5,12 @@ A modular, dependency-free **TypeScript + SVG** charting library with
 range of chart types. Designed to be read and maintained by hand — every chart
 type, scale, and helper is a small, self-contained module.
 
-🌐 **Documentation website** — the [`docs/`](docs/) folder is a self-contained GitHub Pages site
-(tutorial, live examples, chart-type gallery, full API reference, and an interactive playground).
-Once Pages is enabled it is served at `https://<user>.github.io/<repo>/`.
+🌐 **Documentation website** — the [`docs/`](docs/) folder is a self-contained GitHub Pages site with
+a shared top nav across four pages: **Guide** ([index.html](docs/index.html) — tutorial + concepts),
+**Examples** ([examples.html](docs/examples.html) — every chart type, chart on the left with a
+click-to-reveal config on the right), **API** ([api.html](docs/api.html) — the reference with a
+section-nav sidebar), and the interactive **Playground**. Once Pages is enabled it is served at
+`https://<user>.github.io/<repo>/`.
 
 📖 **[Full API reference → docs/API.md](docs/API.md)** — every option key and value documented.
 

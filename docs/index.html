@@ -4,157 +4,70 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>JChart — a modular TypeScript + SVG charting library</title>
-  <meta name="description" content="JChart is a dependency-free TypeScript + SVG charting library with a declarative config API, small-multiples trellising, and 30+ chart types." />
-  <!-- Vendored locally (no CDN) — see docs/lib/ -->
+  <meta name="description" content="JChart is a dependency-free TypeScript + SVG charting library with a declarative config API, small-multiples trellising, and 35+ chart types." />
   <link rel="stylesheet" href="./lib/hljs-github-dark.css" />
+  <link rel="stylesheet" href="./style.css" />
   <script src="./lib/highlight.min.js"></script>
-  <style>
-    :root {
-      --bg: #ffffff; --sidebar: #0f1524; --sidebar-fg: #cbd5e1; --sidebar-active: #60a5fa;
-      --text: #1f2430; --muted: #5b6470; --border: #e6e9f0; --accent: #2563eb;
-      --card: #ffffff; --code-bg: #0d1117; --chip: #eef2ff; --chip-fg: #3730a3;
-      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-      --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root { --bg:#0b0f17; --text:#e6edf7; --muted:#94a3b8; --border:#1f2937; --card:#111826; --chip:#1e293b; --chip-fg:#93c5fd; }
-    }
-    * { box-sizing: border-box; }
-    html { scroll-behavior: smooth; scroll-padding-top: 20px; }
-    body { margin: 0; font-family: var(--sans); color: var(--text); background: var(--bg); line-height: 1.6; }
-    a { color: var(--accent); }
-
-    .layout { display: grid; grid-template-columns: 250px 1fr; min-height: 100vh; }
-
-    /* Sidebar */
-    aside {
-      position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
-      background: var(--sidebar); color: var(--sidebar-fg); padding: 22px 18px;
-    }
-    aside .brand { font-size: 22px; font-weight: 800; color: #fff; letter-spacing: -0.5px; margin-bottom: 2px; }
-    aside .tag { font-size: 12px; color: #7c8aa5; margin-bottom: 20px; }
-    aside nav a { display: block; color: var(--sidebar-fg); text-decoration: none; padding: 6px 10px; border-radius: 7px; font-size: 14px; margin: 1px 0; }
-    aside nav a:hover { background: rgba(255,255,255,0.06); color: #fff; }
-    aside nav a.active { background: rgba(96,165,250,0.15); color: var(--sidebar-active); font-weight: 600; }
-    aside nav .group { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: #64748b; margin: 18px 0 4px 10px; }
-    aside .cta { display: block; margin-top: 18px; text-align: center; background: var(--accent); color: #fff; padding: 9px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; }
-    aside .ext { display:flex; gap:10px; margin-top:14px; padding-left:10px; }
-    aside .ext a { font-size: 12px; color: #7c8aa5; }
-
-    /* Content */
-    main { max-width: 940px; padding: 40px 48px 120px; }
-    section { padding-top: 24px; margin-bottom: 24px; }
-    h1 { font-size: 34px; letter-spacing: -0.8px; margin: 0 0 8px; }
-    h2 { font-size: 25px; letter-spacing: -0.4px; margin: 40px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
-    h3 { font-size: 18px; margin: 26px 0 8px; }
-    p { color: var(--text); }
-    .lead { font-size: 18px; color: var(--muted); }
-    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
-    .chip { background: var(--chip); color: var(--chip-fg); font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; }
-    .btn-row { display: flex; gap: 12px; flex-wrap: wrap; margin: 22px 0 8px; }
-    .btn { display: inline-block; padding: 10px 18px; border-radius: 9px; text-decoration: none; font-weight: 600; font-size: 15px; }
-    .btn.primary { background: var(--accent); color: #fff; }
-    .btn.ghost { border: 1px solid var(--border); color: var(--text); }
-
-    .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 14px; margin: 24px 0; }
-    .feature { border: 1px solid var(--border); border-radius: 12px; padding: 16px; background: var(--card); }
-    .feature h4 { margin: 0 0 6px; font-size: 15px; }
-    .feature p { margin: 0; font-size: 13px; color: var(--muted); }
-
-    pre { background: var(--code-bg); border-radius: 10px; padding: 16px 18px; overflow-x: auto; margin: 14px 0; font-size: 13px; line-height: 1.5; }
-    pre code { font-family: var(--mono); background: none; padding: 0; color: #e6edf7; }
-    :not(pre) > code { font-family: var(--mono); font-size: 0.88em; background: var(--chip); color: var(--chip-fg); padding: 1px 6px; border-radius: 5px; }
-
-    /* Example gallery */
-    .example { border: 1px solid var(--border); border-radius: 14px; overflow: hidden; margin: 20px 0; background: var(--card); }
-    .example .head { padding: 12px 16px; border-bottom: 1px solid var(--border); }
-    .example .head h4 { margin: 0; font-size: 15px; }
-    .example .head p { margin: 3px 0 0; font-size: 13px; color: var(--muted); }
-    .example .chart { padding: 14px; }
-    .example details { border-top: 1px solid var(--border); }
-    .example summary { cursor: pointer; padding: 9px 16px; font-size: 13px; color: var(--muted); user-select: none; }
-    .example summary:hover { color: var(--text); }
-    .example pre { margin: 0; border-radius: 0; }
-
-    /* API reference (rendered markdown) */
-    #api-content table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 13px; display: block; overflow-x: auto; }
-    #api-content th, #api-content td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; vertical-align: top; }
-    #api-content th { background: var(--chip); }
-    #api-content h2 { margin-top: 34px; }
-    #api-content h3 { margin-top: 22px; }
-    #api-content code { font-family: var(--mono); font-size: 0.85em; background: var(--chip); color: var(--chip-fg); padding: 1px 5px; border-radius: 4px; }
-    #api-content pre code { background: none; color: #e6edf7; }
-    .api-loading { color: var(--muted); }
-
-    .note { border-left: 3px solid var(--accent); background: var(--chip); padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 16px 0; font-size: 14px; }
-
-    /* Mobile */
-    .menu-btn { display: none; }
-    @media (max-width: 880px) {
-      .layout { grid-template-columns: 1fr; }
-      aside { position: fixed; z-index: 30; width: 250px; left: 0; top: 0; transform: translateX(-100%); transition: transform 0.2s; }
-      aside.open { transform: none; }
-      main { padding: 64px 20px 100px; }
-      .menu-btn { display: flex; position: fixed; top: 12px; left: 12px; z-index: 40; background: var(--sidebar); color: #fff; border: 0; border-radius: 8px; width: 40px; height: 40px; font-size: 20px; align-items: center; justify-content: center; cursor: pointer; }
-    }
-  </style>
 </head>
 <body>
-  <button class="menu-btn" id="menuBtn" aria-label="Menu">☰</button>
+  <header class="topbar">
+    <button class="btn menu-btn" id="menuBtn" aria-label="Menu">☰</button>
+    <a class="brand" href="./"><span class="mark">J</span> JChart</a>
+    <nav class="topnav">
+      <a href="./" data-page="guide">Guide</a>
+      <a href="./examples.html" data-page="examples">Examples</a>
+      <a href="./api.html" data-page="api">API</a>
+      <a href="./playground.html" data-page="playground">Playground</a>
+    </nav>
+    <div class="spacer"></div>
+    <a class="btn primary" href="./playground.html">▶ Playground</a>
+  </header>
+
   <div class="layout">
-    <aside id="sidebar">
-      <div class="brand">JChart</div>
-      <div class="tag">TypeScript + SVG charts</div>
-      <a class="cta" href="./playground.html">▶ Open Playground</a>
-      <nav id="nav">
-        <div class="group">Guide</div>
-        <a href="#home">Overview</a>
+    <aside class="side" id="side">
+      <div class="grouplbl">Guide</div>
+      <nav>
+        <a href="#overview">Overview</a>
         <a href="#install">Installation</a>
         <a href="#tutorial">Tutorial</a>
         <a href="#concepts">Core concepts</a>
-        <div class="group">Reference</div>
-        <a href="#examples">Examples</a>
         <a href="#chart-types">Chart types</a>
         <a href="#formatting">Formatting</a>
-        <a href="#api">API reference</a>
       </nav>
-      <div class="ext">
-        <a href="https://github.com/" target="_blank" rel="noopener">GitHub</a>
-        <a href="./API.md" target="_blank">API.md</a>
-      </div>
+      <div class="grouplbl">More</div>
+      <nav>
+        <a href="./examples.html">Examples →</a>
+        <a href="./api.html">API reference →</a>
+      </nav>
     </aside>
 
-    <main>
-      <!-- HOME -->
-      <section id="home">
+    <main class="content">
+      <section id="overview">
         <h1>JChart</h1>
         <p class="lead">A modular, dependency-free <strong>TypeScript + SVG</strong> charting library with a
-          <strong>a declarative config API</strong>, small-multiples trellising, and 30+ chart types — built to be read and
+          declarative config API, small-multiples trellising, and 35+ chart types — built to be read and
           maintained by hand.</p>
         <div class="chips">
           <span class="chip">Zero dependencies</span>
           <span class="chip">Declarative config</span>
-          <span class="chip">Trellis layouts</span>
+          <span class="chip">Trellis / nested axes</span>
           <span class="chip">Themeable</span>
-          <span class="chip">30+ chart types</span>
+          <span class="chip">Canvas boost (100k+ points)</span>
         </div>
         <div class="btn-row">
           <a class="btn primary" href="#tutorial">Get started</a>
-          <a class="btn ghost" href="./playground.html">Try the playground</a>
-          <a class="btn ghost" href="#examples">Browse examples</a>
+          <a class="btn" href="./examples.html">Browse examples</a>
+          <a class="btn" href="./playground.html">Open playground</a>
         </div>
-
-        <div class="chart" id="hero-chart" style="margin-top:8px;border:1px solid var(--border);border-radius:14px;padding:14px;background:var(--card)"></div>
-
+        <div class="panel" style="padding:14px;margin-top:8px"><div id="hero-chart"></div></div>
         <div class="features">
           <div class="feature"><h4>Familiar API</h4><p>A declarative config object: <code>chart</code>, <code>series</code>, <code>xAxis</code>, <code>tooltip</code>, <code>legend</code>.</p></div>
           <div class="feature"><h4>Nested layouts</h4><p>Hierarchical axes, small-multiple trellis tables, dual axes, and combo charts.</p></div>
           <div class="feature"><h4>Rich formatting</h4><p>Format specs like <code>{y:$,.1s}</code>, percentages, SI units and dates in labels and tooltips.</p></div>
-          <div class="feature"><h4>Themeable</h4><p>Built-in light / dark / pastel / high-contrast themes, or bring your own.</p></div>
+          <div class="feature"><h4>Fast at scale</h4><p>Boost mode renders 100k+ points to a canvas overlay in ~100&nbsp;ms.</p></div>
         </div>
       </section>
 
-      <!-- INSTALL -->
       <section id="install">
         <h2>Installation</h2>
         <p>Add the package and import the <code>JChart</code> class:</p>
@@ -167,7 +80,7 @@ new JChart('#container', {
   xAxis: { categories: ['A', 'B', 'C'] },
   series: [{ name: 'Demo', data: [3, 6, 4] }],
 });</code></pre>
-        <p>Or drop the pre-built ESM bundle straight into a page (no build step):</p>
+        <p>Or drop the pre-built ESM bundle into a page (no build step):</p>
         <pre><code class="language-html">&lt;script type="module"&gt;
   import { JChart } from './lib/jchart.js';
   new JChart(document.getElementById('chart'), { /* options */ });
@@ -175,63 +88,47 @@ new JChart('#container', {
         <div class="note">The first argument is a DOM element or a CSS selector. The second is the options object — only <code>series</code> is required.</div>
       </section>
 
-      <!-- TUTORIAL -->
       <section id="tutorial">
         <h2>Tutorial</h2>
-        <p>Let's build a chart step by step. Every example below is live — the chart you see is rendered by the code shown.</p>
-
+        <p>Build a chart step by step. Every example is live — the chart you see is rendered by the code shown.</p>
         <h3>1. A minimal chart</h3>
-        <p>Pass a container and an options object with a <code>series</code> array. Numbers in <code>data</code> map to the category (or index) on the x-axis.</p>
+        <p>Pass a container and a <code>series</code> array. Numbers in <code>data</code> map to the category (or index) on the x-axis.</p>
         <div class="tut" data-tut="0"></div>
-
-        <h3>2. Add a title, axes and multiple series</h3>
-        <p>Series without stacking are automatically drawn side-by-side (grouped). Give each axis a <code>title</code>.</p>
+        <h3>2. Titles, axes and multiple series</h3>
+        <p>Series without stacking are drawn side-by-side (grouped). Give each axis a <code>title</code>.</p>
         <div class="tut" data-tut="1"></div>
-
         <h3>3. Stack, and switch the chart type</h3>
         <p>Set <code>stacking: 'normal'</code> (or <code>'percent'</code>) and change <code>chart.type</code> — the same data works across types.</p>
         <div class="tut" data-tut="2"></div>
-
         <h3>4. Tooltips, labels and events</h3>
         <p>Enable a shared tooltip, add formatted data labels, and wire a click handler.</p>
         <div class="tut" data-tut="3"></div>
       </section>
 
-      <!-- CONCEPTS -->
       <section id="concepts">
         <h2>Core concepts</h2>
         <p>An options object has a handful of top-level keys:</p>
         <ul>
-          <li><code>chart</code> — type, size, background, inversion, theme, events.</li>
+          <li><code>chart</code> — type, size, background, inversion, theme, animation, zoom, boost, events.</li>
           <li><code>series[]</code> — one entry per data series; each may override <code>type</code> for combo charts.</li>
-          <li><code>xAxis</code> / <code>yAxis</code> — categories or value scales, titles, grid, plot lines/bands, rotation, <code>opposite</code> side, and nested <code>dimensions</code>.</li>
+          <li><code>xAxis</code> / <code>yAxis</code> — categories or value scales, titles, grid, plot lines/bands, rotation, <code>opposite</code> side, <code>datetime</code>, and nested <code>dimensions</code>.</li>
           <li><code>tooltip</code> — hover content (per-point or <code>shared</code>), with token <code>format</code> strings.</li>
           <li><code>legend</code> — placement (top / bottom / left / right) and layout.</li>
           <li><code>plotOptions</code> — defaults applied to all series or per type.</li>
           <li><code>trellis</code> — split into a grid of small multiples by data dimensions.</li>
         </ul>
-        <p>See the full <a href="#api">API reference</a> for every key and value.</p>
+        <p>See the full <a href="./api.html">API reference</a> for every key and value.</p>
       </section>
 
-      <!-- EXAMPLES -->
-      <section id="examples">
-        <h2>Examples</h2>
-        <p>A gallery of live charts. Expand <em>“Show config”</em> under each to see the exact options, or open any in the
-          <a href="./playground.html">playground</a> to tweak it.</p>
-        <div id="gallery"></div>
-      </section>
-
-      <!-- CHART TYPES -->
       <section id="chart-types">
         <h2>Chart types</h2>
-        <p>JChart ships with a broad set of types — set <code>chart.type</code> or a per-series <code>type</code>:</p>
+        <p>Set <code>chart.type</code> or a per-series <code>type</code>. See them all on the <a href="./examples.html">examples page</a>.</p>
         <div class="chips" id="type-chips"></div>
       </section>
 
-      <!-- FORMATTING -->
       <section id="formatting">
         <h2>Formatting</h2>
-        <p>Data labels, tooltips and axis labels share one token engine. A token is <code>{path}</code> or <code>{path:spec}</code>.</p>
+        <p>Data labels, tooltips and axis labels share one token engine — a token is <code>{path}</code> or <code>{path:spec}</code>.</p>
         <pre><code class="language-js">yAxis:  { labels: { format: '${value:,.0f}' } },            // $1,000,000
 series: [{
   dataLabels: { enabled: true, format: '{y:$,.1s} ({percentage:.0f}%)' },   // $1.3M (15%)
@@ -239,188 +136,55 @@ series: [{
 }]</code></pre>
         <p><strong>Number specs</strong> <code>[prefix][,][.decimals][type][suffix]</code> — types: <code>f</code> fixed ·
           <code>%</code> percent · <code>s</code> SI (k/M/B) · <code>e</code> exponential · <code>d</code> integer.
-          <strong>Dates</strong>: <code>{x:%Y-%m-%d}</code>. Full details in the <a href="#api">API reference</a>.</p>
-      </section>
-
-      <!-- API -->
-      <section id="api">
-        <h2>API reference</h2>
-        <p class="api-loading" id="api-status">Loading reference…</p>
-        <div id="api-content"></div>
+          <strong>Dates</strong>: <code>{x:%Y-%m-%d}</code>. Full details in the <a href="./api.html#text--label-formatting">API reference</a>.</p>
       </section>
     </main>
   </div>
 
   <script type="module">
-    import { JChart } from './lib/jchart.js';
-
+    import { JChart, renderChart, pretty, highlight, initChrome, scrollspy } from './site.js';
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-    const render = (el, cfg) => { el.innerHTML = ''; try { new JChart(el, cfg); } catch (e) { el.innerHTML = '<p style="color:#e5484d">' + e.message + '</p>'; } };
+    const R = (el, cfg) => renderChart(JChart, el, cfg);
 
-    // Hero
-    render(document.getElementById('hero-chart'), {
-      chart: { type: 'column', height: 300 },
-      title: { text: 'Quarterly revenue' },
+    R(document.getElementById('hero-chart'), {
+      chart: { type: 'column', height: 300 }, title: { text: 'Quarterly revenue' },
       xAxis: { categories: ['Q1', 'Q2', 'Q3', 'Q4'] },
       yAxis: { title: { text: 'USD' }, labels: { format: '${value:,.0f}' } },
       tooltip: { shared: true },
       series: [
         { name: 'Product A', data: [1.2e6, 1.5e6, 1.9e6, 2.3e6] },
-        { name: 'Product B', data: [0.8e6, 1.1e6, 1.0e6, 1.6e6], type: 'spline' },
+        { name: 'Product B', type: 'spline', data: [0.8e6, 1.1e6, 1.0e6, 1.6e6] },
       ],
     });
 
-    // Tutorial steps
     const tutorials = [
-      {
-        chart: { type: 'column', height: 260 },
-        series: [{ name: 'Visitors', data: [3, 6, 4, 8, 5] }],
-      },
-      {
-        chart: { type: 'column', height: 280 },
-        title: { text: 'Monthly sales' },
-        xAxis: { categories: months }, yAxis: { title: { text: 'Units' } },
-        series: [
-          { name: 'North', data: [5, 3, 4, 7, 2, 6] },
-          { name: 'South', data: [2, 4, 6, 3, 5, 4] },
-        ],
-      },
-      {
-        chart: { type: 'area', height: 280 },
-        title: { text: '100% stacked area' },
-        xAxis: { categories: months },
-        plotOptions: { area: { stacking: 'percent' } },
-        series: [
-          { name: 'North', data: [5, 3, 4, 7, 2, 6] },
-          { name: 'South', data: [2, 4, 6, 3, 5, 4] },
-        ],
-      },
-      {
-        chart: { type: 'column', height: 280 },
-        title: { text: 'With tooltip, labels & click' },
-        xAxis: { categories: months }, yAxis: { title: { text: 'Units' } },
-        tooltip: { shared: true },
-        series: [
-          { name: 'North', dataLabels: { enabled: true, format: '{y}' }, data: [5, 3, 4, 7, 2, 6] },
-          { name: 'South', data: [2, 4, 6, 3, 5, 4] },
-        ],
-        seriesEvents: { click: (e) => alert(`${e.seriesName} @ ${e.x} = ${e.y}`) },
-      },
+      { chart: { type: 'column', height: 260 }, series: [{ name: 'Visitors', data: [3, 6, 4, 8, 5] }] },
+      { chart: { type: 'column', height: 280 }, title: { text: 'Monthly sales' }, xAxis: { categories: months }, yAxis: { title: { text: 'Units' } },
+        series: [{ name: 'North', data: [5, 3, 4, 7, 2, 6] }, { name: 'South', data: [2, 4, 6, 3, 5, 4] }] },
+      { chart: { type: 'area', height: 280 }, title: { text: '100% stacked area' }, xAxis: { categories: months }, plotOptions: { area: { stacking: 'percent' } },
+        series: [{ name: 'North', data: [5, 3, 4, 7, 2, 6] }, { name: 'South', data: [2, 4, 6, 3, 5, 4] }] },
+      { chart: { type: 'column', height: 280 }, title: { text: 'With tooltip, labels & click' }, xAxis: { categories: months }, yAxis: { title: { text: 'Units' } }, tooltip: { shared: true },
+        series: [{ name: 'North', dataLabels: { enabled: true, format: '{y}' }, data: [5, 3, 4, 7, 2, 6] }, { name: 'South', data: [2, 4, 6, 3, 5, 4] }],
+        seriesEvents: { click: (e) => alert(`${e.seriesName} @ ${e.x} = ${e.y}`) } },
     ];
     document.querySelectorAll('.tut').forEach((box) => {
       const cfg = tutorials[+box.dataset.tut];
       const chart = document.createElement('div');
-      chart.style.cssText = 'border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--card)';
-      const pre = document.createElement('pre');
-      const code = document.createElement('code');
-      code.className = 'language-js';
-      code.textContent = 'new JChart(el, ' + pretty(cfg) + ');';
-      pre.appendChild(code);
-      box.append(chart, pre);
-      render(chart, cfg);
+      chart.className = 'panel'; chart.style.padding = '12px';
+      const pre = document.createElement('pre'); const code = document.createElement('code');
+      code.className = 'language-js'; code.textContent = 'new JChart(el, ' + pretty(cfg) + ');';
+      pre.appendChild(code); box.append(chart, pre);
+      R(chart, cfg);
     });
 
-    // Example gallery
-    const examples = [
-      { title: 'Grouped column', desc: 'Two series side-by-side.', cfg: {
-        chart: { type: 'column', height: 280 }, xAxis: { categories: months },
-        series: [{ name: 'A', data: [5,3,4,7,2,6] }, { name: 'B', data: [2,4,6,3,5,4] }] } },
-      { title: 'Line family', desc: 'line, spline and step in one chart.', cfg: {
-        chart: { height: 280 }, xAxis: { categories: months }, yAxis: { title: { text: 'Value' } },
-        series: [
-          { type: 'line', name: 'Line', marker: { enabled: true }, data: [3,5,4,7,6,8] },
-          { type: 'spline', name: 'Spline', data: [2,4,3,6,5,7] },
-          { type: 'step', name: 'Step', data: [1,3,2,5,4,6] } ] } },
-      { title: 'Pie with labels', desc: 'Leader lines to each slice.', cfg: {
-        chart: { type: 'pie', height: 300 },
-        series: [{ name: 'Share', dataLabels: { enabled: true }, data: [
-          { name: 'Chrome', y: 63 }, { name: 'Safari', y: 19 }, { name: 'Edge', y: 5 }, { name: 'Firefox', y: 4 }, { name: 'Other', y: 9 } ] }] } },
-      { title: 'Nested x-axis', desc: 'Two dimensions on the x-axis, headers on top.', cfg: {
-        chart: { type: 'column', height: 300 }, title: { text: 'Sales by Region ▸ Category' },
-        xAxis: { dimensions: ['Region', 'Category'], aggregate: 'sum', opposite: true },
-        yAxis: { title: { text: 'Sum of Sales' } },
-        series: [{ name: 'Sales', data: [
-          { Region:'East', Category:'Tech', y:25 }, { Region:'East', Category:'Furniture', y:14 }, { Region:'East', Category:'Office', y:27 },
-          { Region:'West', Category:'Tech', y:25 }, { Region:'West', Category:'Furniture', y:30 }, { Region:'West', Category:'Office', y:27 } ] }] } },
-      { title: 'Gauge', desc: 'Radial dial with coloured bands.', cfg: {
-        chart: { type: 'gauge', height: 300 }, title: { text: 'Speed' },
-        series: [{ name: 'km/h', min: 0, max: 120, data: [{ name: 'km/h', y: 82 }], bands: [
-          { from: 0, to: 60, color: '#26a69a' }, { from: 60, to: 90, color: '#ffca28' }, { from: 90, to: 120, color: '#ef5350' } ] }] } },
-      { title: 'Heatmap', desc: 'Category × category grid, coloured by value.', cfg: {
-        chart: { type: 'heatmap', height: 300 }, title: { text: 'Activity' },
-        series: [{ name: 'Activity', color: '#2caffe', data: [
-          { x:'Mon', y:'AM', value:74 }, { x:'Mon', y:'PM', value:40 }, { x:'Tue', y:'AM', value:38 }, { x:'Tue', y:'PM', value:55 },
-          { x:'Wed', y:'AM', value:35 }, { x:'Wed', y:'PM', value:89 }, { x:'Thu', y:'AM', value:53 }, { x:'Thu', y:'PM', value:27 } ] }] } },
-      { title: 'Waterfall', desc: 'Running cumulative with a sum bar.', cfg: {
-        chart: { type: 'waterfall', height: 300 }, title: { text: 'Cash flow' },
-        xAxis: { categories: ['Start','Sales','Refunds','Services','Net'] }, yAxis: { title: { text: '$k' } },
-        series: [{ name: 'Flow', data: [
-          { x:'Start', y:120 }, { x:'Sales', y:80 }, { x:'Refunds', y:-30 }, { x:'Services', y:45 }, { x:'Net', isSum:true } ] }] } },
-      { title: 'Dark theme', desc: "theme: 'dark'.", cfg: {
-        chart: { type: 'column', height: 280 }, theme: 'dark', title: { text: 'Sales' },
-        xAxis: { categories: months }, yAxis: { title: { text: 'Units' } },
-        series: [{ name: 'North', data: [5,3,4,7,2,6] }, { name: 'South', data: [2,4,6,3,5,4] }] } },
-    ];
-    const gallery = document.getElementById('gallery');
-    for (const ex of examples) {
-      const wrap = document.createElement('div'); wrap.className = 'example';
-      wrap.innerHTML = `<div class="head"><h4>${ex.title}</h4><p>${ex.desc}</p></div>
-        <div class="chart"></div>
-        <details><summary>Show config</summary><pre><code class="language-js"></code></pre></details>`;
-      gallery.appendChild(wrap);
-      wrap.querySelector('code').textContent = pretty(ex.cfg);
-      render(wrap.querySelector('.chart'), ex.cfg);
-    }
-
-    // Chart-type chips
     const types = ['column','bar','line','spline','step','area','areaspline','arearange','areasplinerange','columnrange',
       'pie','donut','radialbar','gauge','scatter','jitter','bubble','dumbbell','boxplot','candlestick','errorbar','waterfall',
       'histogram','heatmap','calendar','bullet','funnel','treegraph','sunburst','sankey','radar','marimekko','gantt','timeline','butterfly'];
     document.getElementById('type-chips').innerHTML = types.map((t) => `<span class="chip">${t}</span>`).join('');
 
-    // Pretty-print a config as JS-ish source (unquoted keys, functions elided)
-    function pretty(obj) {
-      const json = JSON.stringify(obj, (k, v) => (typeof v === 'function' ? '__FN__' : v), 2);
-      return json
-        .replace(/"([a-zA-Z_$][\w$]*)":/g, '$1:')     // unquote simple keys
-        .replace(/"__FN__"/g, '(e) => { /* … */ }');
-    }
-
-    // Syntax highlighting (highlight.js is vendored locally and sets window.hljs)
-    const highlight = (root) => {
-      if (window.hljs) root.querySelectorAll('pre code').forEach((b) => window.hljs.highlightElement(b));
-    };
     highlight(document);
-
-    // Render API.md into the API section using the locally-vendored marked
-    (async () => {
-      try {
-        const [{ marked }, md] = await Promise.all([
-          import('./lib/marked.esm.js'),
-          fetch('./API.md').then((r) => { if (!r.ok) throw new Error('API.md not found'); return r.text(); }),
-        ]);
-        const el = document.getElementById('api-content');
-        el.innerHTML = marked.parse(md);
-        document.getElementById('api-status').style.display = 'none';
-        highlight(el);
-      } catch (e) {
-        document.getElementById('api-status').innerHTML =
-          'Could not load the reference inline. <a href="./API.md">Open API.md →</a>';
-      }
-    })();
-
-    // Sidebar: mobile toggle + scrollspy
-    const sidebar = document.getElementById('sidebar');
-    document.getElementById('menuBtn').addEventListener('click', () => sidebar.classList.toggle('open'));
-    const links = [...document.querySelectorAll('#nav a')];
-    const sections = links.map((a) => document.querySelector(a.getAttribute('href'))).filter(Boolean);
-    const spy = () => {
-      let cur = sections[0];
-      for (const s of sections) { if (s.getBoundingClientRect().top <= 90) cur = s; }
-      links.forEach((a) => a.classList.toggle('active', a.getAttribute('href') === '#' + cur.id));
-    };
-    window.addEventListener('scroll', spy, { passive: true }); spy();
-    document.querySelectorAll('#nav a').forEach((a) => a.addEventListener('click', () => sidebar.classList.remove('open')));
+    initChrome('guide');
+    scrollspy('#side');
   </script>
 </body>
 </html>

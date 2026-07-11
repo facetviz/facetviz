@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>JChart — API reference</title>
+  <link rel="stylesheet" href="./lib/hljs-github-dark.css" />
+  <link rel="stylesheet" href="./style.css" />
+  <script src="./lib/highlight.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <button class="btn menu-btn" id="menuBtn" aria-label="Menu">☰</button>
+    <a class="brand" href="./"><span class="mark">J</span> JChart</a>
+    <nav class="topnav">
+      <a href="./" data-page="guide">Guide</a>
+      <a href="./examples.html" data-page="examples">Examples</a>
+      <a href="./api.html" data-page="api">API</a>
+      <a href="./playground.html" data-page="playground">Playground</a>
+    </nav>
+    <div class="spacer"></div>
+    <a class="btn primary" href="./playground.html">▶ Playground</a>
+  </header>
+
+  <div class="layout">
+    <aside class="side" id="side">
+      <div class="grouplbl">API reference</div>
+      <nav id="api-nav"><span class="api-loading">Loading…</span></nav>
+    </aside>
+    <main class="content" style="max-width:1120px;padding-top:26px">
+      <h1>API reference</h1>
+      <p class="lead">Every configuration key, its type, default and meaning.</p>
+      <div class="panel api-panel">
+        <p class="api-loading" id="api-status">Loading reference…</p>
+        <div id="api-content"></div>
+      </div>
+    </main>
+  </div>
+
+  <script type="module">
+    import { highlight, initChrome, scrollspy } from './site.js';
+
+    const slug = (s) => s.toLowerCase().replace(/<[^>]+>/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+    (async () => {
+      try {
+        const [{ marked }, md] = await Promise.all([
+          import('./lib/marked.esm.js'),
+          fetch('./API.md').then((r) => { if (!r.ok) throw new Error('API.md not found'); return r.text(); }),
+        ]);
+        const el = document.getElementById('api-content');
+        el.innerHTML = marked.parse(md);
+        document.getElementById('api-status').style.display = 'none';
+
+        // Build the section navigation from H2 (and their H3) headings.
+        const nav = document.getElementById('api-nav');
+        nav.innerHTML = '';
+        el.querySelectorAll('h2, h3').forEach((h) => {
+          if (!h.id) h.id = slug(h.textContent);
+          if (h.tagName === 'H2') {
+            const a = document.createElement('a');
+            a.href = '#' + h.id; a.textContent = h.textContent;
+            nav.appendChild(a);
+          }
+        });
+
+        highlight(el);
+        scrollspy('#side');
+        // Deep-link support (#anchor on load).
+        if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView();
+      } catch (e) {
+        document.getElementById('api-status').innerHTML =
+          'Could not load the reference inline. <a href="./API.md">Open API.md →</a>';
+        document.getElementById('api-nav').innerHTML = '';
+      }
+    })();
+
+    initChrome('api');
+  </script>
+</body>
+</html>
