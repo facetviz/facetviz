@@ -1,9 +1,9 @@
 /**
- * FacetChart — public entry point.
+ * FacetViz — public entry point.
  *
  * @example
- * import { FacetChart } from 'facetchart';
- * const chart = new FacetChart('#container', {
+ * import { FacetViz } from 'facetviz';
+ * const chart = new FacetViz('#container', {
  *   chart: { type: 'column' },
  *   title: { text: 'Fruit consumption' },
  *   xAxis: { categories: ['Apples', 'Pears', 'Bananas'] },
@@ -12,8 +12,8 @@
  * });
  */
 
-export { FacetChart } from './core/chart.js';
-export { FacetChart as Chart } from './core/chart.js';
+export { FacetViz } from './core/chart.js';
+export { FacetViz as Chart } from './core/chart.js';
 
 // Types (public API surface).
 export type {
@@ -39,7 +39,7 @@ export type {
   SeriesTooltipOptions,
   ChartEvents,
   SeriesEvents,
-  FacetChartPointEvent,
+  FacetVizPointEvent,
 } from './core/options.js';
 
 // Theming.

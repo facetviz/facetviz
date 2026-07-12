@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { FacetChart } from '../src/index.js';
+import { FacetViz } from '../src/index.js';
 
 function container(): HTMLElement {
   const el = document.createElement('div');
@@ -8,12 +8,12 @@ function container(): HTMLElement {
   return el;
 }
 
-describe('FacetChart rendering', () => {
+describe('FacetViz rendering', () => {
   beforeEach(() => { document.body.innerHTML = ''; });
 
   it('renders an SVG for a column chart', () => {
     const el = container();
-    new FacetChart(el, { chart: { type: 'column', animation: false }, xAxis: { categories: ['A', 'B'] }, series: [{ name: 'S', data: [3, 5] }] });
+    new FacetViz(el, { chart: { type: 'column', animation: false }, xAxis: { categories: ['A', 'B'] }, series: [{ name: 'S', data: [3, 5] }] });
     const svg = el.querySelector('svg');
     expect(svg).toBeTruthy();
     expect(el.querySelectorAll('.facet-column .facet-point').length).toBe(2);
@@ -21,13 +21,13 @@ describe('FacetChart rendering', () => {
 
   it('draws one grouped bar set per series', () => {
     const el = container();
-    new FacetChart(el, { chart: { type: 'column', animation: false }, xAxis: { categories: ['A', 'B'] }, series: [{ name: 'X', data: [1, 2] }, { name: 'Y', data: [3, 4] }] });
+    new FacetViz(el, { chart: { type: 'column', animation: false }, xAxis: { categories: ['A', 'B'] }, series: [{ name: 'X', data: [1, 2] }, { name: 'Y', data: [3, 4] }] });
     expect(el.querySelectorAll('.facet-column .facet-point').length).toBe(4);
   });
 
   it('inverts the axis mapping for bar charts', () => {
     const el = container();
-    new FacetChart(el, { chart: { type: 'bar', animation: false }, xAxis: { categories: ['Jan', 'Feb'] }, yAxis: { title: { text: 'Units' } }, series: [{ name: 'S', data: [5, 3] }] });
+    new FacetViz(el, { chart: { type: 'bar', animation: false }, xAxis: { categories: ['Jan', 'Feb'] }, yAxis: { title: { text: 'Units' } }, series: [{ name: 'S', data: [5, 3] }] });
     const left = [...el.querySelectorAll('.facet-axis-left text')].map((t) => t.textContent);
     const bottom = [...el.querySelectorAll('.facet-axis-bottom text')].map((t) => t.textContent);
     expect(left).toContain('Jan'); // categories on the left
@@ -49,7 +49,7 @@ describe('FacetChart rendering', () => {
     ];
     for (const [type, data] of types) {
       const el = container();
-      expect(() => new FacetChart(el, { chart: { type, animation: false } as any, series: [{ name: 'S', data }] })).not.toThrow();
+      expect(() => new FacetViz(el, { chart: { type, animation: false } as any, series: [{ name: 'S', data }] })).not.toThrow();
       expect(el.querySelector('svg')).toBeTruthy();
     }
   });
@@ -57,13 +57,13 @@ describe('FacetChart rendering', () => {
   it('renders a large (boost-triggering) scatter without throwing', () => {
     const el = container();
     const data = Array.from({ length: 3000 }, (_, i) => [i, Math.sin(i / 20)]);
-    expect(() => new FacetChart(el, { chart: { type: 'scatter', animation: false }, series: [{ name: 'S', data }] })).not.toThrow();
+    expect(() => new FacetViz(el, { chart: { type: 'scatter', animation: false }, series: [{ name: 'S', data }] })).not.toThrow();
     expect(el.querySelector('svg')).toBeTruthy();
   });
 
   it('toggles series visibility and exports SVG', () => {
     const el = container();
-    const chart = new FacetChart(el, { chart: { type: 'column', animation: false }, xAxis: { categories: ['A'] }, series: [{ name: 'S', data: [3] }] });
+    const chart = new FacetViz(el, { chart: { type: 'column', animation: false }, xAxis: { categories: ['A'] }, series: [{ name: 'S', data: [3] }] });
     const svg = chart.getSVG();
     expect(svg.startsWith('<svg')).toBe(true);
     expect(svg).toContain('xmlns');

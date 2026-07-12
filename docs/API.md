@@ -1,12 +1,12 @@
-# FacetChart API Reference
+# FacetViz API Reference
 
-Complete reference for every configuration key. FacetChart's config object follows
+Complete reference for every configuration key. FacetViz's config object follows
 familiar declarative charting conventions, so most option names will be recognizable.
 
 ```ts
-import { FacetChart } from 'facetchart';
+import { FacetViz } from 'facetviz';
 
-const chart = new FacetChart(container, options);
+const chart = new FacetViz(container, options);
 ```
 
 - **`container`** — a DOM element, or a CSS selector string resolving to one.
@@ -26,7 +26,7 @@ const chart = new FacetChart(container, options);
 
 ## ChartOptions
 
-The root object passed to `new FacetChart(container, options)`.
+The root object passed to `new FacetViz(container, options)`.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -415,7 +415,7 @@ A `Theme` has these tokens (all optional in a custom object):
 Register a reusable named theme at runtime:
 
 ```ts
-import { registerTheme, LIGHT_THEME } from 'facetchart';
+import { registerTheme, LIGHT_THEME } from 'facetviz';
 registerTheme('corp', { ...LIGHT_THEME, colors: ['#003f5c', '#bc5090', '#ffa600'] });
 // then: { theme: 'corp' }
 ```
@@ -509,7 +509,7 @@ Register callbacks in config, or subscribe via [`chart.on()`](#instance-methods)
 **`SeriesEvents`** (`seriesEvents`, applied to all series):
 `click(ev)`, `mouseOver(ev)`, `mouseOut(ev)`, `legendItemClick({ series, visible })`.
 
-**`FacetChartPointEvent`** (`ev`) payload:
+**`FacetVizPointEvent`** (`ev`) payload:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -644,14 +644,14 @@ child series. `accessibility: { description }` overrides the auto SVG label.
 
 ```ts
 import {
-  FacetChart, Chart,                       // main class (Chart is an alias)
+  FacetViz, Chart,                       // main class (Chart is an alias)
   registerSeriesType, createSeries,    // custom series extensibility
   BaseSeries,                          // base class for custom series
   LinearScale, LogScale, CategoryScale,// scales
   Renderer,                            // SVG helper
   computeBoxStats,                     // boxplot summary helper
   DEFAULT_COLORS,                      // default palette
-} from 'facetchart';
+} from 'facetviz';
 ```
 
 All option interfaces are exported as types for TypeScript users

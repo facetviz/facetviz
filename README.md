@@ -1,4 +1,4 @@
-# FacetChart
+# FacetViz
 
 A modular, dependency-free **TypeScript + SVG** charting library with
 **a declarative config API**, small multiples (trellising), and a wide
@@ -20,12 +20,12 @@ the left, the rendered chart on the right, with 25+ presets.
 ### Publishing the docs site
 
 The site under `docs/` is fully self-contained — no CDN. `docs/lib/` holds the vendored assets:
-the bundled library (`facetchart.js`), plus `marked.esm.js` and `highlight.min.js` / `hljs-github-dark.css`
+the bundled library (`facetviz.js`), plus `marked.esm.js` and `highlight.min.js` / `hljs-github-dark.css`
 used to render the API reference and highlight code. Regenerate the library bundle whenever the
 library changes:
 
 ```bash
-npm run build:site   # bundles src/index.ts → docs/lib/facetchart.js
+npm run build:site   # bundles src/index.ts → docs/lib/facetviz.js
 ```
 
 Then either commit `docs/` and enable **GitHub Pages → Deploy from branch → `main` / `docs`**, or use
@@ -33,9 +33,9 @@ the included workflow ([`.github/workflows/pages.yml`](.github/workflows/pages.y
 bundle and deploys on every push to `main` (set Pages source to **GitHub Actions**).
 
 ```ts
-import { FacetChart } from 'facetchart';
+import { FacetViz } from 'facetviz';
 
-new FacetChart('#container', {
+new FacetViz('#container', {
   chart: { type: 'column' },
   title: { text: 'Fruit consumption' },
   subtitle: { text: 'in units' },
@@ -80,7 +80,7 @@ charts** work by giving each series its own `type`.
 Split one dataset into a grid of panels by data dimensions:
 
 ```ts
-new FacetChart('#el', {
+new FacetViz('#el', {
   chart: { type: 'column' },
   trellis: { columns: 'category', rows: 'region' },
   series: [{ name: 'Sales', data: [
@@ -125,9 +125,9 @@ yAxis: {
 Pick a built-in theme or supply your own:
 
 ```ts
-new FacetChart('#c', { theme: 'dark', series: [...] });          // light | dark | high-contrast | pastel
+new FacetViz('#c', { theme: 'dark', series: [...] });          // light | dark | high-contrast | pastel
 
-new FacetChart('#c', {                                            // custom, extending a built-in
+new FacetViz('#c', {                                            // custom, extending a built-in
   theme: {
     base: 'dark',
     backgroundColor: '#0b1021',
@@ -145,7 +145,7 @@ list in the [API reference](docs/API.md#theming).
 ## Interactivity & data
 
 ```ts
-new FacetChart('#c', {
+new FacetViz('#c', {
   chart: {
     animation: true,        // enter animation (bars grow, lines draw in) — default on
     zoom: 'x',              // drag-select on the plot to zoom the x-axis
@@ -256,7 +256,7 @@ Boxplots accept two distinct hues (or any of the sub-colours):
 ## Events / callbacks
 
 ```ts
-const chart = new FacetChart('#el', {
+const chart = new FacetViz('#el', {
   seriesEvents: {
     click:     (e) => console.log(e.seriesName, e.x, e.y, e.point),
     mouseOver: (e) => {},

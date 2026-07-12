@@ -1,10 +1,10 @@
 /**
- * Public configuration types for FacetChart.
+ * Public configuration types for FacetViz.
  *
  * The shape follows familiar declarative charting conventions so that users of similar
  * libraries can migrate with minimal changes:
  *
- *   new FacetChart(container, {
+ *   new FacetViz(container, {
  *     chart: { type: 'column' },
  *     title: { text: 'My chart' },
  *     xAxis: { categories: [...] },
@@ -394,17 +394,17 @@ export interface TrellisOptions {
 export interface ChartEvents {
   load?: (chart: unknown) => void;
   render?: (chart: unknown) => void;
-  click?: (ev: FacetChartPointEvent) => void;
+  click?: (ev: FacetVizPointEvent) => void;
 }
 
 export interface SeriesEvents {
-  click?: (ev: FacetChartPointEvent) => void;
-  mouseOver?: (ev: FacetChartPointEvent) => void;
-  mouseOut?: (ev: FacetChartPointEvent) => void;
+  click?: (ev: FacetVizPointEvent) => void;
+  mouseOver?: (ev: FacetVizPointEvent) => void;
+  mouseOut?: (ev: FacetVizPointEvent) => void;
   legendItemClick?: (ev: { series: string; visible: boolean }) => void;
 }
 
-export interface FacetChartPointEvent {
+export interface FacetVizPointEvent {
   type: string;
   seriesName: string;
   seriesIndex: number;

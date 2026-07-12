@@ -1,17 +1,17 @@
-# FacetChart — compact reference for coding agents / LLMs
+# FacetViz — compact reference for coding agents / LLMs
 
 Dependency-free TypeScript + SVG charting library. Declarative config object,
 one call to render. This file is a dense cheat-sheet for generating valid
-`FacetChart` configs without guessing — paste it (or the relevant section) into
+`FacetViz` configs without guessing — paste it (or the relevant section) into
 an agent's context. Full prose reference: docs/API.md. Working examples for
 every type: docs/examples-data.js.
 
 ## Instantiate
 
 ```ts
-import { FacetChart } from 'facetchart'; // or './lib/facetchart.js' for the no-build ESM bundle
+import { FacetViz } from 'facetviz'; // or './lib/facetviz.js' for the no-build ESM bundle
 
-const chart = new FacetChart(container, options); // container: Element | CSS selector string
+const chart = new FacetViz(container, options); // container: Element | CSS selector string
 ```
 
 `options.series` is the only required key. Everything else has a sane default.
@@ -133,7 +133,7 @@ Points:
 
 Statistical — all **padded off baseline** (headroom added automatically, don't fight it with `yAxis.min:0`):
 
-- `boxplot` — `data:[{min,q1,median,q3,max}]` (five-number summary), or compute it from raw values with `computeBoxStats(values)` (exported from `facetchart`).
+- `boxplot` — `data:[{min,q1,median,q3,max}]` (five-number summary), or compute it from raw values with `computeBoxStats(values)` (exported from `facetviz`).
 - `candlestick` — `data:[{x,open,high,low,close}]`.
 
 Grid & hierarchy:

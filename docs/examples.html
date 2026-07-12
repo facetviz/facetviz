@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>FacetChart — Examples</title>
+  <title>FacetViz — Examples</title>
   <link rel="stylesheet" href="./lib/hljs-github-dark.css" />
   <link rel="stylesheet" href="./style.css" />
   <script src="./lib/highlight.min.js"></script>
@@ -11,7 +11,7 @@
 <body>
   <header class="topbar">
     <button class="btn menu-btn" id="menuBtn" aria-label="Menu">☰</button>
-    <a class="brand" href="./"><span class="mark">F</span> FacetChart</a>
+    <a class="brand" href="./"><span class="mark">F</span> FacetViz</a>
     <nav class="topnav">
       <a href="./" data-page="guide">Guide</a>
       <a href="./examples.html" data-page="examples">Examples</a>
@@ -35,7 +35,7 @@
   </div>
 
   <script type="module">
-    import { FacetChart, renderChart, pretty, highlight, initChrome, scrollspy } from './site.js';
+    import { FacetViz, renderChart, pretty, highlight, initChrome, scrollspy } from './site.js';
     import { EXAMPLES, slug } from './examples-data.js';
 
     const catSlug = (s) => 'cat-' + s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
@@ -57,12 +57,12 @@
           <div class="body"><div class="chart"></div>
           <details><summary>Show config</summary><pre><code class="language-js"></code></pre></details></div>`;
         gallery.appendChild(wrap);
-        wrap.querySelector('code').textContent = 'new FacetChart(el, ' + pretty(ex.cfg) + ');';
+        wrap.querySelector('code').textContent = 'new FacetViz(el, ' + pretty(ex.cfg) + ');';
         // Hand THIS config to the playground (via sessionStorage — no giant URLs).
         wrap.querySelector('.pg-link').addEventListener('click', () => {
-          try { sessionStorage.setItem('facetchart:playground', JSON.stringify({ title: ex.title, cfg: ex.cfg })); } catch (e) {}
+          try { sessionStorage.setItem('facetviz:playground', JSON.stringify({ title: ex.title, cfg: ex.cfg })); } catch (e) {}
         });
-        renderChart(FacetChart, wrap.querySelector('.chart'), ex.cfg);
+        renderChart(FacetViz, wrap.querySelector('.chart'), ex.cfg);
       }
     }
 

@@ -1,10 +1,10 @@
 // Shared docs helpers (vendored, no CDN).
-export { FacetChart } from './lib/facetchart.js';
+export { FacetViz } from './lib/facetviz.js';
 
 /** Render a config into an element, showing errors inline. */
-export function renderChart(FacetChart, el, cfg) {
+export function renderChart(FacetViz, el, cfg) {
   el.innerHTML = '';
-  try { new FacetChart(el, cfg); }
+  try { new FacetViz(el, cfg); }
   catch (e) { el.innerHTML = '<p style="color:#e5484d;font:13px/1.5 monospace">' + (e && e.message || e) + '</p>'; }
 }
 

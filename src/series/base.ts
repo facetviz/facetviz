@@ -11,7 +11,7 @@ import type { Renderer } from '../core/renderer.js';
 import type { Scale } from '../core/scale.js';
 import type { Rect } from '../core/axis.js';
 import type { Point } from '../core/point.js';
-import type { SeriesOptions, ChartType, FacetChartPointEvent } from '../core/options.js';
+import type { SeriesOptions, ChartType, FacetVizPointEvent } from '../core/options.js';
 import { normalizePoints } from '../core/point.js';
 
 /** A single legend entry produced by a series' custom legend provider. */
@@ -148,7 +148,7 @@ export abstract class BaseSeries {
   }
 
   /** Build the event payload for a point. */
-  protected event(kind: string, p: Point, dom?: Event): FacetChartPointEvent {
+  protected event(kind: string, p: Point, dom?: Event): FacetVizPointEvent {
     return {
       type: kind,
       seriesName: this.name,

@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>FacetChart — a modular TypeScript + SVG charting library</title>
-  <meta name="description" content="FacetChart is a dependency-free TypeScript + SVG charting library with a declarative config API, small-multiples trellising, and 35+ chart types." />
+  <title>FacetViz — a modular TypeScript + SVG charting library</title>
+  <meta name="description" content="FacetViz is a dependency-free TypeScript + SVG charting library with a declarative config API, small-multiples trellising, and 35+ chart types." />
   <link rel="stylesheet" href="./lib/hljs-github-dark.css" />
   <link rel="stylesheet" href="./style.css" />
   <script src="./lib/highlight.min.js"></script>
@@ -12,7 +12,7 @@
 <body>
   <header class="topbar">
     <button class="btn menu-btn" id="menuBtn" aria-label="Menu">☰</button>
-    <a class="brand" href="./"><span class="mark">F</span> FacetChart</a>
+    <a class="brand" href="./"><span class="mark">F</span> FacetViz</a>
     <nav class="topnav">
       <a href="./" data-page="guide">Guide</a>
       <a href="./examples.html" data-page="examples">Examples</a>
@@ -42,7 +42,7 @@
 
     <main class="content">
       <section id="overview">
-        <h1>FacetChart</h1>
+        <h1>FacetViz</h1>
         <p class="lead">A modular, dependency-free <strong>TypeScript + SVG</strong> charting library with a
           declarative config API, small-multiples trellising, and 35+ chart types — built to be read and
           maintained by hand.</p>
@@ -69,20 +69,20 @@
 
       <section id="install">
         <h2>Installation</h2>
-        <p>Add the package and import the <code>FacetChart</code> class:</p>
-        <pre><code class="language-bash">npm install facetchart</code></pre>
-        <pre><code class="language-js">import { FacetChart } from 'facetchart';
+        <p>Add the package and import the <code>FacetViz</code> class:</p>
+        <pre><code class="language-bash">npm install facetviz</code></pre>
+        <pre><code class="language-js">import { FacetViz } from 'facetviz';
 
-new FacetChart('#container', {
+new FacetViz('#container', {
   chart: { type: 'column' },
-  title: { text: 'Hello FacetChart' },
+  title: { text: 'Hello FacetViz' },
   xAxis: { categories: ['A', 'B', 'C'] },
   series: [{ name: 'Demo', data: [3, 6, 4] }],
 });</code></pre>
         <p>Or drop the pre-built ESM bundle into a page (no build step):</p>
         <pre><code class="language-html">&lt;script type="module"&gt;
-  import { FacetChart } from './lib/facetchart.js';
-  new FacetChart(document.getElementById('chart'), { /* options */ });
+  import { FacetViz } from './lib/facetviz.js';
+  new FacetViz(document.getElementById('chart'), { /* options */ });
 &lt;/script&gt;</code></pre>
         <div class="note">The first argument is a DOM element or a CSS selector. The second is the options object — only <code>series</code> is required.</div>
       </section>
@@ -141,10 +141,10 @@ series: [{
   </div>
 
   <script type="module">
-    import { FacetChart, renderChart, pretty, highlight, initChrome, scrollspy } from './site.js';
+    import { FacetViz, renderChart, pretty, highlight, initChrome, scrollspy } from './site.js';
     import { TYPE_TO_EXAMPLE } from './examples-data.js';
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-    const R = (el, cfg) => renderChart(FacetChart, el, cfg);
+    const R = (el, cfg) => renderChart(FacetViz, el, cfg);
 
     R(document.getElementById('hero-chart'), {
       chart: { type: 'column', height: 300 }, title: { text: 'Quarterly revenue' },
@@ -172,7 +172,7 @@ series: [{
       const chart = document.createElement('div');
       chart.className = 'panel'; chart.style.padding = '12px';
       const pre = document.createElement('pre'); const code = document.createElement('code');
-      code.className = 'language-js'; code.textContent = 'new FacetChart(el, ' + pretty(cfg) + ');';
+      code.className = 'language-js'; code.textContent = 'new FacetViz(el, ' + pretty(cfg) + ');';
       pre.appendChild(code); box.append(chart, pre);
       R(chart, cfg);
     });
