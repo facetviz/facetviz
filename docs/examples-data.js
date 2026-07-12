@@ -834,7 +834,7 @@ export const EXAMPLES = [
       title: { text: "Sales small multiples" },
       xAxis: { title: { text: "Month" } },
       yAxis: { title: { text: "Sales" } },
-      trellis: { columns: "cat", rows: "Region" },
+      trellis: { columns: "cat", rows: "region" },
       series: [{ name: "Sales", data: trellis }],
     },
   },
