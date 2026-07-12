@@ -26,7 +26,7 @@ web_modules/
 dist/
 build/
 out/
-lib/
+./lib/
 
 # Generated JavaScript (Only use if you compile JS files directly next to TS files)
 # src/**/*.js
