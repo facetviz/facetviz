@@ -24,7 +24,7 @@ export class CandlestickSeries extends BaseSeries {
   override render(ctx: SeriesRenderContext): void {
     const { renderer, yScale } = ctx;
     const catScale = ctx.xScale as CategoryScale;
-    const g = renderer.group({ class: `jchart-series jchart-candlestick ${this.name}` }, renderer.root);
+    const g = renderer.group({ class: `facet-series facet-candlestick ${this.name}` }, renderer.root);
     const bodyW = Math.min(catScale.bandwidth() * 0.6, 18);
 
     for (const p of this.points) {
@@ -36,7 +36,7 @@ export class CandlestickSeries extends BaseSeries {
       const up = close >= open;
       const color = p.color ?? (up ? UP : DOWN);
 
-      const cell = renderer.group({ class: 'jchart-point' }, g);
+      const cell = renderer.group({ class: 'facet-point' }, g);
       // Wick.
       renderer.create('line', {
         x1: cx, y1: yScale.scale(high), x2: cx, y2: yScale.scale(low), stroke: color, 'stroke-width': 1,

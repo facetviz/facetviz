@@ -1,10 +1,10 @@
 /**
- * Public configuration types for JChart.
+ * Public configuration types for FacetChart.
  *
  * The shape follows familiar declarative charting conventions so that users of similar
  * libraries can migrate with minimal changes:
  *
- *   new JChart(container, {
+ *   new FacetChart(container, {
  *     chart: { type: 'column' },
  *     title: { text: 'My chart' },
  *     xAxis: { categories: [...] },
@@ -251,6 +251,8 @@ export interface AxisOptions {
   gridLineColor?: string;
   lineColor?: string;
   lineWidth?: number;
+  /** Draw the small tick marks between the axis line and its labels. Default true. */
+  ticks?: boolean;
   /** Reference lines drawn across the plot at fixed axis values. */
   plotLines?: PlotLineOptions[];
   /** Shaded reference bands spanning an axis value interval. */
@@ -392,17 +394,17 @@ export interface TrellisOptions {
 export interface ChartEvents {
   load?: (chart: unknown) => void;
   render?: (chart: unknown) => void;
-  click?: (ev: JChartPointEvent) => void;
+  click?: (ev: FacetChartPointEvent) => void;
 }
 
 export interface SeriesEvents {
-  click?: (ev: JChartPointEvent) => void;
-  mouseOver?: (ev: JChartPointEvent) => void;
-  mouseOut?: (ev: JChartPointEvent) => void;
+  click?: (ev: FacetChartPointEvent) => void;
+  mouseOver?: (ev: FacetChartPointEvent) => void;
+  mouseOut?: (ev: FacetChartPointEvent) => void;
   legendItemClick?: (ev: { series: string; visible: boolean }) => void;
 }
 
-export interface JChartPointEvent {
+export interface FacetChartPointEvent {
   type: string;
   seriesName: string;
   seriesIndex: number;

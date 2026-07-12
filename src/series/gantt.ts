@@ -17,7 +17,7 @@ export class GanttSeries extends BaseSeries {
 
   override render(ctx: SeriesRenderContext): void {
     const { renderer, plot, colors } = ctx;
-    const g = renderer.group({ class: `jchart-series jchart-gantt ${this.name}` }, renderer.root);
+    const g = renderer.group({ class: `facet-series facet-gantt ${this.name}` }, renderer.root);
 
     const tasks = this.points
       .map((p) => ({ name: String(p.name ?? p.x), start: (p.options.start as number) ?? p.low ?? 0, end: (p.options.end as number) ?? p.high ?? 0, point: p }))
@@ -38,7 +38,7 @@ export class GanttSeries extends BaseSeries {
       const h = Math.min(rowH * 0.6, 26);
       const bar = renderer.create('rect', {
         x: sx(t.start), y: y + (rowH - h) / 2, width: Math.max(2, sx(t.end) - sx(t.start)), height: h, rx: 4,
-        fill: t.point.color ?? paletteColor(colors, i), class: 'jchart-point',
+        fill: t.point.color ?? paletteColor(colors, i), class: 'facet-point',
       }, g);
       ctx.registerHover(bar, t.point);
       bar.addEventListener('click', (e: Event) => ctx.onPointEvent('click', t.point, e));

@@ -15,7 +15,7 @@ export class FunnelSeries extends BaseSeries {
 
   override render(ctx: SeriesRenderContext): void {
     const { renderer, plot, colors } = ctx;
-    const g = renderer.group({ class: `jchart-series jchart-funnel ${this.name}` }, renderer.root);
+    const g = renderer.group({ class: `facet-series facet-funnel ${this.name}` }, renderer.root);
     const points = this.visiblePoints();
     if (!points.length) return;
 
@@ -34,7 +34,7 @@ export class FunnelSeries extends BaseSeries {
       const color = p.color ?? paletteColor(colors, i);
       const poly = `${cx - topW / 2},${yTop} ${cx + topW / 2},${yTop} ${cx + botW / 2},${yBot} ${cx - botW / 2},${yBot}`;
 
-      const el = renderer.create('polygon', { points: poly, fill: color, stroke: '#ffffff', 'stroke-width': 1, class: 'jchart-point' }, g);
+      const el = renderer.create('polygon', { points: poly, fill: color, stroke: '#ffffff', 'stroke-width': 1, class: 'facet-point' }, g);
       renderer.text(`${p.name ?? p.x}: ${p.y}`, cx, (yTop + yBot) / 2, {
         'text-anchor': 'middle', 'dominant-baseline': 'middle', ...FONTS.dataLabel, fill: '#ffffff', 'font-weight': '600',
       }, g);

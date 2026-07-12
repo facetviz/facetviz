@@ -47,14 +47,14 @@ export class Legend {
 
   render(parent: SVGGElement): void {
     if (this.cfg.options.enabled === false || !this.cfg.items.length) return;
-    const g = this.cfg.renderer.group({ class: 'jchart-legend' }, parent);
+    const g = this.cfg.renderer.group({ class: 'facet-legend' }, parent);
     if (this.cfg.layout === 'vertical') this.renderVertical(g);
     else this.renderHorizontal(g);
   }
 
   private drawItem(g: SVGGElement, it: LegendItem, index: number, x: number, y: number): void {
     const { renderer, onToggle } = this.cfg;
-    const item = renderer.group({ class: 'jchart-legend-item', style: 'cursor:pointer' }, g);
+    const item = renderer.group({ class: 'facet-legend-item', style: 'cursor:pointer' }, g);
     renderer.create('rect', {
       x, y, width: SWATCH, height: SWATCH, rx: 2,
       fill: it.visible ? it.color : THEME.legend.hiddenColor,

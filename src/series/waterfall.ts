@@ -32,7 +32,7 @@ export class WaterfallSeries extends BaseSeries {
   override render(ctx: SeriesRenderContext): void {
     const { renderer, yScale } = ctx;
     const catScale = ctx.xScale as CategoryScale;
-    const g = renderer.group({ class: `jchart-series jchart-waterfall ${this.name}` }, renderer.root);
+    const g = renderer.group({ class: `facet-series facet-waterfall ${this.name}` }, renderer.root);
     const band = catScale.bandwidth();
     const barW = band * 0.6;
     const zeroY = yScale.scale(0);
@@ -60,7 +60,7 @@ export class WaterfallSeries extends BaseSeries {
 
       const el = renderer.create('rect', {
         x: x0, y: yTop, width: barW, height: Math.max(1, yBot - yTop),
-        fill: color, class: 'jchart-point',
+        fill: color, class: 'facet-point',
       }, g);
       ctx.registerHover(el, p);
       el.addEventListener('click', (e: Event) => ctx.onPointEvent('click', p, e));

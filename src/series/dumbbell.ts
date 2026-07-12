@@ -8,8 +8,9 @@
  */
 
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
-import { CategoryScale } from '../core/scale.js';
+import { CategoryScale, Scale } from '../core/scale.js';
 import { drawMarker } from './marker.js';
+import { drawDataLabel, labelString, LabelPlacement } from './data-label.js';
 import { THEME } from '../core/theme.js';
 import type { Point } from '../core/point.js';
 
@@ -27,7 +28,7 @@ export class DumbbellSeries extends BaseSeries {
     // Horizontal (inverted): category on y, value on x. Vertical: the reverse.
     const catScale = (inverted ? ctx.yScale : ctx.xScale) as CategoryScale;
     const valScale = inverted ? ctx.xScale : ctx.yScale;
-    const g = renderer.group({ class: `jchart-series jchart-dumbbell ${this.name}` }, renderer.root);
+    const g = renderer.group({ class: `facet-series facet-dumbbell ${this.name}` }, renderer.root);
 
     const band = catScale.bandwidth ? catScale.bandwidth() : 0;
     const subWidth = band / groupCount;
@@ -64,6 +65,40 @@ export class DumbbellSeries extends BaseSeries {
         el.addEventListener('mouseover', (e: Event) => ctx.onPointEvent('mouseOver', p, e));
         el.addEventListener('mouseout', (e: Event) => ctx.onPointEvent('mouseOut', p, e));
       }
+
+      this.drawEndLabels(ctx, p, cat, valScale, inverted, radius);
+    }
+  }
+
+  /** Labels at the low and high ends (both values shown by default). */
+  private drawEndLabels(
+    ctx: SeriesRenderContext, p: Point, cat: number, valScale: Scale,
+    inverted: boolean, radius: number,
+  ): void {
+    const dl = this.options.dataLabels;
+    if (!dl?.enabled) return;
+    const ends: Array<{ val: number; isHigh: boolean }> = [
+      { val: p.low!, isHigh: false },
+      { val: p.high!, isHigh: true },
+    ];
+    for (const end of ends) {
+      const v = valScale.scale(end.val);
+      const text = labelString(dl, {
+        x: p.x, y: end.val, low: p.low, high: p.high, point: p.options,
+        series: this.name, name: p.name ?? p.x, index: p.index, color: p.color ?? this.color,
+      });
+      const d = dl.distance ?? 0;
+      let place: LabelPlacement;
+      if (inverted) {
+        place = end.isHigh
+          ? { x: v + radius + 6 + d, y: cat + 4, anchor: 'start' }
+          : { x: v - radius - 6 - d, y: cat + 4, anchor: 'end' };
+      } else {
+        place = end.isHigh
+          ? { x: cat, y: v - radius - 6 - d, anchor: 'middle' }
+          : { x: cat, y: v + radius + 14 + d, anchor: 'middle' };
+      }
+      drawDataLabel(ctx.renderer, ctx.renderer.root, text, place, dl);
     }
   }
 }

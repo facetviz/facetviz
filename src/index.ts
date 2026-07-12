@@ -1,9 +1,9 @@
 /**
- * JChart — public entry point.
+ * FacetChart — public entry point.
  *
  * @example
- * import { JChart } from 'jchart';
- * const chart = new JChart('#container', {
+ * import { FacetChart } from 'facetchart';
+ * const chart = new FacetChart('#container', {
  *   chart: { type: 'column' },
  *   title: { text: 'Fruit consumption' },
  *   xAxis: { categories: ['Apples', 'Pears', 'Bananas'] },
@@ -12,8 +12,8 @@
  * });
  */
 
-export { JChart } from './core/chart.js';
-export { JChart as Chart } from './core/chart.js';
+export { FacetChart } from './core/chart.js';
+export { FacetChart as Chart } from './core/chart.js';
 
 // Types (public API surface).
 export type {
@@ -39,7 +39,7 @@ export type {
   SeriesTooltipOptions,
   ChartEvents,
   SeriesEvents,
-  JChartPointEvent,
+  FacetChartPointEvent,
 } from './core/options.js';
 
 // Theming.

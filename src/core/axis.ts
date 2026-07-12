@@ -37,7 +37,7 @@ export class Axis {
   render(parent: SVGGElement): void {
     const { renderer, scale, options, position } = this.cfg;
     if (options.visible === false) return;
-    const group = renderer.group({ class: `jchart-axis jchart-axis-${position}` }, parent);
+    const group = renderer.group({ class: `facet-axis facet-axis-${position}` }, parent);
     const ticks = scale.ticks();
     const isCategory = scale instanceof CategoryScale;
 
@@ -68,7 +68,7 @@ export class Axis {
       }
 
       // Tick mark.
-      this.drawTick(group, pos, axisColor);
+      if (options.ticks !== false) this.drawTick(group, pos, axisColor);
 
       // Label.
       if (labelsEnabled) {
@@ -91,7 +91,7 @@ export class Axis {
       const rect = this.horizontal
         ? { x: Math.min(p0, p1), y: plot.y, width: Math.abs(p1 - p0), height: plot.height }
         : { x: plot.x, y: Math.min(p0, p1), width: plot.width, height: Math.abs(p1 - p0) };
-      renderer.create('rect', { ...rect, fill: band.color ?? 'rgba(70,130,180,0.12)', stroke: 'none', class: 'jchart-plotband' }, g);
+      renderer.create('rect', { ...rect, fill: band.color ?? 'rgba(70,130,180,0.12)', stroke: 'none', class: 'facet-plotband' }, g);
       if (band.label?.text) {
         renderer.text(band.label.text, rect.x + 4, rect.y + 12, {
           ...FONTS.axisLabel, fill: band.label.color ?? '#666', 'text-anchor': 'start',
@@ -113,7 +113,7 @@ export class Axis {
         stroke: line.color ?? '#e63946',
         'stroke-width': line.width ?? 1.5,
         'stroke-dasharray': line.dashStyle ?? undefined,
-        class: 'jchart-plotline',
+        class: 'facet-plotline',
       }, g);
       if (line.label?.text) {
         const lx = this.horizontal ? pos + 4 : plot.x + plot.width - 4;

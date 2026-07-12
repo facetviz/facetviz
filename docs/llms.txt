@@ -1,0 +1,178 @@
+# FacetChart — compact reference for coding agents / LLMs
+
+Dependency-free TypeScript + SVG charting library. Declarative config object,
+one call to render. This file is a dense cheat-sheet for generating valid
+`FacetChart` configs without guessing — paste it (or the relevant section) into
+an agent's context. Full prose reference: docs/API.md. Working examples for
+every type: docs/examples-data.js.
+
+## Instantiate
+
+```ts
+import { FacetChart } from 'facetchart'; // or './lib/facetchart.js' for the no-build ESM bundle
+
+const chart = new FacetChart(container, options); // container: Element | CSS selector string
+```
+
+`options.series` is the only required key. Everything else has a sane default.
+
+## Root shape
+
+```ts
+{
+  chart?: {
+    type?: ChartType;              // default series type, default 'line'
+    width?: number; height?: number;              // default: container width, 400
+    backgroundColor?: string;
+    spacing?: [number,number,number,number];       // top right bottom left, default [16,16,16,16]
+    inverted?: boolean;             // swap axes: column→bar, boxplot/dumbbell/etc. go horizontal
+    colors?: string[];              // palette cycled by series without explicit color
+    animation?: boolean | { duration?: number; easing?: string };
+    zoom?: 'x' | 'y' | 'xy' | false;                // drag-select to zoom; adds a Reset control
+    reflow?: boolean;               // default true: re-render on container resize
+    boost?: boolean | { threshold?: number };       // canvas overlay for >1500 points, auto-on
+    events?: { click?, load?, render? };
+  };
+  title?: { text?: string; align?: 'left'|'center'|'right' };
+  subtitle?: { text?: string; align?: ... };
+  xAxis?: AxisOptions | AxisOptions[];   // array = multiple axes / combo charts
+  yAxis?: AxisOptions | AxisOptions[];
+  tooltip?: TooltipOptions;
+  legend?: LegendOptions;
+  plotOptions?: { series?: Partial<SeriesOptions>; [type: string]: Partial<SeriesOptions> };
+  series: SeriesOptions[];          // REQUIRED
+  colors?: string[];
+  theme?: 'light' | 'dark' | 'high-contrast' | 'pastel' | { base?: string; colors?: string[]; ... };
+  trellis?: { columns?: string; rows?: string; gap?: number; sharedY?: boolean; sharedX?: boolean };
+  drilldown?: { series: (SeriesOptions & { id: string })[] };
+  accessibility?: { enabled?: boolean; description?: string };
+  seriesEvents?: { click?, mouseOver?, mouseOut?, legendItemClick? };
+}
+```
+
+```ts
+interface AxisOptions {
+  visible?: boolean; opposite?: boolean;            // opposite: y→right, x→top
+  categories?: string[];                            // categorical axis
+  type?: 'linear' | 'log' | 'category' | 'datetime';
+  crosshair?: boolean;
+  title?: { text?: string };
+  min?: number; max?: number; tickCount?: number;
+  labels?: { enabled?: boolean; format?: string; formatter?: (v)=>string; rotation?: number };
+  gridLineWidth?: number; lineColor?: string; reversed?: boolean;
+  plotLines?: { value: number|string; color?; width?; dashStyle?; label?: {text} }[];
+  plotBands?: { from: number|string; to: number|string; color?; label?: {text} }[];
+  dimension?: string;      // trellis: split panels by this field
+  dimensions?: string[];   // nested/hierarchical axis: 2+ dimension field names, aggregated
+  aggregate?: 'sum'|'avg'|'count'|'min'|'max';       // used with `dimensions`
+}
+
+interface SeriesOptions {
+  type?: ChartType; name?: string; data: PointInput[]; color?: string;
+  stack?: string|number; stacking?: 'normal'|'percent';
+  xAxis?: number; yAxis?: number;      // index into xAxis[]/yAxis[] array — combo/dual-axis
+  visible?: boolean;
+  marker?: { enabled?; radius?; symbol?: 'circle'|'square'|'diamond'|'triangle'; fillColor?; lineColor? };
+  dataLabels?: { enabled?: boolean; format?: string; position?: string; distance?: number };
+  tooltip?: { format?: string; valuePrefix?; valueSuffix?; valueDecimals? };
+  states?: { hover?: { scale?: number; brightness?: number } };
+  // type-specific extras: innerSize/dimensions (pie), jitter (jitter),
+  // boxColors (boxplot), lowColor/highColor/connectorColor (dumbbell),
+  // sizeRange (bubble), fillOpacity (radar/area)
+}
+```
+
+Format-string tokens (dataLabels/tooltip/axis labels): `{y}`, `{x}`, `{name}`,
+`{series}`, `{percentage}`, `{total}`, `{low}`, `{high}`, `{point.<field>}` —
+each takes a spec: `{y:$,.1f}` (comma grouping, 1 decimal, `$` prefix), `{y:.0%}`
+(percent), `{y:,.1s}` (SI: 1.3M), `{x:%b %d}` (date).
+
+## Point data formats
+
+```ts
+type PointInput =
+  | number                              // y only, x = index/category
+  | [x, y]
+  | [x, low, high]                      // range/columnrange/errorbar/dumbbell
+  | { x?, y?, name?, color?, ... }      // full object, see per-type fields below
+  | null;                               // gap
+```
+
+## Chart types — data shape + minimal series entry
+
+Bars/columns (`chart.type`, or per-series `type`) — **zero-anchored baseline**:
+
+- `column` / `bar` — `data: [5, 3, 4]` or `[{x:'A',y:5}]`. `bar` = horizontal.
+- `waterfall` — `data:[{x,y},{x,y,isSum:true}]` — deltas; `isSum` = running-total bar.
+- `histogram` — `data:[raw numbers...]` — auto-binned, no x needed.
+- `bullet` — `data:[{name,y,target,ranges:[low,mid,high]}]`.
+- `marimekko` — variable-width 100%-stacked; `xAxis.categories`, each series is one stack layer, `data:[v1,v2,v3]` (segment widths derived from column totals).
+- `errorbar` — usually overlaid on a `column` series: `data:[[x,low,high]]`. Shares the column baseline (no extra padding).
+
+Lines/areas — continuous, NOT zero-anchored unless `area`/`areaspline`:
+
+- `line` / `spline` / `step` — `data:[5,3,4]` or `[[x,y]]`.
+- `area` / `areaspline` — same shape; zero-anchored like columns.
+- `arearange` / `areasplinerange` — `data:[[x,low,high]]` — filled band.
+- `columnrange` — `data:[[x,low,high]]` — rounded capsule bar; **padded off baseline** (not zero-anchored).
+
+Circular:
+
+- `pie` / `donut` — `data:[{name,y}]`. Two-dimension rings: `series.dimensions:['Region','Device']` + flat `data:[{Region,Device,y}]`. Variable radius: add `z` per point. `donut` = `innerSize:'60%'`.
+- `radialbar` — `data:[{name,y}]`, bars 0→270°.
+- `gauge` — single value dial: `series:[{min,max,data:[{name,y}],bands:[{from,to,color}]}]`.
+- `sunburst` — hierarchy: `data:[{id,name},{id,parent,name,value}]`.
+
+Points:
+
+- `scatter` — `data:[[x,y]]`, continuous x.
+- `jitter` — `data:[{x:'cat',y}]`, categorical x + random spread; set `series.jitter` (0–1, default 0.5) for spread width.
+- `bubble` — `data:[{x,y,z}]`, `z` → radius via `series.sizeRange:[min,max]`.
+- `dumbbell` — `data:[[x,low,high]]` or `[{low,high}]`; two markers + connector. **Padded off baseline** — do not add its own zero.
+- `timeline` — `data:[{x,name}]`, events along one line.
+
+Statistical — all **padded off baseline** (headroom added automatically, don't fight it with `yAxis.min:0`):
+
+- `boxplot` — `data:[{min,q1,median,q3,max}]` (five-number summary), or compute it from raw values with `computeBoxStats(values)` (exported from `facetchart`).
+- `candlestick` — `data:[{x,open,high,low,close}]`.
+
+Grid & hierarchy:
+
+- `heatmap` — `data:[{x,y,value}]`, x/y are both categorical.
+- `calendar` — `data:[{date: msTimestamp|ISOstring, value}]`.
+- `funnel` — `data:[{name,y}]`, narrowing stages.
+- `treegraph` — `data:[{id,name},{id,parent,name}]`.
+- `sankey` — `data:[{from,to,weight}]`.
+- `gantt` — `data:[{name,start,end}]` (ms timestamps).
+- `radar` — `xAxis.categories` = spokes; `data:[v1,v2,...]` one per category; per-series `type:'area'` for filled.
+- `butterfly` — two series mirrored back-to-back; `data:[v1,v2,...]` per category, same shape as column.
+
+## Common recipes
+
+Stacked / grouped: series without `stacking` sit side-by-side (grouped) automatically; add `stacking:'normal'` (or `'percent'`) to each series in the same stack to pile them instead.
+
+Combo + dual axis:
+```ts
+{ chart:{type:'column'}, yAxis:[{title:{text:'Sales'}}, {title:{text:'Margin %'},opposite:true}],
+  series:[{name:'Sales', data:[...]}, {type:'spline', name:'Margin', yAxis:1, data:[...]}] }
+```
+
+Two dimensions on x (nested headers):
+```ts
+{ xAxis:{ dimensions:['Region','Category'], aggregate:'sum' },
+  series:[{ name:'Sales', data:[{Region:'East',Category:'Tech',y:12}, ...] }] }
+```
+
+Trellis (small multiples): `trellis:{ columns:'cat', rows:'region' }` with flat `data:[{x,y,cat,region}]` points carrying the split fields.
+
+Drilldown: point `{y, name, drilldown:'id'}` + top-level `drilldown:{ series:[{id:'id', data:[...]}] }`.
+
+Datetime + zoom: `xAxis:{type:'datetime', crosshair:true}`, `chart:{zoom:'x'}`, data `[[msTimestamp, y]]`.
+
+## Behavior notes (don't "fix" these — they're intentional)
+
+- Bare-number `data` with no `xAxis.categories` still gets a **banded** x-axis for column/bar/boxplot/candlestick/waterfall/columnrange/errorbar/bullet/dumbbell/butterfly (so bars get real width) — but stays continuous/numeric for line/area/scatter/bubble/histogram.
+- `column`, `bar`, `area`, `areaspline`, `errorbar` are zero-anchored — the baseline touches the axis by design; no need to set `yAxis.min:0`.
+- `scatter`/`jitter`/`bubble`/`dumbbell`/`boxplot`/`candlestick`/`columnrange` auto-pad the value axis so markers/whiskers at the data extreme don't sit on or get clipped by the axis line.
+- `chart.zoom` supports independent `'x'`, `'y'`, or `'xy'` (drags both at once).
+- `dumbbell`/`columnrange` show `dataLabels:{enabled:true}` at both the low and high ends, not just one.

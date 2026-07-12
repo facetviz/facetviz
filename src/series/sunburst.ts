@@ -19,7 +19,7 @@ export class SunburstSeries extends BaseSeries {
 
   override render(ctx: SeriesRenderContext): void {
     const { renderer, plot, colors } = ctx;
-    const g = renderer.group({ class: `jchart-series jchart-sunburst ${this.name}` }, renderer.root);
+    const g = renderer.group({ class: `facet-series facet-sunburst ${this.name}` }, renderer.root);
 
     // Build the tree.
     const byId = new Map<string, Node>();
@@ -59,7 +59,7 @@ export class SunburstSeries extends BaseSeries {
         const base = n.color ?? paletteColor(colors, ci);
         const color = n.point?.color ?? shade(base, n.depth * 0.12);
         const el = renderer.create('path', {
-          d: this.arc(cx, cy, rIn, rOut, a0, a1), fill: color, stroke: '#fff', 'stroke-width': 1, class: 'jchart-point',
+          d: this.arc(cx, cy, rIn, rOut, a0, a1), fill: color, stroke: '#fff', 'stroke-width': 1, class: 'facet-point',
         }, g);
         if (n.point) {
           ctx.registerHover(el, n.point);

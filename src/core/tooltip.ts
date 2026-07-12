@@ -14,7 +14,7 @@ export class Tooltip {
   constructor(private container: HTMLElement, options: TooltipOptions) {
     this.options = options;
     this.el = document.createElement('div');
-    this.el.className = 'jchart-tooltip';
+    this.el.className = 'facet-tooltip';
     Object.assign(this.el.style, {
       position: 'absolute',
       pointerEvents: 'none',

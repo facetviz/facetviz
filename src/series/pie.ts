@@ -47,7 +47,7 @@ export class PieSeries extends BaseSeries {
 
   override render(ctx: SeriesRenderContext): void {
     const { renderer, plot } = ctx;
-    const g = renderer.group({ class: `jchart-series jchart-pie ${this.name}` }, renderer.root);
+    const g = renderer.group({ class: `facet-series facet-pie ${this.name}` }, renderer.root);
 
     const dl = this.options.dataLabels;
     const outside = !!dl?.enabled && (dl.position ?? 'outside') !== 'inside';
@@ -93,7 +93,7 @@ export class PieSeries extends BaseSeries {
       const rr = radiusFor(p);
 
       const path = this.slicePath(c.cx, c.cy, rr, innerR, angle, end);
-      const el = renderer.create('path', { d: path, fill: color, stroke: '#ffffff', 'stroke-width': 1, class: 'jchart-point' }, g);
+      const el = renderer.create('path', { d: path, fill: color, stroke: '#ffffff', 'stroke-width': 1, class: 'facet-point' }, g);
       ctx.registerHover(el, p);
       el.addEventListener('click', (e: Event) => ctx.onPointEvent('click', p, e));
       el.addEventListener('mouseover', (e: Event) => ctx.onPointEvent('mouseOver', p, e));
@@ -135,7 +135,7 @@ export class PieSeries extends BaseSeries {
 
       // Inner slice (the group itself).
       const innerPath = this.slicePath(c.cx, c.cy, midR, holeR, angle, end);
-      renderer.create('path', { d: innerPath, fill: base, stroke: '#ffffff', 'stroke-width': 1, class: 'jchart-point' }, g);
+      renderer.create('path', { d: innerPath, fill: base, stroke: '#ffffff', 'stroke-width': 1, class: 'facet-point' }, g);
       // Inner label centred within its band, abbreviated to fit the wedge.
       const innerLabelR = (holeR + midR) / 2;
       const mid = (angle + end) / 2;
@@ -158,7 +158,7 @@ export class PieSeries extends BaseSeries {
         const e2 = a2 + cs;
         const color = p.color ?? shade(base, 0.12 + 0.5 * (ps.length === 1 ? 0 : j / (ps.length - 1)));
         const outerPath = this.slicePath(c.cx, c.cy, c.radius, midR, a2, e2);
-        const el = renderer.create('path', { d: outerPath, fill: color, stroke: '#ffffff', 'stroke-width': 1, class: 'jchart-point' }, g);
+        const el = renderer.create('path', { d: outerPath, fill: color, stroke: '#ffffff', 'stroke-width': 1, class: 'facet-point' }, g);
         ctx.registerHover(el, p);
         el.addEventListener('click', (e: Event) => ctx.onPointEvent('click', p, e));
         el.addEventListener('mouseover', (e: Event) => ctx.onPointEvent('mouseOver', p, e));

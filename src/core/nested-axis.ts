@@ -47,7 +47,7 @@ export class NestedAxis {
 
   render(parent: SVGGElement): void {
     const g = this.cfg.renderer.group(
-      { class: "jchart-axis jchart-axis-nested" },
+      { class: "facet-axis facet-axis-nested" },
       parent,
     );
     if (this.cfg.position === "split") this.renderSplit(g);

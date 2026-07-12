@@ -30,7 +30,7 @@ export class ColumnSeries extends BaseSeries {
     ) as CategoryScale;
     const valScale: Scale = this.horizontal ? ctx.xScale : ctx.yScale;
     const g = renderer.group({
-      class: `jchart-series jchart-column ${this.name}`,
+      class: `facet-series facet-column ${this.name}`,
     });
 
     const band = catScale.bandwidth();
@@ -69,7 +69,7 @@ export class ColumnSeries extends BaseSeries {
           ...rect,
           rx: 0,
           fill: p.color ?? this.color,
-          class: "jchart-point",
+          class: "facet-point",
         },
         g,
       );

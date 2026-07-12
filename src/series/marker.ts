@@ -18,7 +18,7 @@ export function drawMarker(
   spec: MarkerSpec,
 ): SVGElement {
   const { symbol, radius: r, fill, stroke, strokeWidth } = spec;
-  const common = { fill, stroke, 'stroke-width': strokeWidth, class: 'jchart-point' };
+  const common = { fill, stroke, 'stroke-width': strokeWidth, class: 'facet-point' };
 
   switch (symbol) {
     case 'square':

@@ -21,7 +21,7 @@ export class ErrorBarSeries extends BaseSeries {
     const { renderer, groupCount, groupIndex, inverted } = ctx;
     const catScale = (inverted ? ctx.yScale : ctx.xScale) as CategoryScale;
     const valScale: Scale = inverted ? ctx.xScale : ctx.yScale;
-    const g = renderer.group({ class: `jchart-series jchart-errorbar ${this.name}` }, renderer.root);
+    const g = renderer.group({ class: `facet-series facet-errorbar ${this.name}` }, renderer.root);
     const band = catScale.bandwidth();
     const sub = band / groupCount;
     const cap = Math.min(sub * 0.4, 8);
@@ -31,7 +31,7 @@ export class ErrorBarSeries extends BaseSeries {
       if (p.low === undefined || p.high === undefined) continue;
       const c = catScale.scale(p.x) - band / 2 + (groupIndex + 0.5) * sub;
       const vLo = valScale.scale(p.low), vHi = valScale.scale(p.high);
-      const line = (a: Record<string, number>) => renderer.create('line', { ...a, stroke, 'stroke-width': 1.5, class: 'jchart-point' }, g);
+      const line = (a: Record<string, number>) => renderer.create('line', { ...a, stroke, 'stroke-width': 1.5, class: 'facet-point' }, g);
       const el = inverted
         ? line({ x1: vLo, y1: c, x2: vHi, y2: c })
         : line({ x1: c, y1: vLo, x2: c, y2: vHi });

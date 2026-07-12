@@ -22,7 +22,7 @@ export class AreaSeries extends LineSeries {
 
   override render(ctx: SeriesRenderContext): void {
     const { renderer } = ctx;
-    const g = renderer.group({ class: `jchart-series jchart-area ${this.name}` }, renderer.root);
+    const g = renderer.group({ class: `facet-series facet-area ${this.name}` }, renderer.root);
 
     const top: Pt[] = [];
     const bottom: Pt[] = [];

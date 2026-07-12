@@ -1,4 +1,4 @@
-# JChart
+# FacetChart
 
 A modular, dependency-free **TypeScript + SVG** charting library with
 **a declarative config API**, small multiples (trellising), and a wide
@@ -20,12 +20,12 @@ the left, the rendered chart on the right, with 25+ presets.
 ### Publishing the docs site
 
 The site under `docs/` is fully self-contained — no CDN. `docs/lib/` holds the vendored assets:
-the bundled library (`jchart.js`), plus `marked.esm.js` and `highlight.min.js` / `hljs-github-dark.css`
+the bundled library (`facetchart.js`), plus `marked.esm.js` and `highlight.min.js` / `hljs-github-dark.css`
 used to render the API reference and highlight code. Regenerate the library bundle whenever the
 library changes:
 
 ```bash
-npm run build:site   # bundles src/index.ts → docs/lib/jchart.js
+npm run build:site   # bundles src/index.ts → docs/lib/facetchart.js
 ```
 
 Then either commit `docs/` and enable **GitHub Pages → Deploy from branch → `main` / `docs`**, or use
@@ -33,9 +33,9 @@ the included workflow ([`.github/workflows/pages.yml`](.github/workflows/pages.y
 bundle and deploys on every push to `main` (set Pages source to **GitHub Actions**).
 
 ```ts
-import { JChart } from 'jchart';
+import { FacetChart } from 'facetchart';
 
-new JChart('#container', {
+new FacetChart('#container', {
   chart: { type: 'column' },
   title: { text: 'Fruit consumption' },
   subtitle: { text: 'in units' },
@@ -80,7 +80,7 @@ charts** work by giving each series its own `type`.
 Split one dataset into a grid of panels by data dimensions:
 
 ```ts
-new JChart('#el', {
+new FacetChart('#el', {
   chart: { type: 'column' },
   trellis: { columns: 'category', rows: 'region' },
   series: [{ name: 'Sales', data: [
@@ -125,9 +125,9 @@ yAxis: {
 Pick a built-in theme or supply your own:
 
 ```ts
-new JChart('#c', { theme: 'dark', series: [...] });          // light | dark | high-contrast | pastel
+new FacetChart('#c', { theme: 'dark', series: [...] });          // light | dark | high-contrast | pastel
 
-new JChart('#c', {                                            // custom, extending a built-in
+new FacetChart('#c', {                                            // custom, extending a built-in
   theme: {
     base: 'dark',
     backgroundColor: '#0b1021',
@@ -145,7 +145,7 @@ list in the [API reference](docs/API.md#theming).
 ## Interactivity & data
 
 ```ts
-new JChart('#c', {
+new FacetChart('#c', {
   chart: {
     animation: true,        // enter animation (bars grow, lines draw in) — default on
     zoom: 'x',              // drag-select on the plot to zoom the x-axis
@@ -256,7 +256,7 @@ Boxplots accept two distinct hues (or any of the sub-colours):
 ## Events / callbacks
 
 ```ts
-const chart = new JChart('#el', {
+const chart = new FacetChart('#el', {
   seriesEvents: {
     click:     (e) => console.log(e.seriesName, e.x, e.y, e.point),
     mouseOver: (e) => {},

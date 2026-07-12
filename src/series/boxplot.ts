@@ -31,7 +31,7 @@ export class BoxplotSeries extends BaseSeries {
     // Category axis / value axis swap when the chart is inverted (horizontal).
     const catScale = (inverted ? ctx.yScale : ctx.xScale) as CategoryScale;
     const valScale: Scale = inverted ? ctx.xScale : ctx.yScale;
-    const layer = renderer.group({ class: `jchart-series jchart-boxplot ${this.name}` }, renderer.root);
+    const layer = renderer.group({ class: `facet-series facet-boxplot ${this.name}` }, renderer.root);
 
     const band = catScale.bandwidth();
     const subWidth = band / groupCount;
@@ -72,7 +72,7 @@ export class BoxplotSeries extends BaseSeries {
         ? { x1: v(box.median), y1: lo, x2: v(box.median), y2: lo + boxWidth }
         : { x1: lo, y1: v(box.median), x2: lo + boxWidth, y2: v(box.median) };
 
-      const g = renderer.group({ class: 'jchart-point' }, layer);
+      const g = renderer.group({ class: 'facet-point' }, layer);
 
       // Whiskers + end caps.
       renderer.create('line', { ...valLine(box.min, box.q1), stroke: whisker, 'stroke-width': 1 }, g);

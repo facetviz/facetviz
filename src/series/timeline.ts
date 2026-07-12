@@ -16,7 +16,7 @@ export class TimelineSeries extends BaseSeries {
 
   override render(ctx: SeriesRenderContext): void {
     const { renderer, plot, colors } = ctx;
-    const g = renderer.group({ class: `jchart-series jchart-timeline ${this.name}` }, renderer.root);
+    const g = renderer.group({ class: `facet-series facet-timeline ${this.name}` }, renderer.root);
     const points = this.visiblePoints();
     if (!points.length) return;
 
@@ -34,7 +34,7 @@ export class TimelineSeries extends BaseSeries {
       const stub = above ? -34 : 34;
 
       renderer.create('line', { x1: x, y1: cy, x2: x, y2: cy + stub, stroke: color, 'stroke-width': 1.5 }, g);
-      const marker = renderer.create('circle', { cx: x, cy, r: 6, fill: color, stroke: '#fff', 'stroke-width': 2, class: 'jchart-point' }, g);
+      const marker = renderer.create('circle', { cx: x, cy, r: 6, fill: color, stroke: '#fff', 'stroke-width': 2, class: 'facet-point' }, g);
 
       const ty = cy + stub + (above ? -6 : 16);
       renderer.text(String(p.x ?? p.name), x, ty, { 'text-anchor': 'middle', ...FONTS.axisLabel, 'font-weight': '600', fill: color }, g);

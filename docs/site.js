@@ -1,10 +1,10 @@
 // Shared docs helpers (vendored, no CDN).
-export { JChart } from './lib/jchart.js';
+export { FacetChart } from './lib/facetchart.js';
 
 /** Render a config into an element, showing errors inline. */
-export function renderChart(JChart, el, cfg) {
+export function renderChart(FacetChart, el, cfg) {
   el.innerHTML = '';
-  try { new JChart(el, cfg); }
+  try { new FacetChart(el, cfg); }
   catch (e) { el.innerHTML = '<p style="color:#e5484d;font:13px/1.5 monospace">' + (e && e.message || e) + '</p>'; }
 }
 

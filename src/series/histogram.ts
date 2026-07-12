@@ -50,7 +50,7 @@ export class HistogramSeries extends BaseSeries {
 
   override render(ctx: SeriesRenderContext): void {
     const { renderer, xScale, yScale } = ctx;
-    const g = renderer.group({ class: `jchart-series jchart-histogram ${this.name}` }, renderer.root);
+    const g = renderer.group({ class: `facet-series facet-histogram ${this.name}` }, renderer.root);
     const zeroY = yScale.scale(0);
 
     this.points.forEach((p) => {
@@ -60,7 +60,7 @@ export class HistogramSeries extends BaseSeries {
       const yTop = yScale.scale(p.y ?? 0);
       const el = renderer.create('rect', {
         x: Math.min(xa, xb) + 0.5, y: yTop, width: Math.max(1, Math.abs(xb - xa) - 1),
-        height: Math.max(0, zeroY - yTop), fill: p.color ?? this.color, class: 'jchart-point',
+        height: Math.max(0, zeroY - yTop), fill: p.color ?? this.color, class: 'facet-point',
       }, g);
       ctx.registerHover(el, p);
       el.addEventListener('click', (e: Event) => ctx.onPointEvent('click', p, e));

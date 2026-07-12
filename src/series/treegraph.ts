@@ -19,7 +19,7 @@ export class TreegraphSeries extends BaseSeries {
 
   override render(ctx: SeriesRenderContext): void {
     const { renderer, plot, colors } = ctx;
-    const g = renderer.group({ class: `jchart-series jchart-treegraph ${this.name}` }, renderer.root);
+    const g = renderer.group({ class: `facet-series facet-treegraph ${this.name}` }, renderer.root);
 
     const byId = new Map<string, Node>();
     for (const p of this.points) {
@@ -70,7 +70,7 @@ export class TreegraphSeries extends BaseSeries {
     for (const n of byId.values()) {
       const x = nodeX(n.depth), y = nodeY(n.y);
       const color = n.point.color ?? paletteColor(colors, n.depth === 0 ? 0 : ci++);
-      const box = renderer.group({ class: 'jchart-point' }, g);
+      const box = renderer.group({ class: 'facet-point' }, g);
       renderer.create('rect', { x, y: y - boxH / 2, width: boxW, height: boxH, rx: 5, fill: color }, box);
       renderer.text(String(n.point.name ?? n.id), x + boxW / 2, y, {
         'text-anchor': 'middle', 'dominant-baseline': 'middle', ...FONTS.dataLabel, fill: '#ffffff', 'font-size': '11px',

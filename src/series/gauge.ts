@@ -18,7 +18,7 @@ export class GaugeSeries extends BaseSeries {
 
   override render(ctx: SeriesRenderContext): void {
     const { renderer, plot } = ctx;
-    const g = renderer.group({ class: `jchart-series jchart-gauge ${this.name}` }, renderer.root);
+    const g = renderer.group({ class: `facet-series facet-gauge ${this.name}` }, renderer.root);
     const p = this.points[0];
     if (!p) return;
 
@@ -54,7 +54,7 @@ export class GaugeSeries extends BaseSeries {
     const nr = r - thickness / 2;
     const needle = renderer.create('line', {
       x1: cx, y1: cy, x2: cx + nr * Math.cos(ang), y2: cy + nr * Math.sin(ang),
-      stroke: '#333', 'stroke-width': 3, 'stroke-linecap': 'round', class: 'jchart-point',
+      stroke: '#333', 'stroke-width': 3, 'stroke-linecap': 'round', class: 'facet-point',
     }, g);
     renderer.create('circle', { cx, cy, r: 6, fill: '#333' }, g);
 

@@ -18,7 +18,7 @@ export class Renderer {
     this.root = document.createElementNS(SVG_NS, 'svg') as SVGSVGElement;
     this.root.setAttribute('xmlns', SVG_NS);
     this.setSize(width, height);
-    this.root.setAttribute('class', 'jchart-root');
+    this.root.setAttribute('class', 'facet-root');
     // Never overflow the parent: scale down responsively if the container is
     // narrower than the intrinsic width.
     this.root.style.maxWidth = '100%';

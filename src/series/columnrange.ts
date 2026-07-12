@@ -7,6 +7,7 @@
 
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
 import { CategoryScale, Scale } from '../core/scale.js';
+import { drawDataLabel, labelString, LabelPlacement } from './data-label.js';
 import type { Point } from '../core/point.js';
 
 export class ColumnRangeSeries extends BaseSeries {
@@ -22,7 +23,7 @@ export class ColumnRangeSeries extends BaseSeries {
     const { renderer, groupCount, groupIndex, inverted } = ctx;
     const catScale = (inverted ? ctx.yScale : ctx.xScale) as CategoryScale;
     const valScale: Scale = inverted ? ctx.xScale : ctx.yScale;
-    const g = renderer.group({ class: `jchart-series jchart-columnrange ${this.name}` }, renderer.root);
+    const g = renderer.group({ class: `facet-series facet-columnrange ${this.name}` }, renderer.root);
 
     const band = catScale.bandwidth();
     const subWidth = band / groupCount;
@@ -39,12 +40,45 @@ export class ColumnRangeSeries extends BaseSeries {
 
       const el = renderer.create('line', {
         ...coords, stroke: p.color ?? this.color,
-        'stroke-width': thickness, 'stroke-linecap': 'round', class: 'jchart-point',
+        'stroke-width': thickness, 'stroke-linecap': 'round', class: 'facet-point',
       }, g);
       ctx.registerHover(el, p);
       el.addEventListener('click', (e: Event) => ctx.onPointEvent('click', p, e));
       el.addEventListener('mouseover', (e: Event) => ctx.onPointEvent('mouseOver', p, e));
       el.addEventListener('mouseout', (e: Event) => ctx.onPointEvent('mouseOut', p, e));
+
+      this.drawEndLabels(ctx, p, cat, vLow, vHigh, inverted, thickness / 2);
+    }
+  }
+
+  /** Labels at the low and high ends of the capsule. */
+  private drawEndLabels(
+    ctx: SeriesRenderContext, p: Point, cat: number, vLow: number, vHigh: number,
+    inverted: boolean, half: number,
+  ): void {
+    const dl = this.options.dataLabels;
+    if (!dl?.enabled) return;
+    const ends: Array<{ val: number; v: number; isHigh: boolean }> = [
+      { val: p.low!, v: vLow, isHigh: false },
+      { val: p.high!, v: vHigh, isHigh: true },
+    ];
+    for (const end of ends) {
+      const text = labelString(dl, {
+        x: p.x, y: end.val, low: p.low, high: p.high, point: p.options,
+        series: this.name, name: p.name ?? p.x, index: p.index, color: p.color ?? this.color,
+      });
+      const d = (dl.distance ?? 0) + half + 4;
+      let place: LabelPlacement;
+      if (inverted) {
+        place = end.isHigh
+          ? { x: end.v + d, y: cat + 4, anchor: 'start' }
+          : { x: end.v - d, y: cat + 4, anchor: 'end' };
+      } else {
+        place = end.isHigh
+          ? { x: cat, y: end.v - d, anchor: 'middle' }
+          : { x: cat, y: end.v + d + 10, anchor: 'middle' };
+      }
+      drawDataLabel(ctx.renderer, ctx.renderer.root, text, place, dl);
     }
   }
 }

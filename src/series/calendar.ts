@@ -19,7 +19,7 @@ export class CalendarSeries extends BaseSeries {
 
   override render(ctx: SeriesRenderContext): void {
     const { renderer, plot } = ctx;
-    const g = renderer.group({ class: `jchart-series jchart-calendar ${this.name}` }, renderer.root);
+    const g = renderer.group({ class: `facet-series facet-calendar ${this.name}` }, renderer.root);
 
     const days = this.points
       .map((p) => ({ date: new Date((p.options.date as number | string) ?? p.x), value: (p.options.value as number) ?? p.y ?? 0, point: p }))
@@ -57,7 +57,7 @@ export class CalendarSeries extends BaseSeries {
       const t = max === min ? 0.5 : (d.value - min) / (max - min);
       const el = renderer.create('rect', {
         x, y, width: cell, height: cell, rx: 2,
-        fill: d.point.color ?? lerpColor('#eaf3fb', this.color, t), stroke: THEME.axis.gridLineColor, 'stroke-width': 0.5, class: 'jchart-point',
+        fill: d.point.color ?? lerpColor('#eaf3fb', this.color, t), stroke: THEME.axis.gridLineColor, 'stroke-width': 0.5, class: 'facet-point',
       }, g);
       ctx.registerHover(el, d.point);
       el.addEventListener('click', (e: Event) => ctx.onPointEvent('click', d.point, e));

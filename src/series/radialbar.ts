@@ -15,7 +15,7 @@ export class RadialBarSeries extends BaseSeries {
 
   override render(ctx: SeriesRenderContext): void {
     const { renderer, plot, colors } = ctx;
-    const g = renderer.group({ class: `jchart-series jchart-radialbar ${this.name}` }, renderer.root);
+    const g = renderer.group({ class: `facet-series facet-radialbar ${this.name}` }, renderer.root);
 
     const cx = plot.x + plot.width / 2;
     const cy = plot.y + plot.height / 2;
@@ -50,7 +50,7 @@ export class RadialBarSeries extends BaseSeries {
         d: this.arcBand(cx, cy, rInner, rOuter, startAngle, startAngle + fullSweep * frac),
         fill: color,
         stroke: 'none',
-        class: 'jchart-point',
+        class: 'facet-point',
       }, g);
       ctx.registerHover(el, p);
       el.addEventListener('click', (e: Event) => ctx.onPointEvent('click', p, e));

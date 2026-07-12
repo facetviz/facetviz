@@ -28,7 +28,7 @@ export class RangeSeries extends BaseSeries {
 
   override render(ctx: SeriesRenderContext): void {
     const { renderer, xScale, yScale } = ctx;
-    const g = renderer.group({ class: `jchart-series jchart-arearange ${this.name}` }, renderer.root);
+    const g = renderer.group({ class: `facet-series facet-arearange ${this.name}` }, renderer.root);
 
     const top: Pt[] = [];
     const bottom: Pt[] = [];

@@ -1,5 +1,5 @@
 {
-  "name": "jchart",
+  "name": "facetchart",
   "version": "0.1.0",
   "description": "A modular TypeScript SVG charting library with a declarative config API, small-multiples trellising, and a wide range of chart types.",
   "type": "module",
@@ -18,7 +18,7 @@
     "clean": "rm -rf dist",
     "test": "vitest run",
     "test:watch": "vitest",
-    "build:site": "esbuild src/index.ts --bundle --format=esm --outfile=docs/lib/jchart.js"
+    "build:site": "esbuild src/index.ts --bundle --format=esm --outfile=docs/lib/facetchart.js"
   },
   "keywords": [
     "chart",

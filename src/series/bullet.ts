@@ -15,7 +15,7 @@ export class BulletSeries extends BaseSeries {
 
   override render(ctx: SeriesRenderContext): void {
     const { renderer, plot } = ctx;
-    const g = renderer.group({ class: `jchart-series jchart-bullet ${this.name}` }, renderer.root);
+    const g = renderer.group({ class: `facet-series facet-bullet ${this.name}` }, renderer.root);
     const points = this.visiblePoints();
     if (!points.length) return;
 
@@ -39,7 +39,7 @@ export class BulletSeries extends BaseSeries {
         renderer.create('rect', { x: gx, y: cy - h / 2, width: sx(v) - gx, height: h, fill: bandShades[idx % bandShades.length] }, g);
       });
       // Measure bar.
-      const el = renderer.create('rect', { x: gx, y: cy - h / 5, width: sx(value) - gx, height: (h * 2) / 5, fill: p.color ?? this.color, class: 'jchart-point' }, g);
+      const el = renderer.create('rect', { x: gx, y: cy - h / 5, width: sx(value) - gx, height: (h * 2) / 5, fill: p.color ?? this.color, class: 'facet-point' }, g);
       // Target marker.
       if (typeof target === 'number') {
         renderer.create('line', { x1: sx(target), y1: cy - h / 2, x2: sx(target), y2: cy + h / 2, stroke: '#333', 'stroke-width': 2.5 }, g);

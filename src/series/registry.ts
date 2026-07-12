@@ -83,7 +83,7 @@ export function createSeries(
   categories?: string[],
 ): BaseSeries {
   const Ctor = REGISTRY[type];
-  if (!Ctor) throw new Error(`JChart: unknown series type "${type}"`);
+  if (!Ctor) throw new Error(`FacetChart: unknown series type "${type}"`);
   return new Ctor(options, categories);
 }
 

@@ -23,7 +23,7 @@ export class ScatterSeries extends BaseSeries {
 
   override render(ctx: SeriesRenderContext): void {
     const { renderer, xScale } = ctx;
-    const g = renderer.group({ class: `jchart-series jchart-scatter ${this.name}` }, renderer.root);
+    const g = renderer.group({ class: `facet-series facet-scatter ${this.name}` }, renderer.root);
 
     const marker = this.options.marker ?? {};
     const rng = seededRandom(this.index * 7919 + this.points.length + 1);

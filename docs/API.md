@@ -1,12 +1,12 @@
-# JChart API Reference
+# FacetChart API Reference
 
-Complete reference for every configuration key. JChart's config object follows
+Complete reference for every configuration key. FacetChart's config object follows
 familiar declarative charting conventions, so most option names will be recognizable.
 
 ```ts
-import { JChart } from 'jchart';
+import { FacetChart } from 'facetchart';
 
-const chart = new JChart(container, options);
+const chart = new FacetChart(container, options);
 ```
 
 - **`container`** — a DOM element, or a CSS selector string resolving to one.
@@ -26,7 +26,7 @@ const chart = new JChart(container, options);
 
 ## ChartOptions
 
-The root object passed to `new JChart(container, options)`.
+The root object passed to `new FacetChart(container, options)`.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -415,7 +415,7 @@ A `Theme` has these tokens (all optional in a custom object):
 Register a reusable named theme at runtime:
 
 ```ts
-import { registerTheme, LIGHT_THEME } from 'jchart';
+import { registerTheme, LIGHT_THEME } from 'facetchart';
 registerTheme('corp', { ...LIGHT_THEME, colors: ['#003f5c', '#bc5090', '#ffa600'] });
 // then: { theme: 'corp' }
 ```
@@ -509,7 +509,7 @@ Register callbacks in config, or subscribe via [`chart.on()`](#instance-methods)
 **`SeriesEvents`** (`seriesEvents`, applied to all series):
 `click(ev)`, `mouseOver(ev)`, `mouseOut(ev)`, `legendItemClick({ series, visible })`.
 
-**`JChartPointEvent`** (`ev`) payload:
+**`FacetChartPointEvent`** (`ev`) payload:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -630,7 +630,7 @@ automatically. Mix `type`s across series for combination charts.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `animation` | `boolean \| { duration?, easing?, enabled? }` | on | Enter animation: bars grow, lines draw in, others fade. |
-| `zoom` | `'x' \| 'xy' \| false \| { type }` | off | Drag-select on a numeric/datetime x-axis to zoom; a **Reset zoom** control restores it. |
+| `zoom` | `'x' \| 'y' \| 'xy' \| false \| { type }` | off | Drag-select on a numeric/datetime axis to zoom — `'x'`, `'y'`, or both with `'xy'`; a **Reset zoom** control restores the full range. |
 | `reflow` | `boolean` | `true` | Auto re-render to the container width on resize. |
 | `boost` | `boolean \| { enabled?, threshold? }` | auto | Draw high-volume point/line series to a canvas overlay (lines min/max-decimated). Auto-enables past `threshold` points (default 1500). Handles 100k+ points; boosted marks aren't in `getSVG()` (use `downloadPNG()`). |
 
@@ -644,14 +644,14 @@ child series. `accessibility: { description }` overrides the auto SVG label.
 
 ```ts
 import {
-  JChart, Chart,                       // main class (Chart is an alias)
+  FacetChart, Chart,                       // main class (Chart is an alias)
   registerSeriesType, createSeries,    // custom series extensibility
   BaseSeries,                          // base class for custom series
   LinearScale, LogScale, CategoryScale,// scales
   Renderer,                            // SVG helper
   computeBoxStats,                     // boxplot summary helper
   DEFAULT_COLORS,                      // default palette
-} from 'jchart';
+} from 'facetchart';
 ```
 
 All option interfaces are exported as types for TypeScript users

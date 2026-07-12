@@ -1,5 +1,5 @@
 /**
- * JChart — the top-level chart controller.
+ * FacetChart — the top-level chart controller.
  *
  * Responsibilities:
  *   1. Resolve user options against defaults + plotOptions.
@@ -36,7 +36,7 @@ import { createSeries } from '../series/registry.js';
 import { drawDataLabel, labelString } from '../series/data-label.js';
 import type { Point } from './point.js';
 
-export class JChart {
+export class FacetChart {
   readonly container: HTMLElement;
   readonly options: ChartOptions;
   private renderer!: Renderer;
@@ -50,8 +50,8 @@ export class JChart {
   private resizeObserver?: ResizeObserver;
   /** Play the enter animation on the next render (first render + data updates). */
   private animateNext = true;
-  /** Horizontal scale + plot captured for drag-zoom. */
-  private zoomState?: { plot: Rect; xScale: Scale };
+  /** Scales + plot captured for drag-zoom. */
+  private zoomState?: { plot: Rect; xScale: Scale; yScale: Scale };
   /** Plot + scales of the last cartesian panel (for crosshair). */
   private plotCtx?: { plot: Rect; xScale: Scale; yScale: Scale; inverted: boolean };
   private crosshairEl?: SVGElement;
@@ -61,7 +61,7 @@ export class JChart {
 
   constructor(container: HTMLElement | string, options: ChartOptions) {
     const el = typeof container === 'string' ? document.querySelector(container) : container;
-    if (!el) throw new Error('JChart: container element not found');
+    if (!el) throw new Error('FacetChart: container element not found');
     this.container = el as HTMLElement;
     this.options = this.resolveOptions(options);
     this.theme = resolveTheme(this.options.theme);
@@ -294,17 +294,17 @@ export class JChart {
     const easing = cfg.easing ?? 'cubic-bezier(0.22, 1, 0.36, 1)';
     const inverted = this.isInverted(this.series);
 
-    const groups = this.renderer.root.querySelectorAll<SVGGElement>('.jchart-series');
+    const groups = this.renderer.root.querySelectorAll<SVGGElement>('.facet-series');
     groups.forEach((g, gi) => {
       const delay = Math.min(gi * 60, 240);
       const cls = g.getAttribute('class') ?? '';
-      if (cls.includes('jchart-column') || cls.includes('jchart-marimekko')) {
-        g.querySelectorAll<SVGElement>('rect.jchart-point, rect').forEach((r) => {
+      if (cls.includes('facet-column') || cls.includes('facet-marimekko')) {
+        g.querySelectorAll<SVGElement>('rect.facet-point, rect').forEach((r) => {
           r.style.transformBox = 'fill-box';
           r.style.transformOrigin = inverted ? 'left center' : 'center bottom';
           r.animate([{ transform: inverted ? 'scaleX(0)' : 'scaleY(0)' }, { transform: 'none' }], { duration, easing, delay, fill: 'backwards' });
         });
-      } else if (cls.includes('jchart-line') || cls.includes('jchart-arearange') || cls.includes('jchart-radar')) {
+      } else if (cls.includes('facet-line') || cls.includes('facet-arearange') || cls.includes('facet-radar')) {
         g.querySelectorAll<SVGPathElement>('path').forEach((p) => {
           if (p.getAttribute('fill') !== 'none') { p.animate([{ opacity: 0 }, { opacity: 1 }], { duration, easing, delay, fill: 'backwards' }); return; }
           const len = p.getTotalLength?.() ?? 0;
@@ -339,51 +339,95 @@ export class JChart {
     const type = typeof z === 'object' ? z.type : z;
     if (!type) return;
     const st = this.zoomState;
-    const xScale = st?.xScale as (Scale & { invert?(p: number): number }) | undefined;
-    if (!st || !xScale?.invert || xScale.bandwidth() > 0) return; // only continuous x
+    if (!st) return;
+    const xScale = st.xScale as Scale & { invert?(p: number): number };
+    const yScale = st.yScale as Scale & { invert?(p: number): number };
+    // Each axis is zoomable only if it is continuous (has invert, no bands).
+    const canX = (type === 'x' || type === 'xy') && !!xScale?.invert && xScale.bandwidth() === 0;
+    const canY = (type === 'y' || type === 'xy') && !!yScale?.invert && yScale.bandwidth() === 0;
+    if (!canX && !canY) return;
     const plot = st.plot;
     const root = this.renderer.root;
 
     const overlay = this.renderer.create('rect', {
       x: plot.x, y: plot.y, width: plot.width, height: plot.height,
-      fill: 'transparent', style: 'cursor:crosshair', class: 'jchart-zoom-overlay',
+      fill: 'transparent', style: 'cursor:crosshair', class: 'facet-zoom-overlay',
     }, root);
 
-    let startX = 0;
+    const clampX = (v: number) => Math.max(plot.x, Math.min(plot.x + plot.width, v));
+    const clampY = (v: number) => Math.max(plot.y, Math.min(plot.y + plot.height, v));
+    let startX = 0, startY = 0;
     let band: SVGRectElement | null = null;
-    const clamp = (v: number) => Math.max(plot.x, Math.min(plot.x + plot.width, v));
+
+    // The selection rect spans the full plot on any axis that isn't being zoomed.
+    const bandRect = (x: number, y: number) => ({
+      x: canX ? Math.min(startX, x) : plot.x,
+      width: canX ? Math.abs(x - startX) : plot.width,
+      y: canY ? Math.min(startY, y) : plot.y,
+      height: canY ? Math.abs(y - startY) : plot.height,
+    });
 
     overlay.addEventListener('mousedown', (e: MouseEvent) => {
-      startX = clamp(this.localX(e.clientX));
-      band = this.renderer.create('rect', { x: startX, y: plot.y, width: 0, height: plot.height, fill: 'rgba(37,99,235,0.15)', stroke: 'rgba(37,99,235,0.6)' }, root) as SVGRectElement;
-      const move = (ev: MouseEvent) => { const x = clamp(this.localX(ev.clientX)); band!.setAttribute('x', String(Math.min(startX, x))); band!.setAttribute('width', String(Math.abs(x - startX))); };
+      startX = clampX(this.localX(e.clientX));
+      startY = clampY(this.localY(e.clientY));
+      band = this.renderer.create('rect', {
+        ...bandRect(startX, startY), fill: 'rgba(37,99,235,0.15)', stroke: 'rgba(37,99,235,0.6)',
+      }, root) as SVGRectElement;
+      const move = (ev: MouseEvent) => {
+        const r = bandRect(clampX(this.localX(ev.clientX)), clampY(this.localY(ev.clientY)));
+        band!.setAttribute('x', String(r.x)); band!.setAttribute('width', String(r.width));
+        band!.setAttribute('y', String(r.y)); band!.setAttribute('height', String(r.height));
+      };
       const up = (ev: MouseEvent) => {
         window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up);
-        const endX = clamp(this.localX(ev.clientX));
+        const endX = clampX(this.localX(ev.clientX)), endY = clampY(this.localY(ev.clientY));
         band?.remove(); band = null;
-        if (Math.abs(endX - startX) < 6) return;
-        const a = xScale.invert!(Math.min(startX, endX)), b = xScale.invert!(Math.max(startX, endX));
-        const xa = this.axisAt(this.options.xAxis, 0);
-        this.options.xAxis = Array.isArray(this.options.xAxis) ? this.options.xAxis : { ...xa, min: a, max: b };
+        const dragX = canX && Math.abs(endX - startX) >= 6;
+        const dragY = canY && Math.abs(endY - startY) >= 6;
+        if (!dragX && !dragY) return;
+        if (dragX) {
+          const a = xScale.invert!(Math.min(startX, endX)), b = xScale.invert!(Math.max(startX, endX));
+          this.setAxisRange('xAxis', a, b);
+        }
+        if (dragY) {
+          // y range is reversed (larger pixel = smaller value).
+          const a = yScale.invert!(Math.max(startY, endY)), b = yScale.invert!(Math.min(startY, endY));
+          this.setAxisRange('yAxis', a, b);
+        }
         this.animateNext = false; this.render();
       };
       window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
     });
 
-    // Reset control when a zoom is active.
+    // Reset control when a zoom is active on either axis.
     const xa = this.axisAt(this.options.xAxis, 0);
-    if (xa.min !== undefined || xa.max !== undefined) {
-      const g = this.renderer.group({ class: 'jchart-zoom-reset', style: 'cursor:pointer' }, root);
+    const ya = this.axisAt(this.options.yAxis, 0);
+    const zoomed = xa.min !== undefined || xa.max !== undefined || ya.min !== undefined || ya.max !== undefined;
+    if (zoomed) {
+      const g = this.renderer.group({ class: 'facet-zoom-reset', style: 'cursor:pointer' }, root);
       const bx = outer.x + outer.width - 92, by = outer.y + 2;
       this.renderer.create('rect', { x: bx, y: by, width: 90, height: 22, rx: 5, fill: this.theme.tooltip.backgroundColor, stroke: THEME.axis.lineColor }, g);
       this.renderer.text('⟲ Reset zoom', bx + 45, by + 15, { 'text-anchor': 'middle', ...FONTS.axisLabel, fill: this.theme.axis.labelColor }, g);
       g.addEventListener('click', () => {
-        const cur = this.axisAt(this.options.xAxis, 0);
-        const { min, max, ...rest } = cur;
-        this.options.xAxis = rest;
+        this.clearAxisRange('xAxis'); this.clearAxisRange('yAxis');
         this.animateNext = true; this.render();
       });
     }
+  }
+
+  /** Set an axis' min/max (single-axis only; leaves multi-axis configs alone). */
+  private setAxisRange(axis: 'xAxis' | 'yAxis', min: number, max: number): void {
+    const cur = this.options[axis];
+    if (Array.isArray(cur)) return;
+    this.options[axis] = { ...(cur ?? {}), min, max };
+  }
+
+  /** Remove min/max from a single-axis config (used by "Reset zoom"). */
+  private clearAxisRange(axis: 'xAxis' | 'yAxis'): void {
+    const cur = this.options[axis];
+    if (Array.isArray(cur) || !cur) return;
+    const { min, max, ...rest } = cur;
+    this.options[axis] = rest;
   }
 
   private renderTitles(top: number): number {
@@ -549,13 +593,13 @@ export class JChart {
     const valScale = inverted ? xScale : yScale;
 
     // Axes.
-    const axisLayer = this.renderer.group({ class: 'jchart-axes' }, this.renderer.root);
+    const axisLayer = this.renderer.group({ class: 'facet-axes' }, this.renderer.root);
     new Axis({ renderer: this.renderer, scale: catScale, position: catSide, plot: axisPlot, options: catOpts, grid: false }).render(axisLayer);
     new Axis({ renderer: this.renderer, scale: valScale, position: valSide, plot: axisPlot, options: valOpts, grid: true }).render(axisLayer);
 
     // Remember the plot + scales for drag-zoom and crosshair (single-panel).
     this.plotCtx = { plot: axisPlot, xScale, yScale, inverted };
-    this.zoomState = !inverted ? { plot: axisPlot, xScale } : undefined;
+    this.zoomState = !inverted ? { plot: axisPlot, xScale, yScale } : undefined;
 
     // Series. High-volume point/line series are drawn to a canvas overlay.
     const boost = !inverted && this.boostEnabled(visible);
@@ -582,7 +626,7 @@ export class JChart {
     const root = this.renderer.root;
     let defs = root.querySelector('defs');
     if (!defs) { defs = document.createElementNS(NS, 'defs'); root.insertBefore(defs, root.firstChild); }
-    const id = `jchart-clip-${++this.clipSeq}`;
+    const id = `facet-clip-${++this.clipSeq}`;
     const cp = document.createElementNS(NS, 'clipPath');
     cp.setAttribute('id', id);
     const rect = document.createElementNS(NS, 'rect');
@@ -594,7 +638,7 @@ export class JChart {
     for (const el of Array.from(root.children)) {
       if (existing.has(el)) continue;
       const cls = el.getAttribute('class') ?? '';
-      if (cls.includes('jchart-series') || cls.includes('jchart-boost')) el.setAttribute('clip-path', `url(#${id})`);
+      if (cls.includes('facet-series') || cls.includes('facet-boost')) el.setAttribute('clip-path', `url(#${id})`);
     }
   }
 
@@ -603,7 +647,7 @@ export class JChart {
   private static readonly BOOSTABLE = new Set(['scatter', 'jitter', 'bubble', 'line', 'spline', 'step', 'area', 'areaspline']);
 
   private isBoostable(s: BaseSeries): boolean {
-    return JChart.BOOSTABLE.has(s.type);
+    return FacetChart.BOOSTABLE.has(s.type);
   }
 
   private boostEnabled(visible: BaseSeries[]): boolean {
@@ -620,7 +664,7 @@ export class JChart {
     const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
     fo.setAttribute('x', String(plot.x)); fo.setAttribute('y', String(plot.y));
     fo.setAttribute('width', String(plot.width)); fo.setAttribute('height', String(plot.height));
-    fo.setAttribute('class', 'jchart-boost');
+    fo.setAttribute('class', 'facet-boost');
     const canvas = document.createElement('canvas');
     const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
     canvas.width = Math.max(1, Math.round(plot.width * dpr));
@@ -713,40 +757,103 @@ export class JChart {
       vMax = Math.max(vMax, 0);
     }
 
-    // Gutters: header strips + shared axis space.
-    const colHeaderH = colDim ? 20 : 0;
-    const rowHeaderW = rowDim ? 22 : 0;
-    const leftReserve = LAYOUT.defaultLeftAxisWidth + (yOpts.title?.text ? 16 : 0);
-    const bottomReserve = LAYOUT.defaultBottomAxisHeight + (xOpts.title?.text ? 18 : 0);
+    // Gutters: header labels + shared axis space, laid out like a pivot
+    // table — column field + values as a header row on top, row field +
+    // values as a header column on the left (both horizontal, like normal
+    // table headers), the row field name once in the top-left corner cell.
+    // Divider lines carry the nested-axis convention used elsewhere in the
+    // library (plain bold labels, thin full-span separators, no boxed/shaded
+    // chrome) so a trellis chart still reads consistently with the rest of
+    // the library. No axis titles (e.g. "Sales"/"Month") — the row/column
+    // headers already say what's split, and repeating the measure name on
+    // every row is redundant once it's in the chart title.
+    const dimNameRowH = 16;
+    const rowValueColW = rowDim
+      ? Math.max(
+          32,
+          Math.max(rowDim.length, ...rowVals.filter((v) => v !== undefined).map((v) => String(v).length), 0) * 6.6 + 4,
+        )
+      : 0;
+    // Tight tick-label width for these actual values, rather than the fixed
+    // generic axis width — keeps the left gutter close to the numbers.
+    const tickLabelW = LAYOUT.tickLength + 8 + this.valueLabelWidth(allVisible, yOpts);
+    const colHeaderH = colDim ? dimNameRowH + 20 : rowDim ? dimNameRowH : 0;
+    const rowHeaderW = rowDim ? rowValueColW : 0;
+    const leftReserve = rowHeaderW + tickLabelW;
+    const bottomReserve = LAYOUT.defaultBottomAxisHeight;
 
     const gridX = outer.x + leftReserve;
     const gridY = outer.y + colHeaderH;
-    const gridW = outer.width - leftReserve - rowHeaderW;
+    const gridW = outer.width - leftReserve;
     const gridH = outer.height - colHeaderH - bottomReserve;
     const cellW = (gridW - gap * (colVals.length - 1)) / colVals.length;
     const cellH = (gridH - gap * (rowVals.length - 1)) / rowVals.length;
+    const lineColor = THEME.axis.lineColor;
 
-    const headerLayer = this.renderer.group({ class: 'jchart-trellis-headers' }, this.renderer.root);
+    const headerLayer = this.renderer.group({ class: 'facet-trellis-headers' }, this.renderer.root);
+    // Shared bottom extent for every full-height vertical divider, so they
+    // all end at the same point, just past the shared bottom axis.
+    const dividerBottom = gridY + gridH + LAYOUT.tickLength + 12;
 
-    // Column headers across the top.
-    colVals.forEach((cv, ci) => {
-      if (cv === undefined) return;
-      const cx = gridX + ci * (cellW + gap) + cellW / 2;
-      this.renderer.text(String(cv), cx, outer.y + 13, {
-        'text-anchor': 'middle', ...FONTS.axisLabel, 'font-weight': '600', fill: '#333',
+    // Column headers across the top, with full-height divider lines carrying
+    // down through the shared bottom axis — the same visual language as the
+    // nested x-axis's group separators.
+    if (colDim) {
+      this.renderer.text(colDim, gridX + gridW / 2, outer.y + dimNameRowH / 2 + 4, {
+        'text-anchor': 'middle', ...FONTS.axisTitle,
       }, headerLayer);
-    });
+      colVals.forEach((cv, ci) => {
+        if (cv === undefined) return;
+        const cx = gridX + ci * (cellW + gap) + cellW / 2;
+        this.renderer.text(String(cv), cx, outer.y + dimNameRowH + 17, {
+          'text-anchor': 'middle', ...FONTS.axisLabel, 'font-weight': '600', fill: THEME.axis.titleColor,
+        }, headerLayer);
+        if (ci > 0) {
+          const dx = gridX + ci * (cellW + gap) - gap / 2;
+          // Starts below the (single, shared) dimension-name label so it
+          // never cuts through it — the label isn't repeated per column.
+          this.renderer.create('line', {
+            x1: dx, y1: outer.y + dimNameRowH, x2: dx, y2: dividerBottom, stroke: lineColor, 'stroke-width': 1,
+          }, headerLayer);
+        }
+      });
+    }
 
-    // Row headers down the right side (rotated).
-    rowVals.forEach((rv, ri) => {
-      if (rv === undefined) return;
-      const cy = gridY + ri * (cellH + gap) + cellH / 2;
-      const rx = outer.x + outer.width - 6;
-      const el = this.renderer.text(String(rv), rx, cy, {
-        'text-anchor': 'middle', ...FONTS.axisLabel, 'font-weight': '600', fill: '#333',
+    // Row header down the left side — a pivot-table row-header column: the
+    // dimension name once in the top-left corner cell, then each row's value
+    // as normal (unrotated) text next to its cell, with full-width dividers.
+    if (rowDim) {
+      this.renderer.text(rowDim, outer.x + rowHeaderW / 2, outer.y + colHeaderH / 2 + 4, {
+        'text-anchor': 'middle', ...FONTS.axisTitle,
       }, headerLayer);
-      el.setAttribute('transform', `rotate(90 ${rx} ${cy})`);
-    });
+      rowVals.forEach((rv, ri) => {
+        if (rv === undefined) return;
+        const cy = gridY + ri * (cellH + gap) + cellH / 2 + 4;
+        this.renderer.text(String(rv), outer.x + rowHeaderW / 2, cy, {
+          'text-anchor': 'middle', ...FONTS.axisLabel, 'font-weight': '600', fill: THEME.axis.titleColor,
+        }, headerLayer);
+        if (ri > 0) {
+          const dy = gridY + ri * (cellH + gap) - gap / 2;
+          this.renderer.create('line', {
+            x1: outer.x, y1: dy, x2: outer.x + outer.width, y2: dy, stroke: lineColor, 'stroke-width': 1,
+          }, headerLayer);
+        }
+      });
+      // Separates the row-header column (region / East / West) from the axis
+      // and plot area.
+      this.renderer.create('line', {
+        x1: outer.x + rowHeaderW, y1: outer.y, x2: outer.x + rowHeaderW, y2: dividerBottom,
+        stroke: lineColor, 'stroke-width': 1,
+      }, headerLayer);
+    }
+
+    // Separates the top header band (region corner / cat + values) from the
+    // grid below.
+    if (colHeaderH) {
+      this.renderer.create('line', {
+        x1: outer.x, y1: gridY, x2: outer.x + outer.width, y2: gridY, stroke: lineColor, 'stroke-width': 1,
+      }, headerLayer);
+    }
 
     // Each cell.
     rowVals.forEach((rv, ri) => {
@@ -764,17 +871,23 @@ export class JChart {
           .map((s) => s.filterByDimensions(filter))
           .filter((s) => s.visible && s.points.length);
 
-        // Cell background for the "table" grid look.
-        this.renderer.create('rect', {
-          ...cell, fill: 'none', stroke: '#e6e6e6', 'stroke-width': 1,
-        }, this.renderer.root);
-
         const xScale = categories
           ? new CategoryScale({ categories, range: [cell.x, cell.x + cell.width] })
           : new LinearScale({ domain: this.xNumericDomain(cellSeries.length ? cellSeries : allVisible), range: [cell.x, cell.x + cell.width] });
-        const yScale = this.valueScale(yOpts, [vMin, vMax], [cell.y + cell.height, cell.y]);
+        let yScale = this.valueScale(yOpts, [vMin, vMax], [cell.y + cell.height, cell.y]);
+        // Drop the topmost tick (e.g. "10") — it sits right against the
+        // header divider and reads as clutter there. Same domain/range, so
+        // bars plot identically; only the tick/gridline/label list shrinks.
+        if (yScale instanceof LinearScale) {
+          const allTicks = yScale.ticks();
+          if (allTicks.length > 1) {
+            yScale = new LinearScale({
+              domain: yScale.domain, range: [cell.y + cell.height, cell.y], ticks: allTicks.slice(0, -1),
+            });
+          }
+        }
 
-        const axisLayer = this.renderer.group({ class: 'jchart-axes' }, this.renderer.root);
+        const axisLayer = this.renderer.group({ class: 'facet-axes' }, this.renderer.root);
         const isLeft = ci === 0;
         const isBottom = ri === rowVals.length - 1;
 
@@ -786,10 +899,13 @@ export class JChart {
             : { labels: { enabled: false }, lineWidth: 0 },
         }).render(axisLayer);
 
-        // X axis: labelled on the bottom row only.
+        // X axis: labelled on the bottom row only, no tick marks — just the
+        // line and labels.
         new Axis({
           renderer: this.renderer, scale: xScale, position: 'bottom', plot: cell, grid: false,
-          options: isBottom ? { ...xOpts, title: undefined } : { labels: { enabled: false }, lineWidth: 0 },
+          options: isBottom
+            ? { ...xOpts, title: undefined, ticks: false }
+            : { labels: { enabled: false }, lineWidth: 0, ticks: false },
         }).render(axisLayer);
 
         if (!cellSeries.length) return;
@@ -801,20 +917,6 @@ export class JChart {
         }
       });
     });
-
-    // Shared axis titles, drawn once for the whole table.
-    if (yOpts.title?.text) {
-      const x = outer.x + 12;
-      const y = gridY + gridH / 2;
-      this.renderer.text(yOpts.title.text, x, y, {
-        'text-anchor': 'middle', transform: `rotate(-90 ${x} ${y})`, ...FONTS.axisTitle,
-      }, this.renderer.root);
-    }
-    if (xOpts.title?.text) {
-      this.renderer.text(xOpts.title.text, gridX + gridW / 2, outer.y + outer.height - 2, {
-        'text-anchor': 'middle', ...FONTS.axisTitle,
-      }, this.renderer.root);
-    }
   }
 
   private renderPolarPanel(plot: Rect, visible: BaseSeries[]): void {
@@ -870,7 +972,7 @@ export class JChart {
     const yScale0 = scaleFor(aggSeries.filter((s) => onAxis(s, 0)), yOpts0);
     const yScale1 = hasSecondary ? scaleFor(secondary, yOpts1) : yScale0;
 
-    const axisLayer = this.renderer.group({ class: 'jchart-axes' }, this.renderer.root);
+    const axisLayer = this.renderer.group({ class: 'facet-axes' }, this.renderer.root);
     new Axis({ renderer: this.renderer, scale: yScale0, position: 'left', plot, options: yOpts0, grid: true }).render(axisLayer);
     if (hasSecondary) {
       new Axis({ renderer: this.renderer, scale: yScale1, position: 'right', plot, options: yOpts1, grid: false }).render(axisLayer);
@@ -936,7 +1038,7 @@ export class JChart {
     const leftVal = new LinearScale({ domain: [0, maxVal], range: [leftZeroX, plot.x] });
     const rightVal = new LinearScale({ domain: [0, maxVal], range: [rightZeroX, plot.x + plot.width] });
 
-    const axisLayer = this.renderer.group({ class: 'jchart-axes' }, this.renderer.root);
+    const axisLayer = this.renderer.group({ class: 'facet-axes' }, this.renderer.root);
     // Two mirrored value axes along the bottom.
     new Axis({ renderer: this.renderer, scale: leftVal, position: 'bottom', grid: false,
       plot: { x: plot.x, y: plot.y, width: halfW, height: plot.height }, options: { ...yOpts, title: undefined } }).render(axisLayer);
@@ -962,7 +1064,7 @@ export class JChart {
     s: BaseSeries, catScale: CategoryScale, valScale: Scale, zeroX: number, band: number,
     side: 'left' | 'right',
   ): void {
-    const g = this.renderer.group({ class: `jchart-series jchart-butterfly ${s.name}` }, this.renderer.root);
+    const g = this.renderer.group({ class: `facet-series facet-butterfly ${s.name}` }, this.renderer.root);
     const barH = band * 0.8;
     for (const p of s.points) {
       if (p.y === undefined) continue;
@@ -971,7 +1073,7 @@ export class JChart {
         x: Math.min(zeroX, vx), y: catScale.scale(p.x) - barH / 2,
         width: Math.max(1, Math.abs(vx - zeroX)), height: barH,
       };
-      const el = this.renderer.create('rect', { ...rect, fill: p.color ?? s.color, class: 'jchart-point' }, g);
+      const el = this.renderer.create('rect', { ...rect, fill: p.color ?? s.color, class: 'facet-point' }, g);
       this.bindTooltip(el, s, p);
       el.addEventListener('click', (e) => this.handlePointEvent('click', s, p, e));
       el.addEventListener('mouseover', (e) => this.handlePointEvent('mouseOver', s, p, e));
@@ -1004,7 +1106,7 @@ export class JChart {
     const vMax = Math.max(vMaxRaw, 0) || 1;
     const angle = (i: number) => -Math.PI / 2 + (i / n) * Math.PI * 2;
     const pt = (i: number, v: number) => ({ x: cx + (v / vMax) * R * Math.cos(angle(i)), y: cy + (v / vMax) * R * Math.sin(angle(i)) });
-    const grid = this.renderer.group({ class: 'jchart-axes' }, this.renderer.root);
+    const grid = this.renderer.group({ class: 'facet-axes' }, this.renderer.root);
 
     // Concentric grid rings + spokes.
     for (let r = 1; r <= 4; r++) {
@@ -1023,7 +1125,7 @@ export class JChart {
 
     // One polygon per series.
     for (const s of visible) {
-      const g = this.renderer.group({ class: `jchart-series jchart-radar ${s.name}` }, this.renderer.root);
+      const g = this.renderer.group({ class: `facet-series facet-radar ${s.name}` }, this.renderer.root);
       const pts = cats.map((cat, i) => {
         const p = s.points.find((pp) => String(pp.x) === String(cat)) ?? s.points[i];
         return pt(i, p?.y ?? 0);
@@ -1034,7 +1136,7 @@ export class JChart {
       pts.forEach((p, i) => {
         const point = s.points.find((pp) => String(pp.x) === String(cats[i])) ?? s.points[i];
         if (!point) return;
-        const el = this.renderer.create('circle', { cx: p.x, cy: p.y, r: 3.5, fill: s.color, stroke: '#fff', 'stroke-width': 1, class: 'jchart-point' }, g);
+        const el = this.renderer.create('circle', { cx: p.x, cy: p.y, r: 3.5, fill: s.color, stroke: '#fff', 'stroke-width': 1, class: 'facet-point' }, g);
         this.bindTooltip(el, s, point);
         el.addEventListener('click', (e) => this.handlePointEvent('click', s, point, e));
       });
@@ -1063,8 +1165,8 @@ export class JChart {
         const h = colTotal[ci] > 0 ? (val / colTotal[ci]) * plot.height : 0;
         const el = this.renderer.create('rect', {
           x, y, width: Math.max(1, w), height: Math.max(0, h),
-          fill: p?.color ?? s.color ?? paletteColor(this.colors, si), stroke: '#fff', 'stroke-width': 1, class: 'jchart-point',
-        }, this.renderer.group({ class: `jchart-series jchart-marimekko ${s.name}` }, this.renderer.root));
+          fill: p?.color ?? s.color ?? paletteColor(this.colors, si), stroke: '#fff', 'stroke-width': 1, class: 'facet-point',
+        }, this.renderer.group({ class: `facet-series facet-marimekko ${s.name}` }, this.renderer.root));
         if (p) { this.bindTooltip(el, s, p); el.addEventListener('click', (e) => this.handlePointEvent('click', s, p, e)); }
         // Percentage label in roomy segments.
         if (h > 16 && w > 26 && val > 0) {
@@ -1159,22 +1261,42 @@ export class JChart {
     const xAxisOpts = this.firstAxis(this.options.xAxis) ?? {};
     const yAxisOpts = this.firstAxis(this.options.yAxis) ?? {};
 
-    // Value domain across visible series.
+    // Value domain across visible series. Error bars are typically overlaid on
+    // (and read like) a column series, so they share its zero baseline.
     let [vMin, vMax] = this.valueDomain(visible);
-    const includeZero = visible.some((s) => ['column', 'bar', 'area', 'areaspline'].includes(s.type));
+    const includeZero = visible.some((s) => ['column', 'bar', 'area', 'areaspline', 'errorbar'].includes(s.type));
     if (includeZero) {
       vMin = Math.min(vMin, 0);
       vMax = Math.max(vMax, 0);
     }
 
-    // Bubble charts: pad the domains by the largest marker radius so edge
-    // bubbles stay fully inside the axes.
+    // Marker/whisker-based series (bubble, scatter, jitter, dumbbell, boxplot,
+    // candlestick, columnrange): pad the value domain so an extreme point/whisker
+    // doesn't land exactly on a "nice" tick and end up sitting astride (or
+    // clipped by) the axis line. Uses a flat pixel amount per type since these
+    // shapes have a roughly constant on-screen size regardless of the data
+    // range. Applies to whichever axis carries values — y normally, x when the
+    // chart is inverted (horizontal) — so it's measured against the matching
+    // plot dimension.
+    const GEOM_PAD: Partial<Record<ChartType, number>> = {
+      boxplot: 8, candlestick: 8, columnrange: 10,
+    };
     const bubble = visible.find((s) => s.type === 'bubble');
     const bubbleR = bubble ? (bubble.options.sizeRange?.[1] ?? 34) + 2 : 0;
-    if (bubbleR && !categories) {
-      const padY = (bubbleR / Math.max(1, plot.height)) * (vMax - vMin || 1);
-      if (yAxisOpts.min === undefined) vMin -= padY;
-      if (yAxisOpts.max === undefined) vMax += padY;
+    const markerR = Math.max(
+      bubbleR,
+      ...visible
+        .filter((s) => s.type === 'scatter' || s.type === 'jitter' || s.type === 'dumbbell')
+        .map((s) => (s.options.marker?.radius ?? 5) + 2),
+      ...visible.map((s) => GEOM_PAD[s.type] ?? 0),
+      0,
+    );
+    if (markerR) {
+      const valueAxisOpts = inverted ? xAxisOpts : yAxisOpts;
+      const valuePx = inverted ? plot.width : plot.height;
+      const padY = (markerR / Math.max(1, valuePx)) * (vMax - vMin || 1);
+      if (valueAxisOpts.min === undefined) vMin -= padY;
+      if (valueAxisOpts.max === undefined) vMax += padY;
     }
 
     // Datetime x: nice date ticks + auto date label format.
@@ -1182,8 +1304,8 @@ export class JChart {
     const xNumeric = (range: [number, number], reversed?: boolean): Scale => {
       const [dmin, dmax] = this.xNumericDomain(visible);
       let min = xAxisOpts.min ?? dmin, max = xAxisOpts.max ?? dmax;
-      if (bubbleR) {
-        const padX = (bubbleR / Math.max(1, plot.width)) * (max - min || 1);
+      if (markerR) {
+        const padX = (markerR / Math.max(1, plot.width)) * (max - min || 1);
         if (xAxisOpts.min === undefined) min -= padX;
         if (xAxisOpts.max === undefined) max += padX;
       }
@@ -1237,11 +1359,24 @@ export class JChart {
     return xs.length ? extent(xs) : [0, 1];
   }
 
+  /**
+   * Series types that need a banded (categorical) x-axis so bars get a real
+   * width. Continuous types (line/area/scatter/bubble/histogram) stay numeric.
+   */
+  private static readonly BANDED = new Set<ChartType>([
+    'column', 'bar', 'boxplot', 'candlestick', 'waterfall', 'columnrange',
+    'errorbar', 'bullet', 'dumbbell', 'butterfly',
+  ]);
+
   private currentCategories(visible: BaseSeries[]): string[] | undefined {
     const xAxis = this.firstAxis(this.options.xAxis);
     if (xAxis?.categories) return xAxis.categories;
+    // A datetime/continuous x-axis stays numeric even for bar-family series.
+    const banded = xAxis?.type !== 'datetime' && visible.some((s) => FacetChart.BANDED.has(s.type));
     const allNumeric = visible.every((s) => s.points.every((p) => typeof p.x === 'number'));
-    if (allNumeric) return undefined;
+    // Continuous axis only when nothing needs a band; otherwise fall through and
+    // build categories from the (possibly index-based) x values so bars get width.
+    if (allNumeric && !banded) return undefined;
     const seen = new Set<string>();
     const cats: string[] = [];
     for (const s of visible) for (const p of s.points) {
@@ -1382,7 +1517,7 @@ export class JChart {
     this.crosshairEl = this.renderer.create('line', {
       x1: x, y1: ctx.plot.y, x2: x, y2: ctx.plot.y + ctx.plot.height,
       stroke: THEME.axis.labelColor, 'stroke-width': 1, 'stroke-dasharray': '3 3',
-      'pointer-events': 'none', class: 'jchart-crosshair',
+      'pointer-events': 'none', class: 'facet-crosshair',
     }, this.renderer.root);
   }
 
@@ -1483,7 +1618,7 @@ export class JChart {
   /** Breadcrumb "← Back" control shown while drilled in. */
   private drawDrillUp(outer: Rect): void {
     if (!this.drillStack.length) return;
-    const g = this.renderer.group({ class: 'jchart-drillup', style: 'cursor:pointer' }, this.renderer.root);
+    const g = this.renderer.group({ class: 'facet-drillup', style: 'cursor:pointer' }, this.renderer.root);
     const bx = outer.x, by = outer.y + 2;
     this.renderer.create('rect', { x: bx, y: by, width: 62, height: 22, rx: 5, fill: this.theme.tooltip.backgroundColor, stroke: THEME.axis.lineColor }, g);
     this.renderer.text('← Back', bx + 31, by + 15, { 'text-anchor': 'middle', ...FONTS.axisLabel, fill: this.theme.axis.labelColor }, g);

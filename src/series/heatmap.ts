@@ -26,7 +26,7 @@ export class HeatmapSeries extends BaseSeries {
 
   override render(ctx: SeriesRenderContext): void {
     const { renderer, plot } = ctx;
-    const g = renderer.group({ class: `jchart-series jchart-heatmap ${this.name}` }, renderer.root);
+    const g = renderer.group({ class: `facet-series facet-heatmap ${this.name}` }, renderer.root);
 
     const cols = this.axisValues('x');
     const rows = this.axisValues('y');
@@ -57,7 +57,7 @@ export class HeatmapSeries extends BaseSeries {
       const y = gy + ri * ch;
       const el = renderer.create('rect', {
         x: x + 1, y: y + 1, width: cw - 2, height: ch - 2, rx: 2,
-        fill: p.color ?? colorFor(value), class: 'jchart-point',
+        fill: p.color ?? colorFor(value), class: 'facet-point',
       }, g);
       // Value label if the cell is roomy enough.
       if (cw > 26 && ch > 16) {

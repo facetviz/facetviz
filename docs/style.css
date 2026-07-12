@@ -1,4 +1,4 @@
-/* JChart docs — shared theme (self-contained, no CDN). */
+/* FacetChart docs — shared theme (self-contained, no CDN). */
 :root {
   --bg: #f5f6fb;
   --panel: #ffffff;
@@ -128,7 +128,7 @@ pre code { font-family: var(--mono); background: none; padding: 0; color: #e6edf
 .example summary::before { content: '⟨/⟩ '; }
 .example details[open] summary { border-bottom: 1px solid var(--border); }
 .example details pre { margin: 0; border-radius: 0; height: 100%; }
-.example .chart .jchart-root { width: 100%; }
+.example .chart .facet-root { width: 100%; }
 
 /* ---- API reference (rendered markdown in a panel) ---- */
 .api-panel { padding: 8px 28px 32px; }

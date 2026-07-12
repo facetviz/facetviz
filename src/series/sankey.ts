@@ -20,7 +20,7 @@ export class SankeySeries extends BaseSeries {
 
   override render(ctx: SeriesRenderContext): void {
     const { renderer, plot, colors } = ctx;
-    const g = renderer.group({ class: `jchart-series jchart-sankey ${this.name}` }, renderer.root);
+    const g = renderer.group({ class: `facet-series facet-sankey ${this.name}` }, renderer.root);
 
     const links: Link[] = this.points
       .map((p) => ({ from: String(p.options.from ?? ''), to: String(p.options.to ?? ''), weight: (p.options.weight as number) ?? p.y ?? 1, point: p }))
@@ -78,7 +78,7 @@ export class SankeySeries extends BaseSeries {
       const mx = (x1 + x2) / 2;
       const path = renderer.create('path', {
         d: `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`,
-        fill: 'none', stroke: alpha(s.color, 0.4), 'stroke-width': th, class: 'jchart-point',
+        fill: 'none', stroke: alpha(s.color, 0.4), 'stroke-width': th, class: 'facet-point',
       }, g);
       ctx.registerHover(path, l.point);
       path.addEventListener('click', (e: Event) => ctx.onPointEvent('click', l.point, e));

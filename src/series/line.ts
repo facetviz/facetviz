@@ -34,7 +34,7 @@ export class LineSeries extends BaseSeries {
 
   override render(ctx: SeriesRenderContext): void {
     const { renderer } = ctx;
-    const g = renderer.group({ class: `jchart-series jchart-line ${this.name}` }, renderer.root);
+    const g = renderer.group({ class: `facet-series facet-line ${this.name}` }, renderer.root);
     const data = this.pixelPoints(ctx);
     const pts = data.map((d) => d.pt);
 
@@ -73,7 +73,7 @@ export class LineSeries extends BaseSeries {
         // (e.g. plain line and stacked area charts).
         el = ctx.renderer.create('circle', {
           cx: pt.x, cy: pt.y, r: 8, fill: 'transparent',
-          'pointer-events': 'all', class: 'jchart-point-hit',
+          'pointer-events': 'all', class: 'facet-point-hit',
         }, g);
       }
       ctx.registerHover(el, p);

@@ -18,7 +18,7 @@ export class BubbleSeries extends BaseSeries {
 
   override render(ctx: SeriesRenderContext): void {
     const { renderer, xScale, yScale } = ctx;
-    const g = renderer.group({ class: `jchart-series jchart-bubble ${this.name}` }, renderer.root);
+    const g = renderer.group({ class: `facet-series facet-bubble ${this.name}` }, renderer.root);
 
     const zs = this.points.map((p) => (p.options.z as number) ?? 1);
     const zMin = Math.min(...zs), zMax = Math.max(...zs);

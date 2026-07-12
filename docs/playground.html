@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>JChart Playground</title>
+  <title>FacetChart Playground</title>
   <style>
     :root {
       --bg: #f5f6fb; --panel: #ffffff; --border: #e7e8f0; --text: #16181d;
@@ -80,7 +80,7 @@
 </head>
 <body>
   <header>
-    <a class="brand" href="./"><span class="mark">J</span> JChart</a>
+    <a class="brand" href="./"><span class="mark">F</span> FacetChart</a>
     <nav class="topnav">
       <a href="./">Guide</a>
       <a href="./examples.html">Examples</a>
@@ -114,7 +114,7 @@
   </main>
 
   <script type="module">
-    import { JChart } from './lib/jchart.js';
+    import { FacetChart } from './lib/facetchart.js';
 
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
 
@@ -452,7 +452,7 @@
       }
       try {
         preview.innerHTML = '';
-        new JChart(preview, config);
+        new FacetChart(preview, config);
         errorEl.classList.remove('show');
         setStatus(true, 'rendered ✓');
       } catch (e) {
@@ -503,9 +503,9 @@
     // Initial load: a config handed over from the Examples page, else preset #1.
     function loadHandoff() {
       try {
-        const raw = sessionStorage.getItem('jchart:playground');
+        const raw = sessionStorage.getItem('facetchart:playground');
         if (!raw) return false;
-        sessionStorage.removeItem('jchart:playground');
+        sessionStorage.removeItem('facetchart:playground');
         const { title, cfg } = JSON.parse(raw);
         editor.value = JSON.stringify(cfg, null, 2);
         // Reflect it in the dropdown if it matches a preset name.
