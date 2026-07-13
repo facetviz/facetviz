@@ -20,6 +20,7 @@ for (const r of ["East", "West", "Central"])
     });
 const trellis = [];
 const trellisMargin = [];
+const trellisSouth = [];
 for (const region of ["East", "West"])
   for (const cat of ["Tech", "Furniture"])
     for (const m of months) {
@@ -30,7 +31,27 @@ for (const region of ["East", "West"])
         region,
         cat,
       });
+      trellisSouth.push({
+        x: m,
+        y: Math.round(2 + Math.random() * 8),
+        region,
+        cat,
+      });
     }
+const trellisBox = [];
+for (const region of ["East", "West"])
+  for (const cat of ["Tech", "Furniture"])
+    for (const g of ["A", "B", "C"])
+      trellisBox.push({
+        x: g,
+        min: 2,
+        q1: 4 + Math.random() * 2,
+        median: 6 + Math.random() * 2,
+        q3: 8 + Math.random() * 2,
+        max: 12,
+        region,
+        cat,
+      });
 
 /** URL-safe slug of a title (used as the example's anchor id). */
 export const slug = (s) =>
@@ -879,6 +900,53 @@ export const EXAMPLES = [
           data: trellisMargin,
         },
       ],
+    },
+  },
+  {
+    cat: "Advanced",
+    title: "Trellis table (stacked column)",
+    desc: "Small multiples with stacked series per cell.",
+    types: [],
+    tall: true,
+    cfg: {
+      chart: { type: "column", height: 380 },
+      title: { text: "Sales by team, small multiples" },
+      xAxis: { title: { text: "Month" } },
+      yAxis: { title: { text: "Sales" } },
+      trellis: { columns: "cat", rows: "region" },
+      series: [
+        { name: "North", stacking: "normal", data: trellis },
+        { name: "South", stacking: "normal", data: trellisSouth },
+      ],
+    },
+  },
+  {
+    cat: "Advanced",
+    title: "Trellis table (bar)",
+    desc: "Small multiples of horizontal bars — the category axis moves to the left, values along the bottom.",
+    types: [],
+    tall: true,
+    cfg: {
+      chart: { type: "bar", height: 380 },
+      title: { text: "Sales small multiples (horizontal)" },
+      xAxis: { title: { text: "Month" } },
+      yAxis: { title: { text: "Sales" } },
+      trellis: { columns: "cat", rows: "region" },
+      series: [{ name: "Sales", data: trellis }],
+    },
+  },
+  {
+    cat: "Advanced",
+    title: "Trellis table (boxplot)",
+    desc: "Small multiples of distributions, one box per group per cell.",
+    types: [],
+    tall: true,
+    cfg: {
+      chart: { type: "boxplot", height: 380 },
+      title: { text: "Distributions, small multiples" },
+      yAxis: { title: { text: "Value" } },
+      trellis: { columns: "cat", rows: "region" },
+      series: [{ name: "Distribution", data: trellisBox }],
     },
   },
   {

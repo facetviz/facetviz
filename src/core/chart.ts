@@ -883,31 +883,35 @@ export class FacetViz {
       { class: "facet-axes" },
       this.renderer.root,
     );
-    new Axis({
+    const catAxis = new Axis({
       renderer: this.renderer,
       scale: catScale,
       position: catSide,
       plot: axisPlot,
       options: catOpts,
       grid: false,
-    }).render(axisLayer);
-    new Axis({
+    });
+    catAxis.render(axisLayer);
+    const valAxis = new Axis({
       renderer: this.renderer,
       scale: valScale,
       position: valSide,
       plot: axisPlot,
       options: valOpts,
       grid: true,
-    }).render(axisLayer);
+    });
+    valAxis.render(axisLayer);
+    let valAxis2: Axis | undefined;
     if (renderSecondary && valOpts2 && yScale2) {
-      new Axis({
+      valAxis2 = new Axis({
         renderer: this.renderer,
         scale: yScale2,
         position: "right",
         plot: axisPlot,
         options: valOpts2,
         grid: false,
-      }).render(axisLayer);
+      });
+      valAxis2.render(axisLayer);
     }
 
     // Remember the plot + scales for drag-zoom and crosshair (single-panel).
@@ -944,6 +948,16 @@ export class FacetViz {
     // spill past the axes.
     this.clipToPlot(axisPlot, existing);
     if (cctx) this.installBoostHover(axisPlot, hits);
+
+    // Plot lines flagged `zIndex: 'above'` paint on top of the series just
+    // rendered (a fresh, later-in-DOM group, so it wins the SVG paint order).
+    const aboveLayer = this.renderer.group(
+      { class: "facet-axes-above" },
+      this.renderer.root,
+    );
+    catAxis.renderAbove(aboveLayer);
+    valAxis.renderAbove(aboveLayer);
+    valAxis2?.renderAbove(aboveLayer);
   }
 
   /** Clip the series groups added since `existing` was captured to the plot rect. */
@@ -1185,18 +1199,50 @@ export class FacetViz {
     const categories = this.currentCategories(allVisible);
     const xOpts = this.firstAxis(this.options.xAxis) ?? {};
     const yOpts0 = this.axisAt(this.options.yAxis, 0);
+    // Horizontal bars: category axis becomes vertical (left), value axis
+    // horizontal (bottom) — the same swap `renderPanel` applies for
+    // `chart.type: 'bar'`/`chart.inverted`, reshuffling the pivot-table
+    // gutters (see leftReserve/bottomReserve below) to match.
+    const inverted = this.isInverted(allVisible);
 
     // Dual axis: series bound via `series.yAxis: 1` get their own shared
     // scale/axis (right side), same convention as the non-trellis panels.
+    // Only meaningful for the standard (non-inverted) layout.
     const onSecondary = (s: BaseSeries) => (s.options.yAxis ?? 0) === 1;
     const secondaryVisible = allVisible.filter(onSecondary);
-    const hasSecondary = secondaryVisible.length > 0;
+    const hasSecondary = !inverted && secondaryVisible.length > 0;
     const primaryVisible = hasSecondary
       ? allVisible.filter((s) => !onSecondary(s))
       : allVisible;
     const yOpts1 = hasSecondary
       ? this.axisAt(this.options.yAxis, 1)
       : undefined;
+
+    // Series filtered down to one cell's (column, row) dimension values —
+    // shared by the pre-pass below and the actual per-cell render loop.
+    const cellSeriesFor = (
+      cv: string | number | undefined,
+      rv: string | number | undefined,
+    ): BaseSeries[] => {
+      const filter: Record<string, unknown> = {};
+      if (colDim) filter[colDim] = cv;
+      if (rowDim) filter[rowDim] = rv;
+      return this.series
+        .map((s) => s.filterByDimensions(filter))
+        .filter((s) => s.visible && s.points.length);
+    };
+
+    // Stack every cell *before* reading the shared value domain — otherwise
+    // a stacked column/bar's rendered (summed) height is invisible to the
+    // axis, which only sees each series' own unstacked max and comes up
+    // short. `computeStacks` mutates points in place and cells never share
+    // points, so running it once per cell up front is enough; the render
+    // loop's own `computeStacks` call below just re-confirms the same result.
+    for (const rv of rowVals) {
+      for (const cv of colVals) {
+        this.computeStacks(cellSeriesFor(cv, rv));
+      }
+    }
 
     // Shared value domain (so every cell is directly comparable).
     let [vMin, vMax] = this.valueDomain(
@@ -1264,14 +1310,19 @@ export class FacetViz {
       : 0;
     // Tight tick-label width for these actual values, rather than the fixed
     // generic axis width — keeps the left gutter close to the numbers.
-    const titleReserveLeft = yOpts0.title?.text ? 18 : 0;
+    // Inverted: the left axis carries categories (text), not values.
+    const titleReserveLeft = (inverted ? xOpts.title?.text : yOpts0.title?.text)
+      ? 18
+      : 0;
     const tickLabelW =
       LAYOUT.tickLength +
       8 +
-      this.valueLabelWidth(
-        primaryVisible.length ? primaryVisible : allVisible,
-        yOpts0,
-      );
+      (inverted
+        ? this.catLabelWidth(allVisible)
+        : this.valueLabelWidth(
+            primaryVisible.length ? primaryVisible : allVisible,
+            yOpts0,
+          ));
     const colHeaderH = colDim ? dimNameRowH + 20 : rowDim ? dimNameRowH : 0;
     const rowHeaderW = rowDim ? rowValueColW : 0;
     const leftReserve = rowHeaderW + tickLabelW + titleReserveLeft;
@@ -1478,34 +1529,35 @@ export class FacetViz {
           width: cellW,
           height: cellH,
         };
-        const filter: Record<string, unknown> = {};
-        if (colDim) filter[colDim] = cv;
-        if (rowDim) filter[rowDim] = rv;
-        const cellSeries = this.series
-          .map((s) => s.filterByDimensions(filter))
-          .filter((s) => s.visible && s.points.length);
+        const cellSeries = cellSeriesFor(cv, rv);
 
-        const xScale = categories
-          ? new CategoryScale({
-              categories,
-              range: [cell.x, cell.x + cell.width],
-            })
+        // Category scale: horizontal (bottom axis) normally, or vertical
+        // (left axis) when inverted — the same role-swap `renderPanel`
+        // applies for bar charts.
+        const catRange: [number, number] = inverted
+          ? [cell.y, cell.y + cell.height]
+          : [cell.x, cell.x + cell.width];
+        const catScale = categories
+          ? new CategoryScale({ categories, range: catRange })
           : new LinearScale({
               domain: this.xNumericDomain(
                 cellSeries.length ? cellSeries : allVisible,
               ),
-              range: [cell.x, cell.x + cell.width],
+              range: catRange,
             });
-        const dropLastTick = (sc: Scale): Scale => {
-          // Drop the topmost tick (e.g. "10") — it sits right against the
-          // header divider and reads as clutter there. Same domain/range, so
-          // bars plot identically; only the tick/gridline/label list shrinks.
+        const dropLastTick = (sc: Scale, range: [number, number]): Scale => {
+          // Drop the max-value tick — it sits right against a divider and
+          // reads as clutter there: the top header divider when the value
+          // axis is vertical (normal), or the right-hand column
+          // divider/closing border when it's horizontal (inverted). Same
+          // domain/range either way, so bars plot identically; only the
+          // tick/gridline/label list shrinks.
           if (sc instanceof LinearScale) {
             const allTicks = sc.ticks();
             if (allTicks.length > 1) {
               return new LinearScale({
                 domain: sc.domain,
-                range: [cell.y + cell.height, cell.y],
+                range,
                 ticks: allTicks.slice(0, -1),
               });
             }
@@ -1513,10 +1565,14 @@ export class FacetViz {
           return sc;
         };
 
-        const yScale = dropLastTick(
-          this.valueScale(yOpts0, [vMin, vMax], [cell.y + cell.height, cell.y]),
+        const valRange: [number, number] = inverted
+          ? [cell.x, cell.x + cell.width]
+          : [cell.y + cell.height, cell.y];
+        const valScale = dropLastTick(
+          this.valueScale(yOpts0, [vMin, vMax], valRange),
+          valRange,
         );
-        const yScale2 =
+        const valScale2 =
           hasSecondary && yOpts1
             ? dropLastTick(
                 this.valueScale(
@@ -1524,8 +1580,16 @@ export class FacetViz {
                   [vMin2, vMax2],
                   [cell.y + cell.height, cell.y],
                 ),
+                [cell.y + cell.height, cell.y],
               )
             : undefined;
+        // Physically swap which slot carries category vs. value so series
+        // that key off `ctx.xScale`/`ctx.yScale` by type (e.g. `bar`) and
+        // ones that key off `ctx.inverted` (e.g. `boxplot`) both resolve
+        // the same roles.
+        const xScale = inverted ? valScale : catScale;
+        const yScale = inverted ? catScale : valScale;
+        const yScale2 = valScale2;
 
         const axisLayer = this.renderer.group(
           { class: "facet-axes" },
@@ -1534,25 +1598,48 @@ export class FacetViz {
         const isLeft = ci === 0;
         const isRight = ci === colVals.length - 1;
         const isBottom = ri === rowVals.length - 1;
+        const catLabelled = inverted ? isLeft : isBottom;
+        const valLabelled = inverted ? isBottom : isLeft;
 
-        // Y axis: labelled (incl. title) on the left column, gridlines only
-        // elsewhere. Each row draws its own copy of the title.
-        new Axis({
+        // Category axis: labelled (no title) on the leftmost column
+        // normally / bottom row when inverted; gridlines never shown (the
+        // value axis already carries them).
+        const catAxis = new Axis({
           renderer: this.renderer,
-          scale: yScale,
-          position: "left",
+          scale: catScale,
+          position: inverted ? "left" : "bottom",
+          plot: cell,
+          grid: false,
+          options: catLabelled
+            ? { ...xOpts, title: undefined, ticks: false }
+            : { labels: { enabled: false }, lineWidth: 0, ticks: false },
+        });
+        catAxis.render(axisLayer);
+
+        // Value axis: labelled (incl. title) on the left column normally /
+        // bottom row when inverted, gridlines only elsewhere. Each row
+        // draws its own copy of the title (only supported in the
+        // non-inverted, left-hand position).
+        const valAxis = new Axis({
+          renderer: this.renderer,
+          scale: valScale,
+          position: inverted ? "bottom" : "left",
           plot: cell,
           grid: true,
-          options: isLeft
-            ? yOpts0
+          options: valLabelled
+            ? inverted
+              ? { ...yOpts0, title: undefined }
+              : yOpts0
             : { labels: { enabled: false }, lineWidth: 0 },
-        }).render(axisLayer);
+        });
+        valAxis.render(axisLayer);
 
         // Secondary y axis: labelled (incl. title) on the right column only,
         // mirroring the primary axis; drawn without gridlines to avoid a
-        // double grid.
+        // double grid. Only ever set when !inverted (see hasSecondary).
+        let rightAxis: Axis | undefined;
         if (hasSecondary && yScale2 && yOpts1) {
-          new Axis({
+          rightAxis = new Axis({
             renderer: this.renderer,
             scale: yScale2,
             position: "right",
@@ -1561,38 +1648,37 @@ export class FacetViz {
             options: isRight
               ? yOpts1
               : { labels: { enabled: false }, lineWidth: 0 },
-          }).render(axisLayer);
+          });
+          rightAxis.render(axisLayer);
         }
 
-        // X axis: labelled on the bottom row only, no tick marks — just the
-        // line and labels.
-        new Axis({
-          renderer: this.renderer,
-          scale: xScale,
-          position: "bottom",
-          plot: cell,
-          grid: false,
-          options: isBottom
-            ? { ...xOpts, title: undefined, ticks: false }
-            : { labels: { enabled: false }, lineWidth: 0, ticks: false },
-        }).render(axisLayer);
-
-        if (!cellSeries.length) return;
-        this.computeStacks(cellSeries);
-        const group = this.groupInfo(cellSeries);
-        for (const s of cellSeries) {
-          const sy = yScale2 && onSecondary(s) ? yScale2 : yScale;
-          const ctx = this.seriesContext(
-            s,
-            cell,
-            xScale,
-            sy,
-            group,
-            false,
-            false,
-          );
-          s.render(ctx);
+        if (cellSeries.length) {
+          this.computeStacks(cellSeries);
+          const group = this.groupInfo(cellSeries);
+          for (const s of cellSeries) {
+            const sy = yScale2 && onSecondary(s) ? yScale2 : yScale;
+            const ctx = this.seriesContext(
+              s,
+              cell,
+              xScale,
+              sy,
+              group,
+              inverted,
+              false,
+            );
+            s.render(ctx);
+          }
         }
+
+        // Plot lines flagged `zIndex: 'above'` paint on top of this cell's
+        // series (a fresh, later-in-DOM group wins the SVG paint order).
+        const aboveLayer = this.renderer.group(
+          { class: "facet-axes-above" },
+          this.renderer.root,
+        );
+        catAxis.renderAbove(aboveLayer);
+        valAxis.renderAbove(aboveLayer);
+        rightAxis?.renderAbove(aboveLayer);
       });
     });
   }
@@ -1690,23 +1776,26 @@ export class FacetViz {
       { class: "facet-axes" },
       this.renderer.root,
     );
-    new Axis({
+    const yAxis0 = new Axis({
       renderer: this.renderer,
       scale: yScale0,
       position: "left",
       plot,
       options: yOpts0,
       grid: true,
-    }).render(axisLayer);
+    });
+    yAxis0.render(axisLayer);
+    let yAxis1: Axis | undefined;
     if (hasSecondary) {
-      new Axis({
+      yAxis1 = new Axis({
         renderer: this.renderer,
         scale: yScale1,
         position: "right",
         plot,
         options: yOpts1,
         grid: false,
-      }).render(axisLayer);
+      });
+      yAxis1.render(axisLayer);
     }
     new NestedAxis({
       renderer: this.renderer,
@@ -1754,6 +1843,14 @@ export class FacetViz {
         s.render(ctx);
       }
     }
+
+    // Plot lines flagged `zIndex: 'above'` paint on top of the series.
+    const aboveLayer = this.renderer.group(
+      { class: "facet-axes-above" },
+      this.renderer.root,
+    );
+    yAxis0.renderAbove(aboveLayer);
+    yAxis1?.renderAbove(aboveLayer);
   }
 
   // -- Butterfly (tornado) ----------------------------------------------

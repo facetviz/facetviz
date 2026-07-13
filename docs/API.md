@@ -128,7 +128,29 @@ A reference line drawn across the plot (x-axis → vertical, y-axis → horizont
 | `color` | `string` | `'#e63946'` | Line colour. |
 | `width` | `number` | `1.5` | Line thickness. |
 | `dashStyle` | `string` | – | SVG dash array, e.g. `'4 3'`. |
-| `label` | `{ text; align?; color? }` | – | Optional inline label. |
+| `zIndex` | `'above' \| 'below'` | `'below'` | Stacking order relative to the series. `'below'` draws the line as part of the axis, under the series (a tall bar/area can hide it). `'above'` draws it in a separate pass after the series, so it stays visible on top. |
+| `label` | `{ text; align?; verticalAlign?; color? }` | – | Optional inline label (see below). |
+
+**`label.align`** (`'left' \| 'center' \| 'right'`) — horizontal position along the
+line. For a y-axis (horizontal) line, it's where along the line's length the
+label sits (default: an automatic side pick clamped to the plot edge). For an
+x-axis (vertical) line, it's which side of the line the label sits on
+(`'center'` places it directly on the line).
+
+**`label.verticalAlign`** (`'above' \| 'below'`, default `'above'`) — position
+relative to the line. For a y-axis (horizontal) line this hugs the line
+itself. An x-axis (vertical) line has no "above/below the line" (it spans the
+full plot height), so this instead places the label near the top or bottom of
+the plot.
+
+```ts
+yAxis: {
+  plotLines: [{
+    value: 100, color: '#e63946', zIndex: 'above',
+    label: { text: 'target', align: 'left', verticalAlign: 'below' },
+  }],
+}
+```
 
 ### PlotBandOptions
 

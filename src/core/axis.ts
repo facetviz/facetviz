@@ -90,10 +90,25 @@ export class Axis {
       }
     });
 
-    // Plot lines drawn above the grid (and above bands).
-    this.drawPlotLines(group);
+    // Plot lines drawn above the grid (and above bands) — but still below
+    // the series, which paint after the whole axis layer. Lines flagged
+    // `zIndex: 'above'` are skipped here; `renderAbove` draws those instead.
+    this.drawPlotLines(group, 'below');
 
     if (options.title?.text) this.drawTitle(group, options.title.text);
+  }
+
+  /**
+   * Re-draws only the `zIndex: 'above'` plotLines, into a group the caller
+   * appends after the series so they paint on top of the data instead of
+   * under it. No-op (and no group created) when there are none.
+   */
+  renderAbove(parent: SVGGElement): void {
+    const { options, position, renderer } = this.cfg;
+    if (options.visible === false) return;
+    if (!(options.plotLines ?? []).some((l) => l.zIndex === 'above')) return;
+    const group = renderer.group({ class: `facet-axis-above facet-axis-${position}` }, parent);
+    this.drawPlotLines(group, 'above');
   }
 
   /** Shaded bands spanning an axis interval (horizontal or vertical). */
@@ -114,10 +129,15 @@ export class Axis {
     }
   }
 
-  /** Reference lines at fixed axis values (horizontal or vertical). */
-  private drawPlotLines(g: SVGGElement): void {
+  /**
+   * Reference lines at fixed axis values (horizontal or vertical). `which`
+   * selects the subset to draw: lines default to `'below'` (drawn as part
+   * of the axis, under the series) unless `zIndex: 'above'` is set.
+   */
+  private drawPlotLines(g: SVGGElement, which: 'above' | 'below'): void {
     const { renderer, scale, plot } = this.cfg;
     for (const line of this.cfg.options.plotLines ?? []) {
+      if ((line.zIndex === 'above' ? 'above' : 'below') !== which) continue;
       const pos = scale.scale(line.value);
       const coords = this.horizontal
         ? { x1: pos, y1: plot.y, x2: pos, y2: plot.y + plot.height }
@@ -131,25 +151,51 @@ export class Axis {
       }, g);
       if (line.label?.text) {
         // Clamp the label to the plot's bounds instead of letting it run off
-        // the edge — flip to the line's other side (horizontal axis) or pin
-        // the vertical position within the plot (vertical axis) when there
-        // isn't room.
+        // the edge. `align` picks the horizontal position along the line;
+        // `verticalAlign` ('above'/'below', default 'above') picks which
+        // side of the line the label hugs — for a vertical (x-axis) line,
+        // which has no "above/below the line", it instead means near the
+        // top/bottom of the plot.
         const estW = line.label.text.length * 6.2 + 6;
-        let lx: number, ly: number, anchor: 'start' | 'end';
+        const vAlign = line.label.verticalAlign ?? 'above';
+        let lx: number, ly: number, anchor: 'start' | 'middle' | 'end';
         if (this.horizontal) {
-          const fitsRight = pos + 4 + estW <= plot.x + plot.width;
-          if (fitsRight) {
+          const align = line.label.align;
+          if (align === 'left') {
+            lx = pos - 4;
+            anchor = 'end';
+          } else if (align === 'right') {
             lx = pos + 4;
             anchor = 'start';
+          } else if (align === 'center') {
+            lx = pos;
+            anchor = 'middle';
           } else {
-            lx = Math.max(plot.x + estW, pos - 4);
+            // No explicit side: flip to whichever has room.
+            const fitsRight = pos + 4 + estW <= plot.x + plot.width;
+            if (fitsRight) {
+              lx = pos + 4;
+              anchor = 'start';
+            } else {
+              lx = Math.max(plot.x + estW, pos - 4);
+              anchor = 'end';
+            }
+          }
+          ly = vAlign === 'below' ? plot.y + plot.height - 6 : plot.y + 12;
+        } else {
+          const align = line.label.align ?? 'right';
+          if (align === 'left') {
+            lx = plot.x + 4;
+            anchor = 'start';
+          } else if (align === 'center') {
+            lx = plot.x + plot.width / 2;
+            anchor = 'middle';
+          } else {
+            lx = plot.x + plot.width - 4;
             anchor = 'end';
           }
-          ly = plot.y + 12;
-        } else {
-          lx = plot.x + plot.width - 4;
-          ly = Math.max(plot.y + 10, Math.min(plot.y + plot.height - 4, pos - 4));
-          anchor = 'end';
+          const target = vAlign === 'below' ? pos + 14 : pos - 4;
+          ly = Math.max(plot.y + 10, Math.min(plot.y + plot.height - 4, target));
         }
         renderer.text(line.label.text, lx, ly, {
           ...FONTS.axisLabel,

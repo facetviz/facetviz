@@ -125,6 +125,19 @@
           for (const x of trellisMonths) out.push({ x, region, cat, y: valueFn() });
       return out;
     }
+    function trellisBoxData() {
+      const out = [];
+      for (const region of ['East', 'West'])
+        for (const cat of ['Tech', 'Furniture'])
+          for (const x of ['A', 'B', 'C']) {
+            out.push({
+              x, region, cat, min: 2,
+              q1: 4 + Math.random() * 2, median: 6 + Math.random() * 2,
+              q3: 8 + Math.random() * 2, max: 12,
+            });
+          }
+      return out;
+    }
 
     // -- Example configs (data-only JSON) --------------------------------------
     const PRESETS = {
@@ -415,6 +428,27 @@
             data: trellisData(() => Math.round(40 + Math.random() * 20)),
           },
         ],
+      },
+      'Trellis table (stacked column)': {
+        chart: { type: 'column', height: 380 }, title: { text: 'Sales by team, small multiples' },
+        xAxis: { title: { text: 'Month' } }, yAxis: { title: { text: 'Sales' } },
+        trellis: { columns: 'cat', rows: 'region' },
+        series: [
+          { name: 'North', stacking: 'normal', data: trellisData(() => Math.round(2 + Math.random() * 8)) },
+          { name: 'South', stacking: 'normal', data: trellisData(() => Math.round(2 + Math.random() * 8)) },
+        ],
+      },
+      'Trellis table (bar)': {
+        chart: { type: 'bar', height: 380 }, title: { text: 'Sales small multiples (horizontal)' },
+        xAxis: { title: { text: 'Month' } }, yAxis: { title: { text: 'Sales' } },
+        trellis: { columns: 'cat', rows: 'region' },
+        series: [{ name: 'Sales', data: trellisData(() => Math.round(2 + Math.random() * 8)) }],
+      },
+      'Trellis table (boxplot)': {
+        chart: { type: 'boxplot', height: 380 }, title: { text: 'Distributions, small multiples' },
+        yAxis: { title: { text: 'Value' } },
+        trellis: { columns: 'cat', rows: 'region' },
+        series: [{ name: 'Distribution', data: trellisBoxData() }],
       },
       'Datetime + zoom + crosshair': {
         chart: { type: 'line', height: 380, zoom: 'x' }, title: { text: 'Drag to zoom' },

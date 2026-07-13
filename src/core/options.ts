@@ -286,7 +286,25 @@ export interface PlotLineOptions {
   dashStyle?: string;
   /** Stacking order relative to the series (default drawn above grid, below series). */
   zIndex?: 'above' | 'below';
-  label?: { text: string; align?: 'left' | 'center' | 'right'; color?: string };
+  label?: {
+    text: string;
+    /**
+     * Horizontal position along the line. For a y-axis (horizontal) line
+     * this is where along its length the label sits; for an x-axis
+     * (vertical) line it's which side of the line the label sits on
+     * (`'center'` places it directly on the line). Defaults to an
+     * automatic side pick that avoids running off the plot edge.
+     */
+    align?: 'left' | 'center' | 'right';
+    /**
+     * Vertical position relative to the line. `'above'`/`'below'` hug the
+     * line itself for a y-axis (horizontal) line; for an x-axis (vertical)
+     * line — which has no "above/below the line" — this instead places the
+     * label near the top or bottom of the plot. Defaults to `'above'`.
+     */
+    verticalAlign?: 'above' | 'below';
+    color?: string;
+  };
 }
 
 export interface PlotBandOptions {

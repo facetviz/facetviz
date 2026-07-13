@@ -629,8 +629,20 @@ var Axis = class {
         this.drawLabel(group, pos, this.labelText(scale, tick), options);
       }
     });
-    this.drawPlotLines(group);
+    this.drawPlotLines(group, "below");
     if (options.title?.text) this.drawTitle(group, options.title.text);
+  }
+  /**
+   * Re-draws only the `zIndex: 'above'` plotLines, into a group the caller
+   * appends after the series so they paint on top of the data instead of
+   * under it. No-op (and no group created) when there are none.
+   */
+  renderAbove(parent) {
+    const { options, position, renderer } = this.cfg;
+    if (options.visible === false) return;
+    if (!(options.plotLines ?? []).some((l) => l.zIndex === "above")) return;
+    const group = renderer.group({ class: `facet-axis-above facet-axis-${position}` }, parent);
+    this.drawPlotLines(group, "above");
   }
   /** Shaded bands spanning an axis interval (horizontal or vertical). */
   drawPlotBands(g) {
@@ -649,10 +661,15 @@ var Axis = class {
       }
     }
   }
-  /** Reference lines at fixed axis values (horizontal or vertical). */
-  drawPlotLines(g) {
+  /**
+   * Reference lines at fixed axis values (horizontal or vertical). `which`
+   * selects the subset to draw: lines default to `'below'` (drawn as part
+   * of the axis, under the series) unless `zIndex: 'above'` is set.
+   */
+  drawPlotLines(g, which) {
     const { renderer, scale, plot } = this.cfg;
     for (const line of this.cfg.options.plotLines ?? []) {
+      if ((line.zIndex === "above" ? "above" : "below") !== which) continue;
       const pos = scale.scale(line.value);
       const coords = this.horizontal ? { x1: pos, y1: plot.y, x2: pos, y2: plot.y + plot.height } : { x1: plot.x, y1: pos, x2: plot.x + plot.width, y2: pos };
       renderer.create("line", {
@@ -664,21 +681,44 @@ var Axis = class {
       }, g);
       if (line.label?.text) {
         const estW = line.label.text.length * 6.2 + 6;
+        const vAlign = line.label.verticalAlign ?? "above";
         let lx, ly, anchor;
         if (this.horizontal) {
-          const fitsRight = pos + 4 + estW <= plot.x + plot.width;
-          if (fitsRight) {
+          const align = line.label.align;
+          if (align === "left") {
+            lx = pos - 4;
+            anchor = "end";
+          } else if (align === "right") {
             lx = pos + 4;
             anchor = "start";
+          } else if (align === "center") {
+            lx = pos;
+            anchor = "middle";
           } else {
-            lx = Math.max(plot.x + estW, pos - 4);
+            const fitsRight = pos + 4 + estW <= plot.x + plot.width;
+            if (fitsRight) {
+              lx = pos + 4;
+              anchor = "start";
+            } else {
+              lx = Math.max(plot.x + estW, pos - 4);
+              anchor = "end";
+            }
+          }
+          ly = vAlign === "below" ? plot.y + plot.height - 6 : plot.y + 12;
+        } else {
+          const align = line.label.align ?? "right";
+          if (align === "left") {
+            lx = plot.x + 4;
+            anchor = "start";
+          } else if (align === "center") {
+            lx = plot.x + plot.width / 2;
+            anchor = "middle";
+          } else {
+            lx = plot.x + plot.width - 4;
             anchor = "end";
           }
-          ly = plot.y + 12;
-        } else {
-          lx = plot.x + plot.width - 4;
-          ly = Math.max(plot.y + 10, Math.min(plot.y + plot.height - 4, pos - 4));
-          anchor = "end";
+          const target = vAlign === "below" ? pos + 14 : pos - 4;
+          ly = Math.max(plot.y + 10, Math.min(plot.y + plot.height - 4, target));
         }
         renderer.text(line.label.text, lx, ly, {
           ...FONTS.axisLabel,
@@ -3850,31 +3890,35 @@ var FacetViz = class _FacetViz {
       { class: "facet-axes" },
       this.renderer.root
     );
-    new Axis({
+    const catAxis = new Axis({
       renderer: this.renderer,
       scale: catScale,
       position: catSide,
       plot: axisPlot,
       options: catOpts,
       grid: false
-    }).render(axisLayer);
-    new Axis({
+    });
+    catAxis.render(axisLayer);
+    const valAxis = new Axis({
       renderer: this.renderer,
       scale: valScale,
       position: valSide,
       plot: axisPlot,
       options: valOpts,
       grid: true
-    }).render(axisLayer);
+    });
+    valAxis.render(axisLayer);
+    let valAxis2;
     if (renderSecondary && valOpts2 && yScale2) {
-      new Axis({
+      valAxis2 = new Axis({
         renderer: this.renderer,
         scale: yScale2,
         position: "right",
         plot: axisPlot,
         options: valOpts2,
         grid: false
-      }).render(axisLayer);
+      });
+      valAxis2.render(axisLayer);
     }
     this.plotCtx = { plot: axisPlot, xScale, yScale, inverted };
     this.zoomState = !inverted ? { plot: axisPlot, xScale, yScale } : void 0;
@@ -3902,6 +3946,13 @@ var FacetViz = class _FacetViz {
     }
     this.clipToPlot(axisPlot, existing);
     if (cctx) this.installBoostHover(axisPlot, hits);
+    const aboveLayer = this.renderer.group(
+      { class: "facet-axes-above" },
+      this.renderer.root
+    );
+    catAxis.renderAbove(aboveLayer);
+    valAxis.renderAbove(aboveLayer);
+    valAxis2?.renderAbove(aboveLayer);
   }
   /** Clip the series groups added since `existing` was captured to the plot rect. */
   clipToPlot(plot, existing) {
@@ -4106,11 +4157,23 @@ var FacetViz = class _FacetViz {
     const categories = this.currentCategories(allVisible);
     const xOpts = this.firstAxis(this.options.xAxis) ?? {};
     const yOpts0 = this.axisAt(this.options.yAxis, 0);
+    const inverted = this.isInverted(allVisible);
     const onSecondary = (s) => (s.options.yAxis ?? 0) === 1;
     const secondaryVisible = allVisible.filter(onSecondary);
-    const hasSecondary = secondaryVisible.length > 0;
+    const hasSecondary = !inverted && secondaryVisible.length > 0;
     const primaryVisible = hasSecondary ? allVisible.filter((s) => !onSecondary(s)) : allVisible;
     const yOpts1 = hasSecondary ? this.axisAt(this.options.yAxis, 1) : void 0;
+    const cellSeriesFor = (cv, rv) => {
+      const filter = {};
+      if (colDim) filter[colDim] = cv;
+      if (rowDim) filter[rowDim] = rv;
+      return this.series.map((s) => s.filterByDimensions(filter)).filter((s) => s.visible && s.points.length);
+    };
+    for (const rv of rowVals) {
+      for (const cv of colVals) {
+        this.computeStacks(cellSeriesFor(cv, rv));
+      }
+    }
     let [vMin, vMax] = this.valueDomain(
       primaryVisible.length ? primaryVisible : allVisible
     );
@@ -4148,11 +4211,11 @@ var FacetViz = class _FacetViz {
         0
       ) * 6.6 + 4
     ) : 0;
-    const titleReserveLeft = yOpts0.title?.text ? 18 : 0;
-    const tickLabelW = LAYOUT.tickLength + 8 + this.valueLabelWidth(
+    const titleReserveLeft = (inverted ? xOpts.title?.text : yOpts0.title?.text) ? 18 : 0;
+    const tickLabelW = LAYOUT.tickLength + 8 + (inverted ? this.catLabelWidth(allVisible) : this.valueLabelWidth(
       primaryVisible.length ? primaryVisible : allVisible,
       yOpts0
-    );
+    ));
     const colHeaderH = colDim ? dimNameRowH + 20 : rowDim ? dimNameRowH : 0;
     const rowHeaderW = rowDim ? rowValueColW : 0;
     const leftReserve = rowHeaderW + tickLabelW + titleReserveLeft;
@@ -4319,42 +4382,43 @@ var FacetViz = class _FacetViz {
           width: cellW,
           height: cellH
         };
-        const filter = {};
-        if (colDim) filter[colDim] = cv;
-        if (rowDim) filter[rowDim] = rv;
-        const cellSeries = this.series.map((s) => s.filterByDimensions(filter)).filter((s) => s.visible && s.points.length);
-        const xScale = categories ? new CategoryScale({
-          categories,
-          range: [cell.x, cell.x + cell.width]
-        }) : new LinearScale({
+        const cellSeries = cellSeriesFor(cv, rv);
+        const catRange = inverted ? [cell.y, cell.y + cell.height] : [cell.x, cell.x + cell.width];
+        const catScale = categories ? new CategoryScale({ categories, range: catRange }) : new LinearScale({
           domain: this.xNumericDomain(
             cellSeries.length ? cellSeries : allVisible
           ),
-          range: [cell.x, cell.x + cell.width]
+          range: catRange
         });
-        const dropLastTick = (sc) => {
+        const dropLastTick = (sc, range) => {
           if (sc instanceof LinearScale) {
             const allTicks = sc.ticks();
             if (allTicks.length > 1) {
               return new LinearScale({
                 domain: sc.domain,
-                range: [cell.y + cell.height, cell.y],
+                range,
                 ticks: allTicks.slice(0, -1)
               });
             }
           }
           return sc;
         };
-        const yScale = dropLastTick(
-          this.valueScale(yOpts0, [vMin, vMax], [cell.y + cell.height, cell.y])
+        const valRange = inverted ? [cell.x, cell.x + cell.width] : [cell.y + cell.height, cell.y];
+        const valScale = dropLastTick(
+          this.valueScale(yOpts0, [vMin, vMax], valRange),
+          valRange
         );
-        const yScale2 = hasSecondary && yOpts1 ? dropLastTick(
+        const valScale2 = hasSecondary && yOpts1 ? dropLastTick(
           this.valueScale(
             yOpts1,
             [vMin2, vMax2],
             [cell.y + cell.height, cell.y]
-          )
+          ),
+          [cell.y + cell.height, cell.y]
         ) : void 0;
+        const xScale = inverted ? valScale : catScale;
+        const yScale = inverted ? catScale : valScale;
+        const yScale2 = valScale2;
         const axisLayer = this.renderer.group(
           { class: "facet-axes" },
           this.renderer.root
@@ -4362,48 +4426,62 @@ var FacetViz = class _FacetViz {
         const isLeft = ci === 0;
         const isRight = ci === colVals.length - 1;
         const isBottom = ri === rowVals.length - 1;
-        new Axis({
+        const catLabelled = inverted ? isLeft : isBottom;
+        const valLabelled = inverted ? isBottom : isLeft;
+        const catAxis = new Axis({
           renderer: this.renderer,
-          scale: yScale,
-          position: "left",
+          scale: catScale,
+          position: inverted ? "left" : "bottom",
+          plot: cell,
+          grid: false,
+          options: catLabelled ? { ...xOpts, title: void 0, ticks: false } : { labels: { enabled: false }, lineWidth: 0, ticks: false }
+        });
+        catAxis.render(axisLayer);
+        const valAxis = new Axis({
+          renderer: this.renderer,
+          scale: valScale,
+          position: inverted ? "bottom" : "left",
           plot: cell,
           grid: true,
-          options: isLeft ? yOpts0 : { labels: { enabled: false }, lineWidth: 0 }
-        }).render(axisLayer);
+          options: valLabelled ? inverted ? { ...yOpts0, title: void 0 } : yOpts0 : { labels: { enabled: false }, lineWidth: 0 }
+        });
+        valAxis.render(axisLayer);
+        let rightAxis;
         if (hasSecondary && yScale2 && yOpts1) {
-          new Axis({
+          rightAxis = new Axis({
             renderer: this.renderer,
             scale: yScale2,
             position: "right",
             plot: cell,
             grid: false,
             options: isRight ? yOpts1 : { labels: { enabled: false }, lineWidth: 0 }
-          }).render(axisLayer);
+          });
+          rightAxis.render(axisLayer);
         }
-        new Axis({
-          renderer: this.renderer,
-          scale: xScale,
-          position: "bottom",
-          plot: cell,
-          grid: false,
-          options: isBottom ? { ...xOpts, title: void 0, ticks: false } : { labels: { enabled: false }, lineWidth: 0, ticks: false }
-        }).render(axisLayer);
-        if (!cellSeries.length) return;
-        this.computeStacks(cellSeries);
-        const group = this.groupInfo(cellSeries);
-        for (const s of cellSeries) {
-          const sy = yScale2 && onSecondary(s) ? yScale2 : yScale;
-          const ctx = this.seriesContext(
-            s,
-            cell,
-            xScale,
-            sy,
-            group,
-            false,
-            false
-          );
-          s.render(ctx);
+        if (cellSeries.length) {
+          this.computeStacks(cellSeries);
+          const group = this.groupInfo(cellSeries);
+          for (const s of cellSeries) {
+            const sy = yScale2 && onSecondary(s) ? yScale2 : yScale;
+            const ctx = this.seriesContext(
+              s,
+              cell,
+              xScale,
+              sy,
+              group,
+              inverted,
+              false
+            );
+            s.render(ctx);
+          }
         }
+        const aboveLayer = this.renderer.group(
+          { class: "facet-axes-above" },
+          this.renderer.root
+        );
+        catAxis.renderAbove(aboveLayer);
+        valAxis.renderAbove(aboveLayer);
+        rightAxis?.renderAbove(aboveLayer);
       });
     });
   }
@@ -4472,23 +4550,26 @@ var FacetViz = class _FacetViz {
       { class: "facet-axes" },
       this.renderer.root
     );
-    new Axis({
+    const yAxis0 = new Axis({
       renderer: this.renderer,
       scale: yScale0,
       position: "left",
       plot,
       options: yOpts0,
       grid: true
-    }).render(axisLayer);
+    });
+    yAxis0.render(axisLayer);
+    let yAxis1;
     if (hasSecondary) {
-      new Axis({
+      yAxis1 = new Axis({
         renderer: this.renderer,
         scale: yScale1,
         position: "right",
         plot,
         options: yOpts1,
         grid: false
-      }).render(axisLayer);
+      });
+      yAxis1.render(axisLayer);
     }
     new NestedAxis({
       renderer: this.renderer,
@@ -4530,6 +4611,12 @@ var FacetViz = class _FacetViz {
         s.render(ctx);
       }
     }
+    const aboveLayer = this.renderer.group(
+      { class: "facet-axes-above" },
+      this.renderer.root
+    );
+    yAxis0.renderAbove(aboveLayer);
+    yAxis1?.renderAbove(aboveLayer);
   }
   // -- Butterfly (tornado) ----------------------------------------------
   /**
