@@ -1911,22 +1911,24 @@ export class FacetViz {
       this.renderer.root,
     );
     // Two mirrored value axes along the bottom.
-    new Axis({
+    const leftAxis = new Axis({
       renderer: this.renderer,
       scale: leftVal,
       position: "bottom",
       grid: false,
       plot: { x: plot.x, y: plot.y, width: halfW, height: plot.height },
       options: { ...yOpts, title: undefined },
-    }).render(axisLayer);
-    new Axis({
+    });
+    leftAxis.render(axisLayer);
+    const rightAxis = new Axis({
       renderer: this.renderer,
       scale: rightVal,
       position: "bottom",
       grid: false,
       plot: { x: rightZeroX, y: plot.y, width: halfW, height: plot.height },
       options: { ...yOpts, title: undefined },
-    }).render(axisLayer);
+    });
+    rightAxis.render(axisLayer);
 
     // Category names down the central gutter.
     const band = catScale.bandwidth();
@@ -1966,6 +1968,14 @@ export class FacetViz {
       band,
       "right",
     );
+
+    // Plot lines flagged `zIndex: 'above'` paint on top of the series.
+    const aboveLayer = this.renderer.group(
+      { class: "facet-axes-above" },
+      this.renderer.root,
+    );
+    leftAxis.renderAbove(aboveLayer);
+    rightAxis.renderAbove(aboveLayer);
   }
 
   private drawButterflySide(

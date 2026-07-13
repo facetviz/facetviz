@@ -43,7 +43,8 @@ const chart = new FacetViz(container, options); // container: Element | CSS sele
   series: SeriesOptions[];          // REQUIRED
   colors?: string[];
   theme?: 'light' | 'dark' | 'high-contrast' | 'pastel' | { base?: string; colors?: string[]; ... };
-  trellis?: { columns?: string; rows?: string; gap?: number; sharedY?: boolean; sharedX?: boolean };
+  trellis?: { columns?: string; rows?: string; gap?: number; table?: boolean;   // default true: cross-tab grid w/ shared axes; false: independent panels (needed for pie/donut/etc.)
+    sharedY?: boolean; sharedX?: boolean };
   drilldown?: { series: (SeriesOptions & { id: string })[] };
   accessibility?: { enabled?: boolean; description?: string };
   seriesEvents?: { click?, mouseOver?, mouseOut?, legendItemClick? };
@@ -60,7 +61,9 @@ interface AxisOptions {
   min?: number; max?: number; tickCount?: number;
   labels?: { enabled?: boolean; format?: string; formatter?: (v)=>string; rotation?: number };
   gridLineWidth?: number; lineColor?: string; reversed?: boolean;
-  plotLines?: { value: number|string; color?; width?; dashStyle?; label?: {text} }[];
+  plotLines?: { value: number|string; color?; width?; dashStyle?;
+    zIndex?: 'above'|'below';   // default 'below' (a tall bar/area can hide the line); 'above' paints over the series
+    label?: { text: string; align?: 'left'|'center'|'right'; verticalAlign?: 'above'|'below'; color? } }[];
   plotBands?: { from: number|string; to: number|string; color?; label?: {text} }[];
   dimension?: string;      // trellis: split panels by this field
   dimensions?: string[];   // nested/hierarchical axis: 2+ dimension field names, aggregated
@@ -147,6 +150,33 @@ Grid & hierarchy:
 - `radar` — `xAxis.categories` = spokes; `data:[v1,v2,...]` one per category; per-series `type:'area'` for filled.
 - `butterfly` — two series mirrored back-to-back; `data:[v1,v2,...]` per category, same shape as column.
 
+## Instance API
+
+`new FacetViz(...)` returns a live, mutable instance — don't re-create it on every
+data change.
+
+```ts
+chart.on(event, listener)          // 'point:click' | 'point:mouseOver' | 'point:mouseOut'
+                                    // | 'render' | 'load' | 'drilldown' → returns an unsubscribe fn
+chart.update(options)              // deep-merge new options, re-render; series → full rebuild
+chart.setData(seriesIndex, data)   // replace one series' data in place, re-render
+chart.addPoint(seriesIndex, point) // append a point, re-render
+chart.drillUp()                    // back out of a drilldown level
+chart.setSize(width, height)       // resize explicitly and re-render
+chart.reflow()                     // re-measure the container and re-render if it changed size —
+                                    // call after your own layout settles (resizable panel, tab
+                                    // becoming visible) instead of waiting for a resize event
+chart.getSVG(): string             // serialise to a standalone SVG string
+chart.downloadSVG(name?)           // trigger a browser download
+chart.downloadPNG(name?, scale?)
+chart.toPNGBlob(scale?): Promise<Blob>
+chart.legendItems                  // resolved legend entries: { label, color, visible }[] —
+                                    // point-legend types (pie/donut/radialbar) are ONE series
+                                    // internally, don't infer legend rows from series.length
+chart.hasLegend: boolean           // legend.enabled !== false AND more than one legend entry
+chart.destroy()                    // remove the chart, disconnect the resize observer
+```
+
 ## Common recipes
 
 Stacked / grouped: series without `stacking` sit side-by-side (grouped) automatically; add `stacking:'normal'` (or `'percent'`) to each series in the same stack to pile them instead.
@@ -163,7 +193,7 @@ Two dimensions on x (nested headers):
   series:[{ name:'Sales', data:[{Region:'East',Category:'Tech',y:12}, ...] }] }
 ```
 
-Trellis (small multiples): `trellis:{ columns:'cat', rows:'region' }` with flat `data:[{x,y,cat,region}]` points carrying the split fields.
+Trellis (small multiples): `trellis:{ columns:'cat', rows:'region' }` with flat `data:[{x,y,cat,region}]` points carrying the split fields. A cross-tab grid — pivot-table-style row/column headers, one shared x/y scale so every cell is directly comparable. Works with any cartesian series type: `column` (incl. `stacking`), `bar` (auto-inverted, horizontal), `boxplot`, etc. — and dual axis, same as above (`yAxis:[...]`, `series.yAxis:1`), with the y-axis title(s) drawn once per row next to that row's axis (not once for the whole grid). **Not supported**: `pie`/`donut`/`sunburst`/other non-cartesian types — the grid still draws x/y axis chrome around them, so don't recommend trellis for those; use independent panels instead (`trellis:{ columns:'cat', table:false }`, one full mini-chart per panel, no shared axes/headers) or drop `trellis` and split the data yourself into separate chart instances.
 
 Drilldown: point `{y, name, drilldown:'id'}` + top-level `drilldown:{ series:[{id:'id', data:[...]}] }`.
 

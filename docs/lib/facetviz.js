@@ -4666,22 +4666,24 @@ var FacetViz = class _FacetViz {
       { class: "facet-axes" },
       this.renderer.root
     );
-    new Axis({
+    const leftAxis = new Axis({
       renderer: this.renderer,
       scale: leftVal,
       position: "bottom",
       grid: false,
       plot: { x: plot.x, y: plot.y, width: halfW, height: plot.height },
       options: { ...yOpts, title: void 0 }
-    }).render(axisLayer);
-    new Axis({
+    });
+    leftAxis.render(axisLayer);
+    const rightAxis = new Axis({
       renderer: this.renderer,
       scale: rightVal,
       position: "bottom",
       grid: false,
       plot: { x: rightZeroX, y: plot.y, width: halfW, height: plot.height },
       options: { ...yOpts, title: void 0 }
-    }).render(axisLayer);
+    });
+    rightAxis.render(axisLayer);
     const band = catScale.bandwidth();
     for (const cat of categories) {
       const cy = catScale.scale(cat) + 4;
@@ -4716,6 +4718,12 @@ var FacetViz = class _FacetViz {
       band,
       "right"
     );
+    const aboveLayer = this.renderer.group(
+      { class: "facet-axes-above" },
+      this.renderer.root
+    );
+    leftAxis.renderAbove(aboveLayer);
+    rightAxis.renderAbove(aboveLayer);
   }
   drawButterflySide(s, catScale, valScale, zeroX, band, side) {
     const g = this.renderer.group(
