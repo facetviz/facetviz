@@ -19,10 +19,18 @@ for (const r of ["East", "West", "Central"])
       y: Math.round(5 + Math.random() * 20),
     });
 const trellis = [];
+const trellisMargin = [];
 for (const region of ["East", "West"])
   for (const cat of ["Tech", "Furniture"])
-    for (const m of months)
+    for (const m of months) {
       trellis.push({ x: m, y: Math.round(2 + Math.random() * 8), region, cat });
+      trellisMargin.push({
+        x: m,
+        y: Math.round(40 + Math.random() * 20),
+        region,
+        cat,
+      });
+    }
 
 /** URL-safe slug of a title (used as the example's anchor id). */
 export const slug = (s) =>
@@ -846,6 +854,31 @@ export const EXAMPLES = [
       yAxis: { title: { text: "Sales" } },
       trellis: { columns: "cat", rows: "region" },
       series: [{ name: "Sales", data: trellis }],
+    },
+  },
+  {
+    cat: "Advanced",
+    title: "Trellis table (dual axis)",
+    desc: "Small multiples with a secondary y-axis for a differently-scaled measure.",
+    types: [],
+    tall: true,
+    cfg: {
+      chart: { type: "column", height: 380 },
+      title: { text: "Sales vs Margin % small multiples" },
+      xAxis: { title: { text: "Month" } },
+      yAxis: [{ title: { text: "Sales" } }, { title: { text: "Margin %" } }],
+      trellis: { columns: "cat", rows: "region" },
+      series: [
+        { name: "Sales", data: trellis },
+        {
+          type: "line",
+          name: "Margin %",
+          yAxis: 1,
+          color: "#e8590c",
+          marker: { enabled: true },
+          data: trellisMargin,
+        },
+      ],
     },
   },
   {

@@ -511,6 +511,23 @@ series: [
 To split by a dimension **down the y** (nested rows), use `trellis.rows`
 — each dimension value becomes a horizontal band sharing the y-axis.
 
+### Axis titles and secondary y-axis
+
+`yAxis.title` renders next to each row's axis (rotated, to the left of that
+row's tick labels), the same convention as the tick labels themselves. A
+secondary y-axis works the same way it does elsewhere: series bound via
+`yAxis: 1` get their own shared scale and a labelled axis on the right, with
+`yAxis[1].title` drawn per row on that side:
+
+```ts
+trellis: { columns: 'category', rows: 'region' },
+yAxis: [ { title: { text: 'Sales' } }, { title: { text: 'Margin %' } } ],
+series: [
+  { type: 'column', name: 'Sales', data: rows },
+  { type: 'spline', name: 'Margin %', yAxis: 1, data: marginRows },  // → right axis, own scale
+],
+```
+
 ---
 
 ## Events

@@ -1184,12 +1184,26 @@ export class FacetViz {
     const allVisible = this.series.filter((s) => s.visible && s.points.length);
     const categories = this.currentCategories(allVisible);
     const xOpts = this.firstAxis(this.options.xAxis) ?? {};
-    const yOpts = this.firstAxis(this.options.yAxis) ?? {};
+    const yOpts0 = this.axisAt(this.options.yAxis, 0);
+
+    // Dual axis: series bound via `series.yAxis: 1` get their own shared
+    // scale/axis (right side), same convention as the non-trellis panels.
+    const onSecondary = (s: BaseSeries) => (s.options.yAxis ?? 0) === 1;
+    const secondaryVisible = allVisible.filter(onSecondary);
+    const hasSecondary = secondaryVisible.length > 0;
+    const primaryVisible = hasSecondary
+      ? allVisible.filter((s) => !onSecondary(s))
+      : allVisible;
+    const yOpts1 = hasSecondary
+      ? this.axisAt(this.options.yAxis, 1)
+      : undefined;
 
     // Shared value domain (so every cell is directly comparable).
-    let [vMin, vMax] = this.valueDomain(allVisible);
+    let [vMin, vMax] = this.valueDomain(
+      primaryVisible.length ? primaryVisible : allVisible,
+    );
     if (
-      allVisible.some((s) =>
+      (primaryVisible.length ? primaryVisible : allVisible).some((s) =>
         ["column", "bar", "area", "areaspline"].includes(s.type),
       )
     ) {
@@ -1200,9 +1214,27 @@ export class FacetViz {
     // happens to land exactly on a "nice" tick (e.g. 10) maps to the very
     // top of the shared axis with nothing above it. Skipped when the user
     // sets an explicit max.
-    if (yOpts.max === undefined) {
+    if (yOpts0.max === undefined) {
       const span = vMax - vMin || Math.abs(vMax) || 1;
       vMax += span * 0.08;
+    }
+
+    let vMin2 = 0;
+    let vMax2 = 1;
+    if (hasSecondary && yOpts1) {
+      [vMin2, vMax2] = this.valueDomain(secondaryVisible);
+      if (
+        secondaryVisible.some((s) =>
+          ["column", "bar", "area", "areaspline"].includes(s.type),
+        )
+      ) {
+        vMin2 = Math.min(vMin2, 0);
+        vMax2 = Math.max(vMax2, 0);
+      }
+      if (yOpts1.max === undefined) {
+        const span2 = vMax2 - vMin2 || Math.abs(vMax2) || 1;
+        vMax2 += span2 * 0.08;
+      }
     }
 
     // Gutters: header labels + shared axis space, laid out like a pivot
@@ -1212,9 +1244,9 @@ export class FacetViz {
     // Divider lines carry the nested-axis convention used elsewhere in the
     // library (plain bold labels, thin full-span separators, no boxed/shaded
     // chrome) so a trellis chart still reads consistently with the rest of
-    // the library. No axis titles (e.g. "Sales"/"Month") — the row/column
-    // headers already say what's split, and repeating the measure name on
-    // every row is redundant once it's in the chart title.
+    // the library. The row/column headers already say what's split, so the
+    // (optional) y-axis title is drawn once for the whole grid rather than
+    // repeated per row.
     const dimNameRowH = 16;
     const rowValueColW = rowDim
       ? Math.max(
@@ -1232,16 +1264,30 @@ export class FacetViz {
       : 0;
     // Tight tick-label width for these actual values, rather than the fixed
     // generic axis width — keeps the left gutter close to the numbers.
+    const titleReserveLeft = yOpts0.title?.text ? 18 : 0;
     const tickLabelW =
-      LAYOUT.tickLength + 8 + this.valueLabelWidth(allVisible, yOpts);
+      LAYOUT.tickLength +
+      8 +
+      this.valueLabelWidth(
+        primaryVisible.length ? primaryVisible : allVisible,
+        yOpts0,
+      );
     const colHeaderH = colDim ? dimNameRowH + 20 : rowDim ? dimNameRowH : 0;
     const rowHeaderW = rowDim ? rowValueColW : 0;
-    const leftReserve = rowHeaderW + tickLabelW;
+    const leftReserve = rowHeaderW + tickLabelW + titleReserveLeft;
+    const titleReserveRight = hasSecondary && yOpts1?.title?.text ? 18 : 0;
+    const rightReserve =
+      hasSecondary && yOpts1
+        ? LAYOUT.tickLength +
+          8 +
+          this.valueLabelWidth(secondaryVisible, yOpts1) +
+          titleReserveRight
+        : 0;
     const bottomReserve = LAYOUT.defaultBottomAxisHeight;
 
     const gridX = outer.x + leftReserve;
     const gridY = outer.y + colHeaderH;
-    const gridW = outer.width - leftReserve;
+    const gridW = outer.width - leftReserve - rightReserve;
     const gridH = outer.height - colHeaderH - bottomReserve;
     const cellW = (gridW - gap * (colVals.length - 1)) / colVals.length;
     const cellH = (gridH - gap * (rowVals.length - 1)) / rowVals.length;
@@ -1254,6 +1300,9 @@ export class FacetViz {
     // Shared bottom extent for every full-height vertical divider, so they
     // all end at the same point, just past the shared bottom axis.
     const dividerBottom = gridY + gridH + LAYOUT.tickLength + 12;
+
+    // Y-axis title(s): each row draws its own copy next to its axis (see the
+    // per-cell Axis calls below), the same convention as the tick labels.
 
     // Column headers across the top, with full-height divider lines carrying
     // down through the shared bottom axis — the same visual language as the
@@ -1370,14 +1419,16 @@ export class FacetViz {
         headerLayer,
       );
 
-      // Vertical line after the last column header and horizontal line after the last row header
+      // Closes off the right edge of the header/grid box, mirroring the
+      // left divider above — the axis label/title gutters (primary on the
+      // left, secondary on the right, when present) sit outside this box.
       this.renderer.create(
         "line",
         {
-          x1: outer.width + 10, //outer.x + rowHeaderW,
+          x1: gridX + gridW,
           y1: outer.y,
-          x2: outer.width + 10, // outer.x + rowHeaderW,
-          y2: dividerBottom, // gridY,
+          x2: gridX + gridW,
+          y2: dividerBottom,
           stroke: lineColor,
           "stroke-width": 1,
         },
@@ -1445,33 +1496,47 @@ export class FacetViz {
               ),
               range: [cell.x, cell.x + cell.width],
             });
-        let yScale = this.valueScale(
-          yOpts,
-          [vMin, vMax],
-          [cell.y + cell.height, cell.y],
-        );
-        // Drop the topmost tick (e.g. "10") — it sits right against the
-        // header divider and reads as clutter there. Same domain/range, so
-        // bars plot identically; only the tick/gridline/label list shrinks.
-        if (yScale instanceof LinearScale) {
-          const allTicks = yScale.ticks();
-          if (allTicks.length > 1) {
-            yScale = new LinearScale({
-              domain: yScale.domain,
-              range: [cell.y + cell.height, cell.y],
-              ticks: allTicks.slice(0, -1),
-            });
+        const dropLastTick = (sc: Scale): Scale => {
+          // Drop the topmost tick (e.g. "10") — it sits right against the
+          // header divider and reads as clutter there. Same domain/range, so
+          // bars plot identically; only the tick/gridline/label list shrinks.
+          if (sc instanceof LinearScale) {
+            const allTicks = sc.ticks();
+            if (allTicks.length > 1) {
+              return new LinearScale({
+                domain: sc.domain,
+                range: [cell.y + cell.height, cell.y],
+                ticks: allTicks.slice(0, -1),
+              });
+            }
           }
-        }
+          return sc;
+        };
+
+        const yScale = dropLastTick(
+          this.valueScale(yOpts0, [vMin, vMax], [cell.y + cell.height, cell.y]),
+        );
+        const yScale2 =
+          hasSecondary && yOpts1
+            ? dropLastTick(
+                this.valueScale(
+                  yOpts1,
+                  [vMin2, vMax2],
+                  [cell.y + cell.height, cell.y],
+                ),
+              )
+            : undefined;
 
         const axisLayer = this.renderer.group(
           { class: "facet-axes" },
           this.renderer.root,
         );
         const isLeft = ci === 0;
+        const isRight = ci === colVals.length - 1;
         const isBottom = ri === rowVals.length - 1;
 
-        // Y axis: labelled on the left column, gridlines only elsewhere.
+        // Y axis: labelled (incl. title) on the left column, gridlines only
+        // elsewhere. Each row draws its own copy of the title.
         new Axis({
           renderer: this.renderer,
           scale: yScale,
@@ -1479,9 +1544,25 @@ export class FacetViz {
           plot: cell,
           grid: true,
           options: isLeft
-            ? { ...yOpts, title: undefined }
+            ? yOpts0
             : { labels: { enabled: false }, lineWidth: 0 },
         }).render(axisLayer);
+
+        // Secondary y axis: labelled (incl. title) on the right column only,
+        // mirroring the primary axis; drawn without gridlines to avoid a
+        // double grid.
+        if (hasSecondary && yScale2 && yOpts1) {
+          new Axis({
+            renderer: this.renderer,
+            scale: yScale2,
+            position: "right",
+            plot: cell,
+            grid: false,
+            options: isRight
+              ? yOpts1
+              : { labels: { enabled: false }, lineWidth: 0 },
+          }).render(axisLayer);
+        }
 
         // X axis: labelled on the bottom row only, no tick marks — just the
         // line and labels.
@@ -1500,11 +1581,12 @@ export class FacetViz {
         this.computeStacks(cellSeries);
         const group = this.groupInfo(cellSeries);
         for (const s of cellSeries) {
+          const sy = yScale2 && onSecondary(s) ? yScale2 : yScale;
           const ctx = this.seriesContext(
             s,
             cell,
             xScale,
-            yScale,
+            sy,
             group,
             false,
             false,

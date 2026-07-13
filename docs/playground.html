@@ -117,6 +117,14 @@
     import { FacetViz } from './lib/facetviz.js';
 
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+    const trellisMonths = ['Jan', 'Feb', 'Mar', 'Apr'];
+    function trellisData(valueFn) {
+      const out = [];
+      for (const region of ['East', 'West'])
+        for (const cat of ['Tech', 'Furniture'])
+          for (const x of trellisMonths) out.push({ x, region, cat, y: valueFn() });
+      return out;
+    }
 
     // -- Example configs (data-only JSON) --------------------------------------
     const PRESETS = {
@@ -387,6 +395,25 @@
           { name: 'Product A', data: [40, 20, 10] },
           { name: 'Product B', data: [25, 30, 25] },
           { name: 'Product C', data: [15, 25, 45] },
+        ],
+      },
+      'Trellis table': {
+        chart: { type: 'column', height: 380 }, title: { text: 'Sales small multiples' },
+        xAxis: { title: { text: 'Month' } }, yAxis: { title: { text: 'Sales' } },
+        trellis: { columns: 'cat', rows: 'region' },
+        series: [{ name: 'Sales', data: trellisData(() => Math.round(2 + Math.random() * 8)) }],
+      },
+      'Trellis table (dual axis)': {
+        chart: { type: 'column', height: 380 }, title: { text: 'Sales vs Margin % small multiples' },
+        xAxis: { title: { text: 'Month' } },
+        yAxis: [{ title: { text: 'Sales' } }, { title: { text: 'Margin %' } }],
+        trellis: { columns: 'cat', rows: 'region' },
+        series: [
+          { name: 'Sales', data: trellisData(() => Math.round(2 + Math.random() * 8)) },
+          {
+            type: 'line', name: 'Margin %', yAxis: 1, color: '#e8590c', marker: { enabled: true },
+            data: trellisData(() => Math.round(40 + Math.random() * 20)),
+          },
         ],
       },
       'Datetime + zoom + crosshair': {
