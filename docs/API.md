@@ -164,7 +164,7 @@ One object per series in the `series` array.
 | `stack` | `string \| number` | – | Series sharing a stack id pile together. |
 | `stacking` | `'normal' \| 'percent'` | – | Enable stacking (`percent` = 100% stacked). |
 | `xAxis` | `number` | `0` | Index of the bound x-axis. |
-| `yAxis` | `number` | `0` | Index of the bound y-axis (combo charts). |
+| `yAxis` | `number` | `0` | Index of the bound y-axis. `1` = secondary axis, drawn on the right with its own scale — pass `yAxis` (top-level) as a 2-element array to configure it. Works with a plain categorical x-axis or a [nested one](#nested-hierarchical-x-axis). |
 | `lineWidth` | `number` | `2` | Stroke width (line/area/range). |
 | `innerSize` | `string` | – | Pie inner radius, e.g. `'60%'` (makes a donut). |
 | `dimensions` | `string[]` | – | Pie/donut **two-dimension** rings — see [Multi-level pie](#multi-level-two-dimension-pie). |
@@ -181,6 +181,19 @@ One object per series in the `series` array.
 
 Any extra keys you add to a series or point are preserved and surfaced back in
 tooltips and event payloads.
+
+**Secondary y-axis (dual axis).** Works with a plain categorical x-axis too —
+not just [nested](#nested-hierarchical-x-axis) — for the common "bars +
+line on a differently-scaled axis" combo:
+
+```ts
+xAxis: { categories: months },
+yAxis: [ { title: { text: 'Units' } }, { title: { text: 'Margin %' } } ],
+series: [
+  { type: 'column', name: 'Units', data: unitsRow },
+  { type: 'spline', name: 'Margin %', yAxis: 1, data: marginRow },  // → right axis, own scale
+],
+```
 
 ### Boxplot options
 
@@ -470,8 +483,8 @@ xAxis: { dimensions: ['Region', 'Category'], aggregate: 'sum', opposite: true },
   first-dimension group** (it does not run continuously across group boundaries),
   so a column+line combo reads correctly.
 
-**Secondary y-axis (dual axis).** Pass `yAxis` as an array and bind a series to
-the second axis with `yAxis: 1`; it gets its own scale drawn on the right:
+On a nested x-axis specifically, this also combines with a secondary y-axis
+(below) for a "combo chart with two differently-scaled measures" look:
 
 ```ts
 xAxis: { dimensions: ['Region', 'Category'], aggregate: 'sum' },
@@ -622,8 +635,11 @@ automatically. Mix `type`s across series for combination charts.
 | `chart.getSVG()` | Serialise to a standalone SVG string. |
 | `chart.downloadSVG(name?)` / `downloadPNG(name?, scale?)` | Download the chart as SVG / PNG. |
 | `chart.toPNGBlob(scale?)` | Rasterise to a PNG `Blob` (async). |
-| `chart.setSize(width, height)` | Resize and re-render. |
+| `chart.setSize(width, height)` | Resize and re-render with an explicit size. |
+| `chart.reflow()` | Re-read the container's current width/height and re-render if either changed — no arguments needed. Call this after your own layout (a resizable panel, a grid library, a tab becoming visible) settles, instead of waiting for a resize event. Dimensions pinned via `chart.width`/`chart.height` are left untouched. |
 | `chart.destroy()` | Remove the chart, disconnect the resize observer, and clear listeners. |
+| `chart.legendItems` | The resolved legend entries this chart will actually draw (`{ label, color, visible }[]`). Point-legend types (pie/donut/radialbar) are always exactly **one** series internally — don't infer legend visibility from `options.series.length`; read this (or `hasLegend`) instead. |
+| `chart.hasLegend` | Whether a legend will actually render — `legend.enabled !== false` **and** more than one legend entry. |
 
 ### Interactivity options (`chart`)
 
@@ -631,12 +647,17 @@ automatically. Mix `type`s across series for combination charts.
 |-----|------|---------|-------------|
 | `animation` | `boolean \| { duration?, easing?, enabled? }` | on | Enter animation: bars grow, lines draw in, others fade. |
 | `zoom` | `'x' \| 'y' \| 'xy' \| false \| { type }` | off | Drag-select on a numeric/datetime axis to zoom — `'x'`, `'y'`, or both with `'xy'`; a **Reset zoom** control restores the full range. |
-| `reflow` | `boolean` | `true` | Auto re-render to the container width on resize. |
+| `reflow` | `boolean` | `true` | Auto re-render when the container's width **or** height resizes. Set `false` to disable and call `chart.reflow()` yourself. |
 | `boost` | `boolean \| { enabled?, threshold? }` | auto | Draw high-volume point/line series to a canvas overlay (lines min/max-decimated). Auto-enables past `threshold` points (default 1500). Handles 100k+ points; boosted marks aren't in `getSVG()` (use `downloadPNG()`). |
 
 Axes add `type: 'datetime'` (nice date ticks) and `crosshair: true` (hover guide
 line). Points add `drilldown: '<id>'`; top-level `drilldown.series` lists the
 child series. `accessibility: { description }` overrides the auto SVG label.
+
+Chart size defaults to the container's `clientWidth`/`clientHeight` (falling
+back to 640×400 only when the container itself can't report a size, e.g.
+detached from the DOM) and self-corrects on the next frame after construction
+if the container hadn't finished layout yet.
 
 ---
 

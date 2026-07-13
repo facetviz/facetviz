@@ -276,3 +276,32 @@ function niceNum(range: number, round: boolean): number {
   }
   return niceFraction * Math.pow(10, exponent);
 }
+
+/**
+ * Clamp a font-size value to a sane range — a typo'd numeric font-size (e.g.
+ * `110000`) would otherwise render as a giant illegible glyph filling the
+ * chart instead of failing safely. Non-numeric/unparseable values pass
+ * through untouched (the browser's own fallback handles those).
+ */
+export function clampFontSize(value: string): string {
+  const n = parseFloat(value);
+  if (!Number.isFinite(n)) return value;
+  const unit = /[a-z%]+$/i.exec(value)?.[0] ?? 'px';
+  const clamped = Math.min(Math.max(n, 6), 72);
+  return clamped === n ? value : `${clamped}${unit}`;
+}
+
+/**
+ * Clamp risky values in a user-supplied SVG style object before it reaches
+ * the DOM (see {@link clampFontSize}). Every other property passes through
+ * untouched.
+ */
+export function sanitizeStyle(
+  style?: Record<string, string>,
+): Record<string, string> {
+  if (!style) return {};
+  const fontSize = style['font-size'];
+  if (fontSize === undefined) return style;
+  const clamped = clampFontSize(fontSize);
+  return clamped === fontSize ? style : { ...style, 'font-size': clamped };
+}

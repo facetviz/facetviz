@@ -292,6 +292,20 @@ function niceNum(range, round) {
   }
   return niceFraction * Math.pow(10, exponent);
 }
+function clampFontSize(value) {
+  const n = parseFloat(value);
+  if (!Number.isFinite(n)) return value;
+  const unit = /[a-z%]+$/i.exec(value)?.[0] ?? "px";
+  const clamped = Math.min(Math.max(n, 6), 72);
+  return clamped === n ? value : `${clamped}${unit}`;
+}
+function sanitizeStyle(style) {
+  if (!style) return {};
+  const fontSize = style["font-size"];
+  if (fontSize === void 0) return style;
+  const clamped = clampFontSize(fontSize);
+  return clamped === fontSize ? style : { ...style, "font-size": clamped };
+}
 
 // src/core/scale.ts
 var LinearScale = class {
@@ -402,13 +416,14 @@ var CategoryScale = class {
 var DEFAULT_OPTIONS = {
   chart: {
     type: "line",
-    height: 400,
     spacing: [16, 16, 16, 16],
     inverted: false,
     polar: false
-    // `backgroundColor`, `colors`, and `width` are intentionally left unset so
-    // the theme (and container width) can supply them; explicit user values
-    // still win via the normal merge.
+    // `backgroundColor`, `colors`, `width`, and `height` are intentionally
+    // left unset so the theme (and the container's actual size) can supply
+    // them — the constructor falls back to clientWidth/clientHeight, then a
+    // hardcoded 640×400, only once it sees these are genuinely unset.
+    // Explicit user values still win via the normal merge.
   },
   title: { text: void 0, align: "center" },
   subtitle: { text: void 0, align: "center" },
@@ -595,16 +610,25 @@ var Axis = class {
     const labelsEnabled = options.labels?.enabled !== false;
     const gridColor = options.gridLineColor ?? THEME.axis.gridLineColor;
     const gridWidth = options.gridLineWidth ?? (this.horizontal ? 0 : 1);
-    for (const tick of ticks) {
+    let labelStep = 1;
+    if (isCategory && labelsEnabled && this.horizontal && !options.labels?.rotation) {
+      const band = scale.bandwidth();
+      if (band > 0) {
+        const maxLen = ticks.reduce((m, t) => Math.max(m, this.labelText(scale, t).length), 0);
+        const estW = maxLen * 6.2 + 6;
+        if (estW > band) labelStep = Math.ceil(estW / band);
+      }
+    }
+    ticks.forEach((tick, i) => {
       const pos = scale.scale(tick);
       if (this.cfg.grid && gridWidth > 0 && !isCategory) {
         this.drawGridLine(group, pos, gridColor, gridWidth);
       }
       if (options.ticks !== false) this.drawTick(group, pos, axisColor);
-      if (labelsEnabled) {
+      if (labelsEnabled && i % labelStep === 0) {
         this.drawLabel(group, pos, this.labelText(scale, tick), options);
       }
-    }
+    });
     this.drawPlotLines(group);
     if (options.title?.text) this.drawTitle(group, options.title.text);
   }
@@ -639,12 +663,27 @@ var Axis = class {
         class: "facet-plotline"
       }, g);
       if (line.label?.text) {
-        const lx = this.horizontal ? pos + 4 : plot.x + plot.width - 4;
-        const ly = this.horizontal ? plot.y + 12 : pos - 4;
+        const estW = line.label.text.length * 6.2 + 6;
+        let lx, ly, anchor;
+        if (this.horizontal) {
+          const fitsRight = pos + 4 + estW <= plot.x + plot.width;
+          if (fitsRight) {
+            lx = pos + 4;
+            anchor = "start";
+          } else {
+            lx = Math.max(plot.x + estW, pos - 4);
+            anchor = "end";
+          }
+          ly = plot.y + 12;
+        } else {
+          lx = plot.x + plot.width - 4;
+          ly = Math.max(plot.y + 10, Math.min(plot.y + plot.height - 4, pos - 4));
+          anchor = "end";
+        }
         renderer.text(line.label.text, lx, ly, {
           ...FONTS.axisLabel,
           fill: line.label.color ?? line.color ?? "#e63946",
-          "text-anchor": this.horizontal ? "start" : "end"
+          "text-anchor": anchor
         }, g);
       }
     }
@@ -697,7 +736,12 @@ var Axis = class {
   }
   drawLabel(g, pos, text, options) {
     const { renderer, plot, position } = this.cfg;
-    const style = { ...FONTS.axisLabel, ...options.labels?.style ?? {} };
+    const style = { ...FONTS.axisLabel, ...sanitizeStyle(options.labels?.style) };
+    if (!options.labels?.style?.["font-size"]) {
+      const shortSide = Math.min(plot.width, plot.height);
+      if (shortSide < 120) style["font-size"] = "9px";
+      else if (shortSide < 220) style["font-size"] = "10px";
+    }
     const rotation = options.labels?.rotation ?? 0;
     let x = 0;
     let y = 0;
@@ -1292,7 +1336,7 @@ function drawDataLabel(renderer, parent, text, place, dl) {
     "text-anchor": place.anchor,
     ...FONTS.dataLabel,
     fill: dl.color ?? FONTS.dataLabel.fill,
-    "font-size": dl.fontSize ?? FONTS.dataLabel["font-size"]
+    "font-size": dl.fontSize ? clampFontSize(dl.fontSize) : FONTS.dataLabel["font-size"]
   };
   if (dl.fontWeight) attrs["font-weight"] = dl.fontWeight;
   if (dl.rotation) attrs.transform = `rotate(${dl.rotation} ${place.x} ${place.y})`;
@@ -3175,26 +3219,39 @@ var FacetViz = class _FacetViz {
     this.theme = resolveTheme(this.options.theme);
     this.colors = this.options.chart?.colors ?? this.options.colors ?? this.theme.colors;
     this.width = this.options.chart?.width ?? (this.container.clientWidth || 640);
-    this.height = this.options.chart?.height ?? 400;
+    this.height = this.options.chart?.height ?? (this.container.clientHeight || 400);
     this.build();
     this.render();
     this.setupReflow();
+    if (typeof requestAnimationFrame !== "undefined") {
+      requestAnimationFrame(() => this.reflow());
+    }
   }
-  /** Re-render to the container's width when it resizes (unless width is fixed). */
+  /**
+   * Re-read the container's current width/height and re-render if either
+   * changed. Safe to call any time — e.g. after your own layout (a resizable
+   * panel, a grid library, a tab becoming visible) settles into its final
+   * size, so the chart doesn't need to wait for a resize event to catch up.
+   * A dimension pinned via `chart.width`/`chart.height` is left untouched.
+   */
+  reflow() {
+    const w = this.options.chart?.width ?? this.container.clientWidth;
+    const h = this.options.chart?.height ?? this.container.clientHeight;
+    const changed = w && Math.abs(w - this.width) > 1 || h && Math.abs(h - this.height) > 1;
+    if (!changed) return;
+    if (w) this.width = w;
+    if (h) this.height = h;
+    this.animateNext = false;
+    this.render();
+  }
+  /** Re-render when the container resizes (unless reflow/that dimension is disabled). */
   setupReflow() {
-    if (this.options.chart?.reflow === false || this.options.chart?.width || typeof ResizeObserver === "undefined")
+    if (this.options.chart?.reflow === false || typeof ResizeObserver === "undefined" || this.options.chart?.width && this.options.chart?.height)
       return;
     let raf = 0;
     this.resizeObserver = new ResizeObserver(() => {
       cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        const w = this.container.clientWidth;
-        if (w && Math.abs(w - this.width) > 1) {
-          this.width = w;
-          this.animateNext = false;
-          this.render();
-        }
-      });
+      raf = requestAnimationFrame(() => this.reflow());
     });
     this.resizeObserver.observe(this.container);
   }
@@ -3613,7 +3670,7 @@ var FacetViz = class _FacetViz {
         {
           "text-anchor": this.anchor(title.align),
           ...FONTS.title,
-          ...title.style ?? {}
+          ...sanitizeStyle(title.style)
         },
         this.renderer.root
       );
@@ -3748,9 +3805,12 @@ var FacetViz = class _FacetViz {
       return;
     }
     const catOpts = this.firstAxis(this.options.xAxis) ?? {};
-    const valOpts = this.firstAxis(this.options.yAxis) ?? {};
+    const valOpts = this.axisAt(this.options.yAxis, 0);
     const catSide = inverted ? catOpts.opposite ? "right" : "left" : catOpts.opposite ? "top" : "bottom";
     const valSide = inverted ? valOpts.opposite ? "top" : "bottom" : valOpts.opposite ? "right" : "left";
+    const onSecondary = (s) => (s.options.yAxis ?? 0) === 1;
+    const renderSecondary = !inverted && valSide !== "right" && visible.some(onSecondary);
+    const valOpts2 = renderSecondary ? this.axisAt(this.options.yAxis, 1) : void 0;
     const catReserve = this.axisReserve(
       catOpts,
       catSide,
@@ -3764,6 +3824,13 @@ var FacetViz = class _FacetViz {
     const pad = { left: 8, right: 8, top: 6, bottom: 6 };
     pad[catSide] = catReserve;
     pad[valSide] = valReserve;
+    if (renderSecondary && valOpts2) {
+      pad.right = this.axisReserve(
+        valOpts2,
+        "right",
+        this.valueLabelWidth(visible.filter(onSecondary), valOpts2)
+      );
+    }
     const axisPlot = {
       x: plot.x + pad.left,
       y: plot.y + pad.top,
@@ -3771,7 +3838,11 @@ var FacetViz = class _FacetViz {
       height: plot.height - pad.top - pad.bottom
     };
     this.computeStacks(visible);
-    const { xScale, yScale } = this.buildScales(visible, axisPlot, inverted);
+    const { xScale, yScale, yScale2 } = this.buildScales(
+      visible,
+      axisPlot,
+      inverted
+    );
     const group = this.groupInfo(visible);
     const catScale = inverted ? yScale : xScale;
     const valScale = inverted ? xScale : yScale;
@@ -3795,21 +3866,33 @@ var FacetViz = class _FacetViz {
       options: valOpts,
       grid: true
     }).render(axisLayer);
+    if (renderSecondary && valOpts2 && yScale2) {
+      new Axis({
+        renderer: this.renderer,
+        scale: yScale2,
+        position: "right",
+        plot: axisPlot,
+        options: valOpts2,
+        grid: false
+      }).render(axisLayer);
+    }
     this.plotCtx = { plot: axisPlot, xScale, yScale, inverted };
     this.zoomState = !inverted ? { plot: axisPlot, xScale, yScale } : void 0;
+    const yScaleFor = (s) => yScale2 && onSecondary(s) ? yScale2 : yScale;
     const boost = !inverted && this.boostEnabled(visible);
     const cctx = boost ? this.createBoostCanvas(axisPlot) : null;
     const hits = [];
     const existing = new Set(this.renderer.root.children);
     for (const s of visible) {
+      const sy = yScaleFor(s);
       if (cctx && this.isBoostable(s)) {
-        this.drawBoostSeries(s, cctx, xScale, yScale, hits);
+        this.drawBoostSeries(s, cctx, xScale, sy, hits);
       } else {
         const ctx = this.seriesContext(
           s,
           axisPlot,
           xScale,
-          yScale,
+          sy,
           group,
           inverted,
           false
@@ -4191,6 +4274,18 @@ var FacetViz = class _FacetViz {
         headerLayer
       );
     }
+    this.renderer.create(
+      "line",
+      {
+        x1: outer.x,
+        y1: outer.y + outer.height - bottomReserve,
+        x2: outer.x + outer.width,
+        y2: outer.y + outer.height - bottomReserve,
+        stroke: lineColor,
+        "stroke-width": 1
+      },
+      headerLayer
+    );
     rowVals.forEach((rv, ri) => {
       colVals.forEach((cv, ci) => {
         const cell = {
@@ -4804,9 +4899,14 @@ var FacetViz = class _FacetViz {
   buildScales(visible, plot, inverted) {
     const categories = this.currentCategories(visible);
     const xAxisOpts = this.firstAxis(this.options.xAxis) ?? {};
-    const yAxisOpts = this.firstAxis(this.options.yAxis) ?? {};
-    let [vMin, vMax] = this.valueDomain(visible);
-    const includeZero = visible.some(
+    const yAxisOpts = this.axisAt(this.options.yAxis, 0);
+    const onSecondary = (s) => (s.options.yAxis ?? 0) === 1;
+    const hasSecondary = !inverted && visible.some(onSecondary);
+    const primaryVisible = hasSecondary ? visible.filter((s) => !onSecondary(s)) : visible;
+    let [vMin, vMax] = this.valueDomain(
+      primaryVisible.length ? primaryVisible : visible
+    );
+    const includeZero = primaryVisible.some(
       (s) => ["column", "bar", "area", "areaspline", "errorbar"].includes(s.type)
     );
     if (includeZero) {
@@ -4818,14 +4918,14 @@ var FacetViz = class _FacetViz {
       candlestick: 8,
       columnrange: 10
     };
-    const bubble = visible.find((s) => s.type === "bubble");
+    const bubble = primaryVisible.find((s) => s.type === "bubble");
     const bubbleR = bubble ? (bubble.options.sizeRange?.[1] ?? 34) + 2 : 0;
     const markerR = Math.max(
       bubbleR,
-      ...visible.filter(
+      ...primaryVisible.filter(
         (s) => s.type === "scatter" || s.type === "jitter" || s.type === "dumbbell"
       ).map((s) => (s.options.marker?.radius ?? 5) + 2),
-      ...visible.map((s) => GEOM_PAD[s.type] ?? 0),
+      ...primaryVisible.map((s) => GEOM_PAD[s.type] ?? 0),
       0
     );
     if (markerR) {
@@ -4867,14 +4967,14 @@ var FacetViz = class _FacetViz {
         [vMin, vMax],
         [plot.x, plot.x + plot.width]
       );
-      const yScale2 = categories ? new CategoryScale({
+      const yScale3 = categories ? new CategoryScale({
         categories,
         range: [plot.y, plot.y + plot.height]
       }) : new LinearScale({
         domain: this.xNumericDomain(visible),
         range: [plot.y + plot.height, plot.y]
       });
-      return { xScale: xScale2, yScale: yScale2 };
+      return { xScale: xScale2, yScale: yScale3 };
     }
     const xScale = catScale([plot.x, plot.x + plot.width], xAxisOpts.reversed);
     const yScale = this.valueScale(
@@ -4882,16 +4982,35 @@ var FacetViz = class _FacetViz {
       [vMin, vMax],
       [plot.y + plot.height, plot.y]
     );
-    return { xScale, yScale };
+    let yScale2;
+    if (hasSecondary) {
+      const secondaryVisible = visible.filter(onSecondary);
+      let [vMin2, vMax2] = this.valueDomain(secondaryVisible);
+      const includeZero2 = secondaryVisible.some(
+        (s) => ["column", "bar", "area", "areaspline", "errorbar"].includes(s.type)
+      );
+      if (includeZero2) {
+        vMin2 = Math.min(vMin2, 0);
+        vMax2 = Math.max(vMax2, 0);
+      }
+      yScale2 = this.valueScale(
+        this.axisAt(this.options.yAxis, 1),
+        [vMin2, vMax2],
+        [plot.y + plot.height, plot.y]
+      );
+    }
+    return { xScale, yScale, yScale2 };
   }
   valueScale(opts, domain, range) {
     const min = opts.min ?? domain[0];
     const max = opts.max ?? domain[1];
     if (opts.type === "log") return new LogScale({ domain: [min, max], range });
+    const span = Math.abs(range[1] - range[0]);
+    const tickCount = opts.tickCount ?? (span < 100 ? 3 : span < 200 ? 4 : 6);
     return new LinearScale({
       domain: [min, max],
       range,
-      tickCount: opts.tickCount
+      tickCount
     });
   }
   valueDomain(visible) {
@@ -5313,6 +5432,19 @@ var FacetViz = class _FacetViz {
     this.width = width;
     this.height = height;
     this.render();
+  }
+  /**
+   * The legend entries this chart will actually draw. Point-legend types
+   * (pie/donut/radialbar) are always exactly one series internally, with one
+   * entry per slice here — so check `legendItems.length`/`hasLegend` instead
+   * of `options.series.length` to decide whether a legend is meaningful.
+   */
+  get legendItems() {
+    return this.buildLegendItems();
+  }
+  /** Whether a legend will actually render (respects `legend.enabled` and needs >1 entry). */
+  get hasLegend() {
+    return this.options.legend?.enabled !== false && this.buildLegendItems().length > 1;
   }
   /** Serialise the chart to a standalone SVG string. */
   getSVG() {

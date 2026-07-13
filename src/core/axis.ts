@@ -6,7 +6,7 @@ import type { AxisOptions } from './options.js';
 import { CategoryScale } from './scale.js';
 import { FONTS, LAYOUT } from './defaults.js';
 import { THEME } from './theme.js';
-import { formatString } from './utils.js';
+import { formatString, sanitizeStyle } from './utils.js';
 
 export interface Rect {
   x: number;
@@ -59,7 +59,21 @@ export class Axis {
     const gridColor = options.gridLineColor ?? THEME.axis.gridLineColor;
     const gridWidth = options.gridLineWidth ?? (this.horizontal ? 0 : 1);
 
-    for (const tick of ticks) {
+    // When a categorical axis is too cramped for every label to fit without
+    // overlapping, thin them out (draw every Nth) instead — ticks/gridlines
+    // still render for every value, only the label text skips. Left alone
+    // when the caller already rotated labels to make room.
+    let labelStep = 1;
+    if (isCategory && labelsEnabled && this.horizontal && !options.labels?.rotation) {
+      const band = scale.bandwidth();
+      if (band > 0) {
+        const maxLen = ticks.reduce((m: number, t) => Math.max(m, this.labelText(scale, t).length), 0);
+        const estW = maxLen * 6.2 + 6;
+        if (estW > band) labelStep = Math.ceil(estW / band);
+      }
+    }
+
+    ticks.forEach((tick, i) => {
       const pos = scale.scale(tick);
 
       // Gridline across the plot (skip for category centres unless asked).
@@ -71,10 +85,10 @@ export class Axis {
       if (options.ticks !== false) this.drawTick(group, pos, axisColor);
 
       // Label.
-      if (labelsEnabled) {
+      if (labelsEnabled && i % labelStep === 0) {
         this.drawLabel(group, pos, this.labelText(scale, tick), options);
       }
-    }
+    });
 
     // Plot lines drawn above the grid (and above bands).
     this.drawPlotLines(group);
@@ -116,12 +130,31 @@ export class Axis {
         class: 'facet-plotline',
       }, g);
       if (line.label?.text) {
-        const lx = this.horizontal ? pos + 4 : plot.x + plot.width - 4;
-        const ly = this.horizontal ? plot.y + 12 : pos - 4;
+        // Clamp the label to the plot's bounds instead of letting it run off
+        // the edge — flip to the line's other side (horizontal axis) or pin
+        // the vertical position within the plot (vertical axis) when there
+        // isn't room.
+        const estW = line.label.text.length * 6.2 + 6;
+        let lx: number, ly: number, anchor: 'start' | 'end';
+        if (this.horizontal) {
+          const fitsRight = pos + 4 + estW <= plot.x + plot.width;
+          if (fitsRight) {
+            lx = pos + 4;
+            anchor = 'start';
+          } else {
+            lx = Math.max(plot.x + estW, pos - 4);
+            anchor = 'end';
+          }
+          ly = plot.y + 12;
+        } else {
+          lx = plot.x + plot.width - 4;
+          ly = Math.max(plot.y + 10, Math.min(plot.y + plot.height - 4, pos - 4));
+          anchor = 'end';
+        }
         renderer.text(line.label.text, lx, ly, {
           ...FONTS.axisLabel,
           fill: line.label.color ?? line.color ?? '#e63946',
-          'text-anchor': this.horizontal ? 'start' : 'end',
+          'text-anchor': anchor,
         }, g);
       }
     }
@@ -181,7 +214,15 @@ export class Axis {
 
   private drawLabel(g: SVGGElement, pos: number, text: string, options: AxisOptions): void {
     const { renderer, plot, position } = this.cfg;
-    const style = { ...FONTS.axisLabel, ...(options.labels?.style ?? {}) };
+    const style: Record<string, string> = { ...FONTS.axisLabel, ...sanitizeStyle(options.labels?.style) };
+    // Shrink the label font slightly on a small/cramped plot (a dashboard
+    // card, a resizable panel) instead of using the same size as a
+    // full-width chart — skipped when the caller set an explicit font-size.
+    if (!options.labels?.style?.['font-size']) {
+      const shortSide = Math.min(plot.width, plot.height);
+      if (shortSide < 120) style['font-size'] = '9px';
+      else if (shortSide < 220) style['font-size'] = '10px';
+    }
     const rotation = options.labels?.rotation ?? 0;
     let x = 0;
     let y = 0;

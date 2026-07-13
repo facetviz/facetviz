@@ -144,6 +144,7 @@ export const EXAMPLES = [
     title: "Marimekko",
     desc: "Variable-width 100% stacked columns.",
     types: ["marimekko"],
+    tall: true,
     cfg: {
       chart: { type: "marimekko", height: 320 },
       title: { text: "Share by segment" },
@@ -230,6 +231,7 @@ export const EXAMPLES = [
         {
           name: "Range",
           color: "#fe6a35",
+          dataLabels: { enabled: true },
           data: [
             ["Jan", -2, 7],
             ["Feb", -1, 9],
@@ -385,6 +387,7 @@ export const EXAMPLES = [
     title: "Sunburst",
     desc: "Multi-level radial hierarchy.",
     types: ["sunburst"],
+    tall: true,
     cfg: {
       chart: { type: "sunburst", height: 340 },
       title: { text: "Org" },
@@ -501,6 +504,7 @@ export const EXAMPLES = [
           name: "Change",
           lowColor: "#adb5bd",
           highColor: "#2caffe",
+          dataLabels: { enabled: true },
           data: [
             ["A", 20, 45],
             ["B", 35, 30],
@@ -639,6 +643,7 @@ export const EXAMPLES = [
     title: "Calendar heatmap",
     desc: "Day-grid by date.",
     types: ["calendar"],
+    tall: true,
     cfg: {
       chart: { type: "calendar", height: 220 },
       title: { text: "Commits" },
@@ -688,6 +693,7 @@ export const EXAMPLES = [
     title: "Treegraph",
     desc: "Hierarchy from id/parent.",
     types: ["treegraph"],
+    tall: true,
     cfg: {
       chart: { type: "treegraph", height: 320 },
       title: { text: "Org chart" },
@@ -711,6 +717,7 @@ export const EXAMPLES = [
     title: "Sankey",
     desc: "Weighted flows between nodes.",
     types: ["sankey"],
+    tall: true,
     cfg: {
       chart: { type: "sankey", height: 340 },
       title: { text: "Energy flow" },
@@ -734,6 +741,7 @@ export const EXAMPLES = [
     title: "Gantt",
     desc: "Duration bars per row.",
     types: ["gantt"],
+    tall: true,
     cfg: {
       chart: { type: "gantt", height: 260 },
       title: { text: "Project plan" },
@@ -812,6 +820,7 @@ export const EXAMPLES = [
     title: "Nested x-axis",
     desc: "Two dimensions on x, headers on top.",
     types: [],
+    tall: true,
     cfg: {
       chart: { type: "column", height: 340 },
       title: { text: "Sales by Region ▸ Category" },
@@ -829,6 +838,7 @@ export const EXAMPLES = [
     title: "Trellis table",
     desc: "Small multiples, shared axes.",
     types: [],
+    tall: true,
     cfg: {
       chart: { type: "column", height: 380 },
       title: { text: "Sales small multiples" },
@@ -840,9 +850,33 @@ export const EXAMPLES = [
   },
   {
     cat: "Advanced",
-    title: "Dual axis",
-    desc: "Sales columns + Margin spline on the right.",
+    title: "Dual axis (combo)",
+    desc: "Bars + line on a differently-scaled secondary axis.",
     types: [],
+    cfg: {
+      chart: { type: "column", height: 300 },
+      title: { text: "Units vs Margin %" },
+      xAxis: { categories: months },
+      yAxis: [{ title: { text: "Units" } }, { title: { text: "Margin %" } }],
+      series: [
+        { type: "column", name: "Units", data: [120, 145, 110, 165, 130, 158] },
+        {
+          type: "spline",
+          name: "Margin %",
+          yAxis: 1,
+          color: "#00b894",
+          marker: { enabled: true },
+          data: [12, 14, 11, 19, 15, 21],
+        },
+      ],
+    },
+  },
+  {
+    cat: "Advanced",
+    title: "Dual axis (nested x-axis)",
+    desc: "Sales columns + Margin spline on the right, over a nested x-axis.",
+    types: [],
+    tall: true,
     cfg: {
       chart: { type: "column", height: 340 },
       title: { text: "Sales & Margin" },
@@ -945,6 +979,7 @@ export const EXAMPLES = [
     title: "Boost — 30,000 points",
     desc: "High-volume canvas rendering.",
     types: [],
+    tall: true,
     cfg: {
       chart: { type: "scatter", height: 320 },
       title: { text: "30k points on one canvas" },

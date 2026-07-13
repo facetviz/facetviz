@@ -34,6 +34,7 @@ import {
   niceDateTicks,
   formatDate,
   decimateLine,
+  sanitizeStyle,
 } from "./utils.js";
 import { paletteColor, alpha, shade } from "./colors.js";
 import { Theme, resolveTheme, applyTheme, THEME } from "./theme.js";
@@ -86,34 +87,60 @@ export class FacetViz {
     // Explicit colours win; otherwise fall back to the theme palette.
     this.colors =
       this.options.chart?.colors ?? this.options.colors ?? this.theme.colors;
-    // Default to the container's width so the chart never overflows its parent.
+    // Default to the container's size so the chart never overflows its
+    // parent in either dimension — falls back to a hardcoded size only when
+    // the container itself can't report one (e.g. detached from the DOM).
     this.width =
       this.options.chart?.width ?? (this.container.clientWidth || 640);
-    this.height = this.options.chart?.height ?? 400;
+    this.height =
+      this.options.chart?.height ?? (this.container.clientHeight || 400);
     this.build();
     this.render();
     this.setupReflow();
+    // The container may not have finished layout yet when this constructor
+    // runs (flex/grid mounting order, layout libraries — e.g. GridStack —
+    // that size elements after mount), so clientWidth/clientHeight can read
+    // 0 (or a transient wrong value) above and get stuck there. Re-measure
+    // once on the next frame and correct the render if the real size
+    // differs; this also covers containers whose height only becomes known
+    // after this first frame.
+    if (typeof requestAnimationFrame !== "undefined") {
+      requestAnimationFrame(() => this.reflow());
+    }
   }
 
-  /** Re-render to the container's width when it resizes (unless width is fixed). */
+  /**
+   * Re-read the container's current width/height and re-render if either
+   * changed. Safe to call any time — e.g. after your own layout (a resizable
+   * panel, a grid library, a tab becoming visible) settles into its final
+   * size, so the chart doesn't need to wait for a resize event to catch up.
+   * A dimension pinned via `chart.width`/`chart.height` is left untouched.
+   */
+  reflow(): void {
+    const w = this.options.chart?.width ?? this.container.clientWidth;
+    const h = this.options.chart?.height ?? this.container.clientHeight;
+    const changed =
+      (w && Math.abs(w - this.width) > 1) ||
+      (h && Math.abs(h - this.height) > 1);
+    if (!changed) return;
+    if (w) this.width = w;
+    if (h) this.height = h;
+    this.animateNext = false;
+    this.render();
+  }
+
+  /** Re-render when the container resizes (unless reflow/that dimension is disabled). */
   private setupReflow(): void {
     if (
       this.options.chart?.reflow === false ||
-      this.options.chart?.width ||
-      typeof ResizeObserver === "undefined"
+      typeof ResizeObserver === "undefined" ||
+      (this.options.chart?.width && this.options.chart?.height)
     )
       return;
     let raf = 0;
     this.resizeObserver = new ResizeObserver(() => {
       cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        const w = this.container.clientWidth;
-        if (w && Math.abs(w - this.width) > 1) {
-          this.width = w;
-          this.animateNext = false;
-          this.render();
-        }
-      });
+      raf = requestAnimationFrame(() => this.reflow());
     });
     this.resizeObserver.observe(this.container);
   }
@@ -621,7 +648,7 @@ export class FacetViz {
         {
           "text-anchor": this.anchor(title.align),
           ...FONTS.title,
-          ...((title.style as Record<string, string>) ?? {}),
+          ...sanitizeStyle(title.style as Record<string, string>),
         },
         this.renderer.root,
       );
@@ -785,7 +812,7 @@ export class FacetViz {
     // inverted the category axis becomes vertical (left/right) and the value
     // axis horizontal (bottom/top) — so their options and reserved sides swap.
     const catOpts = this.firstAxis(this.options.xAxis) ?? {};
-    const valOpts = this.firstAxis(this.options.yAxis) ?? {};
+    const valOpts = this.axisAt(this.options.yAxis, 0);
     const catSide = inverted
       ? catOpts.opposite
         ? "right"
@@ -801,6 +828,18 @@ export class FacetViz {
         ? "right"
         : "left";
 
+    // Secondary y-axis: a series bound via `series.yAxis: 1` gets its own
+    // scale and a right-hand axis, instead of silently sharing the primary
+    // one. Only meaningful for the standard (non-inverted) layout; if the
+    // primary axis is already on the right (yAxis.opposite) there's nowhere
+    // left to put a second one, so it's skipped in that rare combination.
+    const onSecondary = (s: BaseSeries) => (s.options.yAxis ?? 0) === 1;
+    const renderSecondary =
+      !inverted && valSide !== "right" && visible.some(onSecondary);
+    const valOpts2 = renderSecondary
+      ? this.axisAt(this.options.yAxis, 1)
+      : undefined;
+
     const catReserve = this.axisReserve(
       catOpts,
       catSide,
@@ -814,6 +853,13 @@ export class FacetViz {
     const pad = { left: 8, right: 8, top: 6, bottom: 6 };
     pad[catSide] = catReserve;
     pad[valSide] = valReserve;
+    if (renderSecondary && valOpts2) {
+      pad.right = this.axisReserve(
+        valOpts2,
+        "right",
+        this.valueLabelWidth(visible.filter(onSecondary), valOpts2),
+      );
+    }
     const axisPlot: Rect = {
       x: plot.x + pad.left,
       y: plot.y + pad.top,
@@ -822,7 +868,11 @@ export class FacetViz {
     };
 
     this.computeStacks(visible);
-    const { xScale, yScale } = this.buildScales(visible, axisPlot, inverted);
+    const { xScale, yScale, yScale2 } = this.buildScales(
+      visible,
+      axisPlot,
+      inverted,
+    );
     const group = this.groupInfo(visible);
     // Category scale is vertical (yScale) when inverted, else horizontal (xScale).
     const catScale = inverted ? yScale : xScale;
@@ -849,25 +899,40 @@ export class FacetViz {
       options: valOpts,
       grid: true,
     }).render(axisLayer);
+    if (renderSecondary && valOpts2 && yScale2) {
+      new Axis({
+        renderer: this.renderer,
+        scale: yScale2,
+        position: "right",
+        plot: axisPlot,
+        options: valOpts2,
+        grid: false,
+      }).render(axisLayer);
+    }
 
     // Remember the plot + scales for drag-zoom and crosshair (single-panel).
     this.plotCtx = { plot: axisPlot, xScale, yScale, inverted };
     this.zoomState = !inverted ? { plot: axisPlot, xScale, yScale } : undefined;
 
     // Series. High-volume point/line series are drawn to a canvas overlay.
+    // A series bound to the secondary axis uses its own scale for both
+    // positioning and boost rendering.
+    const yScaleFor = (s: BaseSeries) =>
+      yScale2 && onSecondary(s) ? yScale2 : yScale;
     const boost = !inverted && this.boostEnabled(visible);
     const cctx = boost ? this.createBoostCanvas(axisPlot) : null;
     const hits: BoostHit[] = [];
     const existing = new Set(this.renderer.root.children);
     for (const s of visible) {
+      const sy = yScaleFor(s);
       if (cctx && this.isBoostable(s)) {
-        this.drawBoostSeries(s, cctx, xScale, yScale, hits);
+        this.drawBoostSeries(s, cctx, xScale, sy, hits);
       } else {
         const ctx = this.seriesContext(
           s,
           axisPlot,
           xScale,
-          yScale,
+          sy,
           group,
           inverted,
           false,
@@ -1305,8 +1370,7 @@ export class FacetViz {
         headerLayer,
       );
 
-
-      // Last separater lines
+      // Vertical line after the last column header and horizontal line after the last row header
       this.renderer.create(
         "line",
         {
@@ -1337,6 +1401,22 @@ export class FacetViz {
         headerLayer,
       );
     }
+
+    // Separates the bottom of the grid from the shared x-axis below it. The
+    // axis itself is drawn by the Axis class, but this divider line is a
+    // visual cue that the axis belongs to all cells, not just the last row.
+    this.renderer.create(
+      "line",
+      {
+        x1: outer.x,
+        y1: outer.y + outer.height - bottomReserve,
+        x2: outer.x + outer.width,
+        y2: outer.y + outer.height - bottomReserve,
+        stroke: lineColor,
+        "stroke-width": 1,
+      },
+      headerLayer,
+    );
 
     // Each cell.
     rowVals.forEach((rv, ri) => {
@@ -2079,15 +2159,30 @@ export class FacetViz {
     visible: BaseSeries[],
     plot: Rect,
     inverted: boolean,
-  ): { xScale: Scale; yScale: Scale } {
+  ): { xScale: Scale; yScale: Scale; yScale2?: Scale } {
     const categories = this.currentCategories(visible);
     const xAxisOpts = this.firstAxis(this.options.xAxis) ?? {};
-    const yAxisOpts = this.firstAxis(this.options.yAxis) ?? {};
+    const yAxisOpts = this.axisAt(this.options.yAxis, 0);
 
-    // Value domain across visible series. Error bars are typically overlaid on
-    // (and read like) a column series, so they share its zero baseline.
-    let [vMin, vMax] = this.valueDomain(visible);
-    const includeZero = visible.some((s) =>
+    // Secondary y-axis: series bound via `series.yAxis: 1` get their own
+    // scale instead of silently sharing the primary one — otherwise a line
+    // series scaled very differently from the bars renders flat/invisible.
+    // Only supported for the standard (non-inverted) cartesian layout, same
+    // as the nested-axis combo path this mirrors.
+    const onSecondary = (s: BaseSeries) => (s.options.yAxis ?? 0) === 1;
+    const hasSecondary = !inverted && visible.some(onSecondary);
+    const primaryVisible = hasSecondary
+      ? visible.filter((s) => !onSecondary(s))
+      : visible;
+
+    // Value domain across the primary axis's series only (falls back to all
+    // visible series when nothing besides the secondary axis is present, so
+    // this can't produce an empty domain). Error bars are typically overlaid
+    // on (and read like) a column series, so they share its zero baseline.
+    let [vMin, vMax] = this.valueDomain(
+      primaryVisible.length ? primaryVisible : visible,
+    );
+    const includeZero = primaryVisible.some((s) =>
       ["column", "bar", "area", "areaspline", "errorbar"].includes(s.type),
     );
     if (includeZero) {
@@ -2108,11 +2203,11 @@ export class FacetViz {
       candlestick: 8,
       columnrange: 10,
     };
-    const bubble = visible.find((s) => s.type === "bubble");
+    const bubble = primaryVisible.find((s) => s.type === "bubble");
     const bubbleR = bubble ? (bubble.options.sizeRange?.[1] ?? 34) + 2 : 0;
     const markerR = Math.max(
       bubbleR,
-      ...visible
+      ...primaryVisible
         .filter(
           (s) =>
             s.type === "scatter" ||
@@ -2120,7 +2215,7 @@ export class FacetViz {
             s.type === "dumbbell",
         )
         .map((s) => (s.options.marker?.radius ?? 5) + 2),
-      ...visible.map((s) => GEOM_PAD[s.type] ?? 0),
+      ...primaryVisible.map((s) => GEOM_PAD[s.type] ?? 0),
       0,
     );
     if (markerR) {
@@ -2189,7 +2284,25 @@ export class FacetViz {
       [vMin, vMax],
       [plot.y + plot.height, plot.y],
     );
-    return { xScale, yScale };
+
+    let yScale2: Scale | undefined;
+    if (hasSecondary) {
+      const secondaryVisible = visible.filter(onSecondary);
+      let [vMin2, vMax2] = this.valueDomain(secondaryVisible);
+      const includeZero2 = secondaryVisible.some((s) =>
+        ["column", "bar", "area", "areaspline", "errorbar"].includes(s.type),
+      );
+      if (includeZero2) {
+        vMin2 = Math.min(vMin2, 0);
+        vMax2 = Math.max(vMax2, 0);
+      }
+      yScale2 = this.valueScale(
+        this.axisAt(this.options.yAxis, 1),
+        [vMin2, vMax2],
+        [plot.y + plot.height, plot.y],
+      );
+    }
+    return { xScale, yScale, yScale2 };
   }
 
   private valueScale(
@@ -2200,10 +2313,14 @@ export class FacetViz {
     const min = opts.min ?? domain[0];
     const max = opts.max ?? domain[1];
     if (opts.type === "log") return new LogScale({ domain: [min, max], range });
+    // Fewer ticks on a short/cramped axis — the default of 6 was sized for a
+    // full-width chart, not a small card, and produces label clutter there.
+    const span = Math.abs(range[1] - range[0]);
+    const tickCount = opts.tickCount ?? (span < 100 ? 3 : span < 200 ? 4 : 6);
     return new LinearScale({
       domain: [min, max],
       range,
-      tickCount: opts.tickCount,
+      tickCount,
     });
   }
 
@@ -2695,6 +2812,24 @@ export class FacetViz {
     this.width = width;
     this.height = height;
     this.render();
+  }
+
+  /**
+   * The legend entries this chart will actually draw. Point-legend types
+   * (pie/donut/radialbar) are always exactly one series internally, with one
+   * entry per slice here — so check `legendItems.length`/`hasLegend` instead
+   * of `options.series.length` to decide whether a legend is meaningful.
+   */
+  get legendItems(): LegendItem[] {
+    return this.buildLegendItems();
+  }
+
+  /** Whether a legend will actually render (respects `legend.enabled` and needs >1 entry). */
+  get hasLegend(): boolean {
+    return (
+      this.options.legend?.enabled !== false &&
+      this.buildLegendItems().length > 1
+    );
   }
 
   /** Serialise the chart to a standalone SVG string. */

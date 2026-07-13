@@ -99,13 +99,14 @@ pre code { font-family: var(--mono); background: none; padding: 0; color: #e6edf
 .feature p { margin: 0; font-size: 13px; color: var(--muted); }
 .btn-row { display: flex; gap: 12px; flex-wrap: wrap; margin: 22px 0 8px; }
 
-/* ---- Examples page ---- */
-.example { margin: 18px 0; overflow: hidden; }
-.example > .head { display: flex; align-items: baseline; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--border); }
-.example > .head h4 { margin: 0; font-size: 15px; }
-.example > .head p { margin: 0; font-size: 13px; color: var(--muted); }
+/* ---- Examples page: a grid of compact cards, many visible at once ---- */
+.ex-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; align-items: start; margin: 0 0 36px; }
+.example { margin: 0; overflow: hidden; display: flex; flex-direction: column; }
+.example > .head { display: flex; align-items: baseline; gap: 8px; padding: 11px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.example > .head h4 { margin: 0; font-size: 13.5px; }
+.example > .head p { margin: 0; font-size: 12px; color: var(--muted); flex-basis: 100%; }
 .example > .head .spacer { flex: 1; }
-.example > .head a.pg-link { font-size: 12px; font-weight: 600; }
+.example > .head a.pg-link { font-size: 11.5px; font-weight: 600; white-space: nowrap; }
 .example > .head a.anchor { color: var(--muted); font-weight: 700; opacity: 0; text-decoration: none; }
 .example:hover > .head a.anchor { opacity: .7; }
 .example.target { outline: 2px solid var(--brand); outline-offset: 1px; }
@@ -115,20 +116,18 @@ pre code { font-family: var(--mono); background: none; padding: 0; color: #e6edf
 .type-links a:hover { border-color: var(--brand); text-decoration: none; }
 .type-links a[aria-disabled] { opacity: .55; pointer-events: none; }
 .type-cat { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); font-weight: 700; margin: 16px 0 2px; }
-.example .body { display: grid; grid-template-columns: 1fr 0fr; transition: grid-template-columns .25s ease; }
-.example:has(details[open]) .body { grid-template-columns: 1.15fr 1fr; }
-.example .chart { padding: 16px; min-width: 0; }
-.example details { border-left: 1px solid var(--border); min-width: 0; overflow: hidden; }
-.example:not(:has(details[open])) details { border-left: 0; }
+.example .chart { padding: 8px; min-width: 0; height: 220px; overflow: hidden; }
+.example.tall .chart { height: 360px; }
+.example .chart .facet-root { width: 100%; height: 100%; }
+.example details { border-top: 1px solid var(--border); }
 .example summary {
-  cursor: pointer; list-style: none; padding: 12px 16px; font-size: 13px; font-weight: 600;
-  color: var(--brand-ink); white-space: nowrap; user-select: none;
+  cursor: pointer; list-style: none; padding: 9px 14px; font-size: 12px; font-weight: 600;
+  color: var(--brand-ink); user-select: none;
 }
 .example summary::-webkit-details-marker { display: none; }
 .example summary::before { content: '⟨/⟩ '; }
 .example details[open] summary { border-bottom: 1px solid var(--border); }
-.example details pre { margin: 0; border-radius: 0; height: 100%; }
-.example .chart .facet-root { width: 100%; }
+.example details pre { margin: 0; border-radius: 0; max-height: 320px; overflow: auto; }
 
 /* ---- API reference (rendered markdown in a panel) ---- */
 .api-panel { padding: 8px 28px 32px; }
@@ -152,6 +151,5 @@ pre code { font-family: var(--mono); background: none; padding: 0; color: #e6edf
   .content, .api-panel { padding-left: 18px; padding-right: 18px; }
   .menu-btn { display: inline-flex; }
   .topnav a { padding: 7px 9px; }
-  .example:has(details[open]) .body { grid-template-columns: 1fr; }
-  .example details { border-left: 0; border-top: 1px solid var(--border); }
+  .ex-grid { grid-template-columns: 1fr; }
 }

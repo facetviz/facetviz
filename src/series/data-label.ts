@@ -9,7 +9,7 @@ import type { DataLabelOptions, LabelContext } from '../core/options.js';
 import type { Point } from '../core/point.js';
 import type { Pt } from './paths.js';
 import { FONTS } from '../core/defaults.js';
-import { formatString } from '../core/utils.js';
+import { formatString, clampFontSize } from '../core/utils.js';
 
 /**
  * Resolve the label text from `formatter` or the `{token}` format string.
@@ -46,7 +46,9 @@ export function drawDataLabel(
     'text-anchor': place.anchor,
     ...FONTS.dataLabel,
     fill: dl.color ?? FONTS.dataLabel.fill,
-    'font-size': dl.fontSize ?? FONTS.dataLabel['font-size'],
+    'font-size': dl.fontSize
+      ? clampFontSize(dl.fontSize)
+      : FONTS.dataLabel['font-size'],
   };
   if (dl.fontWeight) attrs['font-weight'] = dl.fontWeight;
   if (dl.rotation) attrs.transform = `rotate(${dl.rotation} ${place.x} ${place.y})`;

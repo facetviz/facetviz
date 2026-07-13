@@ -46,6 +46,11 @@ export type {
 export { resolveTheme, registerTheme, LIGHT_THEME } from './core/theme.js';
 export type { Theme, ThemeInput } from './core/theme.js';
 
+// Legend — read chart.legendItems / chart.hasLegend rather than inferring
+// legend visibility from series.length (pie/donut/radialbar are always one
+// series internally, with one legend entry per slice).
+export type { LegendItem } from './core/legend.js';
+
 // Extensibility.
 export { registerSeriesType, createSeries } from './series/registry.js';
 export { BaseSeries } from './series/base.js';

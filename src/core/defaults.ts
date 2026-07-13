@@ -5,13 +5,14 @@ import type { ChartOptions } from './options.js';
 export const DEFAULT_OPTIONS: Partial<ChartOptions> = {
   chart: {
     type: 'line',
-    height: 400,
     spacing: [16, 16, 16, 16],
     inverted: false,
     polar: false,
-    // `backgroundColor`, `colors`, and `width` are intentionally left unset so
-    // the theme (and container width) can supply them; explicit user values
-    // still win via the normal merge.
+    // `backgroundColor`, `colors`, `width`, and `height` are intentionally
+    // left unset so the theme (and the container's actual size) can supply
+    // them — the constructor falls back to clientWidth/clientHeight, then a
+    // hardcoded 640×400, only once it sees these are genuinely unset.
+    // Explicit user values still win via the normal merge.
   },
   title: { text: undefined, align: 'center' },
   subtitle: { text: undefined, align: 'center' },

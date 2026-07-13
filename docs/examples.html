@@ -26,7 +26,7 @@
       <div class="grouplbl">Categories</div>
       <nav id="cat-nav"></nav>
     </aside>
-    <main class="content" style="max-width:1120px">
+    <main class="content" style="max-width:1680px">
       <h1>Examples</h1>
       <p class="lead">Every chart type and feature, live. Click <em>Show config</em> on any example to reveal its
         options on the right.</p>
@@ -46,23 +46,27 @@
     for (const cat of cats) {
       const a = document.createElement('a'); a.href = '#' + catSlug(cat); a.textContent = cat; catNav.appendChild(a);
       const h = document.createElement('h2'); h.id = catSlug(cat); h.textContent = cat; gallery.appendChild(h);
+      const grid = document.createElement('div'); grid.className = 'ex-grid'; gallery.appendChild(grid);
       for (const ex of EXAMPLES.filter((e) => e.cat === cat)) {
         const id = slug(ex.title);
-        const wrap = document.createElement('section'); wrap.className = 'example panel'; wrap.id = id;
+        const wrap = document.createElement('section');
+        wrap.className = 'example panel' + (ex.tall ? ' tall' : ''); wrap.id = id;
         wrap.innerHTML = `<div class="head">
             <a class="anchor" href="#${id}" title="Link to this example">#</a>
             <h4>${ex.title}</h4><p>${ex.desc}</p><span class="spacer"></span>
             <a class="pg-link" href="./playground.html" title="Open this config in the playground">Playground ↗</a>
           </div>
-          <div class="body"><div class="chart"></div>
-          <details><summary>Show config</summary><pre><code class="language-js"></code></pre></details></div>`;
-        gallery.appendChild(wrap);
+          <div class="chart"></div>
+          <details><summary>Show config</summary><pre><code class="language-js"></code></pre></details>`;
+        grid.appendChild(wrap);
         wrap.querySelector('code').textContent = 'new FacetViz(el, ' + pretty(ex.cfg) + ');';
         // Hand THIS config to the playground (via sessionStorage — no giant URLs).
         wrap.querySelector('.pg-link').addEventListener('click', () => {
           try { sessionStorage.setItem('facetviz:playground', JSON.stringify({ title: ex.title, cfg: ex.cfg })); } catch (e) {}
         });
-        renderChart(FacetViz, wrap.querySelector('.chart'), ex.cfg);
+        // Thumbnail only: let the card's fixed-height container drive sizing.
+        const thumbCfg = { ...ex.cfg, chart: { ...ex.cfg.chart, height: undefined, width: undefined } };
+        renderChart(FacetViz, wrap.querySelector('.chart'), thumbCfg);
       }
     }
 
