@@ -1228,6 +1228,102 @@ var EventEmitter = class {
   }
 };
 
+// src/core/chart-options.ts
+function resolveChartOptions(user) {
+  const merged = merge(
+    {},
+    DEFAULT_OPTIONS,
+    user
+  );
+  const globalType = merged.chart?.type ?? "line";
+  const plot = merged.plotOptions ?? {};
+  merged.series = user.series.map((series) => {
+    const type = series.type ?? globalType;
+    return merge(
+      {},
+      plot.series ?? {},
+      plot[type] ?? {},
+      { type },
+      series
+    );
+  });
+  return merged;
+}
+function firstAxis(axis) {
+  return Array.isArray(axis) ? axis[0] : axis;
+}
+function axisAt(axis, index) {
+  if (Array.isArray(axis)) return axis[index] ?? {};
+  return index === 0 ? axis ?? {} : {};
+}
+function resolveCategories(series, xAxis) {
+  const axis = firstAxis(xAxis);
+  if (axis?.categories) return axis.categories;
+  const allNumeric = series.every(
+    (entry) => entry.data.every(
+      (datum) => typeof datum === "number" || Array.isArray(datum) && typeof datum[0] === "number"
+    )
+  );
+  if (allNumeric) return void 0;
+  const seen = /* @__PURE__ */ new Set();
+  const categories = [];
+  for (const entry of series) {
+    for (const datum of entry.data) {
+      const x = rawX(datum);
+      if (x !== void 0 && !seen.has(String(x))) {
+        seen.add(String(x));
+        categories.push(String(x));
+      }
+    }
+  }
+  return categories.length ? categories : void 0;
+}
+function rawX(datum) {
+  if (datum === null) return void 0;
+  if (Array.isArray(datum)) return datum[0];
+  if (typeof datum === "object") {
+    const value = datum;
+    return value.x ?? value.name;
+  }
+  return void 0;
+}
+
+// src/core/chart-export.ts
+function serializeSVG(renderer, width, height) {
+  const clone = renderer.root.cloneNode(true);
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  clone.setAttribute("width", String(width));
+  clone.setAttribute("height", String(height));
+  return new XMLSerializer().serializeToString(clone);
+}
+function rasterizePNG(svg, width, height, backgroundColor, scale = 2) {
+  return new Promise((resolve) => {
+    const source = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+      const context = canvas.getContext("2d");
+      if (!context) return resolve(null);
+      context.fillStyle = backgroundColor;
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(resolve, "image/png");
+    };
+    image.onerror = () => resolve(null);
+    image.src = source;
+  });
+}
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1e3);
+}
+
 // src/core/point.ts
 function normalizePoints(data, categories) {
   return data.map((raw, index) => normalizePoint(raw, index, categories));
@@ -3255,7 +3351,7 @@ var FacetViz = class _FacetViz {
     const el = typeof container === "string" ? document.querySelector(container) : container;
     if (!el) throw new Error("FacetViz: container element not found");
     this.container = el;
-    this.options = this.resolveOptions(options);
+    this.options = resolveChartOptions(options);
     this.theme = resolveTheme(this.options.theme);
     this.colors = this.options.chart?.colors ?? this.options.colors ?? this.theme.colors;
     this.width = this.options.chart?.width ?? (this.container.clientWidth || 640);
@@ -3295,76 +3391,15 @@ var FacetViz = class _FacetViz {
     });
     this.resizeObserver.observe(this.container);
   }
-  // -- Option resolution -------------------------------------------------
-  resolveOptions(user) {
-    const merged = merge(
-      {},
-      DEFAULT_OPTIONS,
-      user
-    );
-    const globalType = merged.chart?.type ?? "line";
-    const plot = merged.plotOptions ?? {};
-    merged.series = user.series.map((s) => {
-      const type = s.type ?? globalType;
-      return merge(
-        {},
-        plot.series ?? {},
-        plot[type] ?? {},
-        { type },
-        s
-      );
-    });
-    return merged;
-  }
   // -- Build model -------------------------------------------------------
   build() {
-    const categories = this.resolveCategories();
+    const categories = resolveCategories(this.options.series, this.options.xAxis);
     this.series = this.options.series.map((opts, i) => {
       const s = createSeries(opts.type ?? "line", opts, categories);
       s.index = i;
       s.color = opts.color ?? opts.highColor ?? paletteColor(this.colors, i);
       return s;
     });
-  }
-  /** Category labels, from xAxis or the union of point x values. */
-  resolveCategories() {
-    const xAxis = this.firstAxis(this.options.xAxis);
-    if (xAxis?.categories) return xAxis.categories;
-    const allNumeric = this.options.series.every(
-      (s) => s.data.every(
-        (d) => typeof d === "number" || Array.isArray(d) && typeof d[0] === "number"
-      )
-    );
-    if (allNumeric) return void 0;
-    const seen = /* @__PURE__ */ new Set();
-    const cats = [];
-    for (const s of this.options.series) {
-      for (const d of s.data) {
-        const x = this.rawX(d);
-        if (x !== void 0 && !seen.has(String(x))) {
-          seen.add(String(x));
-          cats.push(String(x));
-        }
-      }
-    }
-    return cats.length ? cats : void 0;
-  }
-  rawX(d) {
-    if (d === null) return void 0;
-    if (Array.isArray(d)) return d[0];
-    if (typeof d === "object") {
-      const o = d;
-      return o.x ?? o.name;
-    }
-    return void 0;
-  }
-  firstAxis(a) {
-    return Array.isArray(a) ? a[0] : a;
-  }
-  /** The axis options at index `i` (for secondary/dual axes). */
-  axisAt(a, i) {
-    if (Array.isArray(a)) return a[i] ?? {};
-    return i === 0 ? a ?? {} : {};
   }
   // -- Rendering ---------------------------------------------------------
   render() {
@@ -3415,7 +3450,7 @@ var FacetViz = class _FacetViz {
       width: this.width - spacing[1] - spacing[3] - legendReserveW,
       height: this.height - top - spacing[2] - legendReserveH
     };
-    const nestedDims = this.firstAxis(this.options.xAxis)?.dimensions;
+    const nestedDims = firstAxis(this.options.xAxis)?.dimensions;
     const t = this.options.trellis;
     const chartType = this.options.chart?.type;
     const vis = () => this.series.filter((s) => s.visible && s.points.length);
@@ -3644,8 +3679,8 @@ var FacetViz = class _FacetViz {
       window.addEventListener("mousemove", move);
       window.addEventListener("mouseup", up);
     });
-    const xa = this.axisAt(this.options.xAxis, 0);
-    const ya = this.axisAt(this.options.yAxis, 0);
+    const xa = axisAt(this.options.xAxis, 0);
+    const ya = axisAt(this.options.yAxis, 0);
     const zoomed = xa.min !== void 0 || xa.max !== void 0 || ya.min !== void 0 || ya.max !== void 0;
     if (zoomed) {
       const g = this.renderer.group(
@@ -3844,13 +3879,13 @@ var FacetViz = class _FacetViz {
       this.renderPolarPanel(plot, visible);
       return;
     }
-    const catOpts = this.firstAxis(this.options.xAxis) ?? {};
-    const valOpts = this.axisAt(this.options.yAxis, 0);
+    const catOpts = firstAxis(this.options.xAxis) ?? {};
+    const valOpts = axisAt(this.options.yAxis, 0);
     const catSide = inverted ? catOpts.opposite ? "right" : "left" : catOpts.opposite ? "top" : "bottom";
     const valSide = inverted ? valOpts.opposite ? "top" : "bottom" : valOpts.opposite ? "right" : "left";
     const onSecondary = (s) => (s.options.yAxis ?? 0) === 1;
     const renderSecondary = !inverted && valSide !== "right" && visible.some(onSecondary);
-    const valOpts2 = renderSecondary ? this.axisAt(this.options.yAxis, 1) : void 0;
+    const valOpts2 = renderSecondary ? axisAt(this.options.yAxis, 1) : void 0;
     const catReserve = this.axisReserve(
       catOpts,
       catSide,
@@ -4155,14 +4190,14 @@ var FacetViz = class _FacetViz {
     const gap = t.gap ?? 0;
     const allVisible = this.series.filter((s) => s.visible && s.points.length);
     const categories = this.currentCategories(allVisible);
-    const xOpts = this.firstAxis(this.options.xAxis) ?? {};
-    const yOpts0 = this.axisAt(this.options.yAxis, 0);
+    const xOpts = firstAxis(this.options.xAxis) ?? {};
+    const yOpts0 = axisAt(this.options.yAxis, 0);
     const inverted = this.isInverted(allVisible);
     const onSecondary = (s) => (s.options.yAxis ?? 0) === 1;
     const secondaryVisible = allVisible.filter(onSecondary);
     const hasSecondary = !inverted && secondaryVisible.length > 0;
     const primaryVisible = hasSecondary ? allVisible.filter((s) => !onSecondary(s)) : allVisible;
-    const yOpts1 = hasSecondary ? this.axisAt(this.options.yAxis, 1) : void 0;
+    const yOpts1 = hasSecondary ? axisAt(this.options.yAxis, 1) : void 0;
     const cellSeriesFor = (cv, rv) => {
       const filter = {};
       if (colDim) filter[colDim] = cv;
@@ -4503,18 +4538,18 @@ var FacetViz = class _FacetViz {
   // -- Nested (hierarchical x-axis) ------------------------------
   renderNestedPanel(outer, visible, dims) {
     if (!visible.length) return;
-    const agg = this.firstAxis(this.options.xAxis)?.aggregate ?? "sum";
+    const agg = firstAxis(this.options.xAxis)?.aggregate ?? "sum";
     const { leaves, keys, seriesPoints } = this.buildNested(visible, dims, agg);
     if (!keys.length) return;
     const aggSeries = visible.map(
       (s) => s.withPoints(seriesPoints.get(s.index) ?? [])
     );
-    const yOpts0 = this.axisAt(this.options.yAxis, 0);
-    const yOpts1 = this.axisAt(this.options.yAxis, 1);
+    const yOpts0 = axisAt(this.options.yAxis, 0);
+    const yOpts1 = axisAt(this.options.yAxis, 1);
     const onAxis = (s, i) => (s.options.yAxis ?? 0) === i;
     const secondary = aggSeries.filter((s) => onAxis(s, 1));
     const hasSecondary = secondary.length > 0;
-    const xOpts = this.firstAxis(this.options.xAxis) ?? {};
+    const xOpts = firstAxis(this.options.xAxis) ?? {};
     const split = !!xOpts.opposite;
     const rowH = 18;
     const leftReserve = LAYOUT.tickLength + 8 + this.valueLabelWidth(
@@ -4633,7 +4668,7 @@ var FacetViz = class _FacetViz {
     }
     const [leftS, rightS] = pair;
     const categories = this.currentCategories(pair) ?? [];
-    const yOpts = this.firstAxis(this.options.yAxis) ?? {};
+    const yOpts = firstAxis(this.options.yAxis) ?? {};
     let maxVal = 0;
     for (const s of pair)
       for (const p of s.points) maxVal = Math.max(maxVal, p.y ?? 0);
@@ -5038,8 +5073,8 @@ var FacetViz = class _FacetViz {
   // -- Scales ------------------------------------------------------------
   buildScales(visible, plot, inverted) {
     const categories = this.currentCategories(visible);
-    const xAxisOpts = this.firstAxis(this.options.xAxis) ?? {};
-    const yAxisOpts = this.axisAt(this.options.yAxis, 0);
+    const xAxisOpts = firstAxis(this.options.xAxis) ?? {};
+    const yAxisOpts = axisAt(this.options.yAxis, 0);
     const onSecondary = (s) => (s.options.yAxis ?? 0) === 1;
     const hasSecondary = !inverted && visible.some(onSecondary);
     const primaryVisible = hasSecondary ? visible.filter((s) => !onSecondary(s)) : visible;
@@ -5134,7 +5169,7 @@ var FacetViz = class _FacetViz {
         vMax2 = Math.max(vMax2, 0);
       }
       yScale2 = this.valueScale(
-        this.axisAt(this.options.yAxis, 1),
+        axisAt(this.options.yAxis, 1),
         [vMin2, vMax2],
         [plot.y + plot.height, plot.y]
       );
@@ -5190,7 +5225,7 @@ var FacetViz = class _FacetViz {
     ]);
   }
   currentCategories(visible) {
-    const xAxis = this.firstAxis(this.options.xAxis);
+    const xAxis = firstAxis(this.options.xAxis);
     if (xAxis?.categories) return xAxis.categories;
     const banded = xAxis?.type !== "datetime" && visible.some((s) => _FacetViz.BANDED.has(s.type));
     const allNumeric = visible.every(
@@ -5324,7 +5359,7 @@ var FacetViz = class _FacetViz {
   /** Draw a guide line at the hovered point when `xAxis.crosshair` is on. */
   showCrosshair(p) {
     const ctx = this.plotCtx;
-    if (!this.firstAxis(this.options.xAxis)?.crosshair || !ctx || ctx.inverted)
+    if (!firstAxis(this.options.xAxis)?.crosshair || !ctx || ctx.inverted)
       return;
     this.hideCrosshair();
     const x = ctx.xScale.scale(p.x);
@@ -5425,7 +5460,7 @@ var FacetViz = class _FacetViz {
     });
     this.options.series = [dd];
     if (dd.name) this.options.title = { text: dd.name };
-    const xa = this.axisAt(this.options.xAxis, 0);
+    const xa = axisAt(this.options.xAxis, 0);
     const { categories, ...rest } = xa;
     this.options.xAxis = rest;
     this.build();
@@ -5588,15 +5623,11 @@ var FacetViz = class _FacetViz {
   }
   /** Serialise the chart to a standalone SVG string. */
   getSVG() {
-    const clone = this.renderer.root.cloneNode(true);
-    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-    clone.setAttribute("width", String(this.width));
-    clone.setAttribute("height", String(this.height));
-    return new XMLSerializer().serializeToString(clone);
+    return serializeSVG(this.renderer, this.width, this.height);
   }
   /** Trigger a download of the chart as an SVG file. */
   downloadSVG(filename = "chart.svg") {
-    this.triggerDownload(
+    downloadBlob(
       new Blob([this.getSVG()], { type: "image/svg+xml" }),
       filename
     );
@@ -5604,35 +5635,17 @@ var FacetViz = class _FacetViz {
   /** Rasterise to PNG (`scale`× resolution) and download. */
   async downloadPNG(filename = "chart.png", scale = 2) {
     const blob = await this.toPNGBlob(scale);
-    if (blob) this.triggerDownload(blob, filename);
+    if (blob) downloadBlob(blob, filename);
   }
   /** Rasterise the chart to a PNG Blob. */
   toPNGBlob(scale = 2) {
-    return new Promise((resolve) => {
-      const svg = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(this.getSVG());
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = this.width * scale;
-        canvas.height = this.height * scale;
-        const c = canvas.getContext("2d");
-        if (!c) return resolve(null);
-        c.fillStyle = this.options.chart?.backgroundColor ?? this.theme.backgroundColor;
-        c.fillRect(0, 0, canvas.width, canvas.height);
-        c.drawImage(img, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob(resolve, "image/png");
-      };
-      img.onerror = () => resolve(null);
-      img.src = svg;
-    });
-  }
-  triggerDownload(blob, filename) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1e3);
+    return rasterizePNG(
+      this.getSVG(),
+      this.width,
+      this.height,
+      this.options.chart?.backgroundColor ?? this.theme.backgroundColor,
+      scale
+    );
   }
   destroy() {
     this.tooltip?.destroy();

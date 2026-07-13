@@ -27,7 +27,7 @@ import { Tooltip } from "./tooltip.js";
 import { Legend, LegendItem } from "./legend.js";
 import { EventEmitter } from "./events.js";
 import { LinearScale, LogScale, CategoryScale, Scale } from "./scale.js";
-import { DEFAULT_OPTIONS, LAYOUT, FONTS } from "./defaults.js";
+import { LAYOUT, FONTS } from "./defaults.js";
 import {
   merge,
   extent,
@@ -36,6 +36,13 @@ import {
   decimateLine,
   sanitizeStyle,
 } from "./utils.js";
+import {
+  axisAt,
+  firstAxis,
+  resolveCategories,
+  resolveChartOptions,
+} from "./chart-options.js";
+import { downloadBlob, rasterizePNG, serializeSVG } from "./chart-export.js";
 import { paletteColor, alpha, shade } from "./colors.js";
 import { Theme, resolveTheme, applyTheme, THEME } from "./theme.js";
 import { BaseSeries, SeriesRenderContext } from "../series/base.js";
@@ -82,7 +89,7 @@ export class FacetViz {
         : container;
     if (!el) throw new Error("FacetViz: container element not found");
     this.container = el as HTMLElement;
-    this.options = this.resolveOptions(options);
+    this.options = resolveChartOptions(options);
     this.theme = resolveTheme(this.options.theme);
     // Explicit colours win; otherwise fall back to the theme palette.
     this.colors =
@@ -145,33 +152,10 @@ export class FacetViz {
     this.resizeObserver.observe(this.container);
   }
 
-  // -- Option resolution -------------------------------------------------
-
-  private resolveOptions(user: ChartOptions): ChartOptions {
-    const merged = merge(
-      {} as ChartOptions,
-      DEFAULT_OPTIONS as ChartOptions,
-      user,
-    );
-    const globalType = merged.chart?.type ?? "line";
-    const plot = merged.plotOptions ?? {};
-    merged.series = user.series.map((s) => {
-      const type = (s.type ?? globalType) as ChartType;
-      return merge(
-        {} as SeriesOptions,
-        plot.series ?? {},
-        plot[type] ?? {},
-        { type },
-        s,
-      );
-    });
-    return merged;
-  }
-
   // -- Build model -------------------------------------------------------
 
   private build(): void {
-    const categories = this.resolveCategories();
+    const categories = resolveCategories(this.options.series, this.options.xAxis);
     this.series = this.options.series.map((opts, i) => {
       const s = createSeries(opts.type ?? "line", opts, categories);
       s.index = i;
@@ -179,56 +163,6 @@ export class FacetViz {
       s.color = opts.color ?? opts.highColor ?? paletteColor(this.colors, i);
       return s;
     });
-  }
-
-  /** Category labels, from xAxis or the union of point x values. */
-  private resolveCategories(): string[] | undefined {
-    const xAxis = this.firstAxis(this.options.xAxis);
-    if (xAxis?.categories) return xAxis.categories;
-    // Numeric x across all series → no categories (continuous axis).
-    const allNumeric = this.options.series.every((s) =>
-      s.data.every(
-        (d) =>
-          typeof d === "number" ||
-          (Array.isArray(d) && typeof d[0] === "number"),
-      ),
-    );
-    if (allNumeric) return undefined;
-    const seen = new Set<string>();
-    const cats: string[] = [];
-    for (const s of this.options.series) {
-      for (const d of s.data) {
-        const x = this.rawX(d);
-        if (x !== undefined && !seen.has(String(x))) {
-          seen.add(String(x));
-          cats.push(String(x));
-        }
-      }
-    }
-    return cats.length ? cats : undefined;
-  }
-
-  private rawX(d: unknown): string | number | undefined {
-    if (d === null) return undefined;
-    if (Array.isArray(d)) return d[0] as string | number;
-    if (typeof d === "object") {
-      const o = d as { x?: string | number; name?: string };
-      return o.x ?? o.name;
-    }
-    return undefined;
-  }
-
-  private firstAxis(a?: AxisOptions | AxisOptions[]): AxisOptions | undefined {
-    return Array.isArray(a) ? a[0] : a;
-  }
-
-  /** The axis options at index `i` (for secondary/dual axes). */
-  private axisAt(
-    a: AxisOptions | AxisOptions[] | undefined,
-    i: number,
-  ): AxisOptions {
-    if (Array.isArray(a)) return a[i] ?? {};
-    return i === 0 ? (a ?? {}) : {};
   }
 
   // -- Rendering ---------------------------------------------------------
@@ -295,7 +229,7 @@ export class FacetViz {
     };
 
     // Nested (hierarchical x-axis) takes precedence over trellis grids.
-    const nestedDims = this.firstAxis(this.options.xAxis)?.dimensions;
+    const nestedDims = firstAxis(this.options.xAxis)?.dimensions;
     const t = this.options.trellis;
     const chartType = this.options.chart?.type;
     const vis = () => this.series.filter((s) => s.visible && s.points.length);
@@ -570,8 +504,8 @@ export class FacetViz {
     });
 
     // Reset control when a zoom is active on either axis.
-    const xa = this.axisAt(this.options.xAxis, 0);
-    const ya = this.axisAt(this.options.yAxis, 0);
+    const xa = axisAt(this.options.xAxis, 0);
+    const ya = axisAt(this.options.yAxis, 0);
     const zoomed =
       xa.min !== undefined ||
       xa.max !== undefined ||
@@ -811,8 +745,8 @@ export class FacetViz {
     // xAxis is the category axis, yAxis the value axis. When the chart is
     // inverted the category axis becomes vertical (left/right) and the value
     // axis horizontal (bottom/top) — so their options and reserved sides swap.
-    const catOpts = this.firstAxis(this.options.xAxis) ?? {};
-    const valOpts = this.axisAt(this.options.yAxis, 0);
+    const catOpts = firstAxis(this.options.xAxis) ?? {};
+    const valOpts = axisAt(this.options.yAxis, 0);
     const catSide = inverted
       ? catOpts.opposite
         ? "right"
@@ -837,7 +771,7 @@ export class FacetViz {
     const renderSecondary =
       !inverted && valSide !== "right" && visible.some(onSecondary);
     const valOpts2 = renderSecondary
-      ? this.axisAt(this.options.yAxis, 1)
+      ? axisAt(this.options.yAxis, 1)
       : undefined;
 
     const catReserve = this.axisReserve(
@@ -1197,8 +1131,8 @@ export class FacetViz {
 
     const allVisible = this.series.filter((s) => s.visible && s.points.length);
     const categories = this.currentCategories(allVisible);
-    const xOpts = this.firstAxis(this.options.xAxis) ?? {};
-    const yOpts0 = this.axisAt(this.options.yAxis, 0);
+    const xOpts = firstAxis(this.options.xAxis) ?? {};
+    const yOpts0 = axisAt(this.options.yAxis, 0);
     // Horizontal bars: category axis becomes vertical (left), value axis
     // horizontal (bottom) — the same swap `renderPanel` applies for
     // `chart.type: 'bar'`/`chart.inverted`, reshuffling the pivot-table
@@ -1215,7 +1149,7 @@ export class FacetViz {
       ? allVisible.filter((s) => !onSecondary(s))
       : allVisible;
     const yOpts1 = hasSecondary
-      ? this.axisAt(this.options.yAxis, 1)
+      ? axisAt(this.options.yAxis, 1)
       : undefined;
 
     // Series filtered down to one cell's (column, row) dimension values —
@@ -1708,7 +1642,7 @@ export class FacetViz {
     dims: string[],
   ): void {
     if (!visible.length) return;
-    const agg = this.firstAxis(this.options.xAxis)?.aggregate ?? "sum";
+    const agg = firstAxis(this.options.xAxis)?.aggregate ?? "sum";
     const { leaves, keys, seriesPoints } = this.buildNested(visible, dims, agg);
     if (!keys.length) return;
 
@@ -1718,15 +1652,15 @@ export class FacetViz {
     );
 
     // Dual axis: series binding to yAxis index 1 use a secondary (right) scale.
-    const yOpts0 = this.axisAt(this.options.yAxis, 0);
-    const yOpts1 = this.axisAt(this.options.yAxis, 1);
+    const yOpts0 = axisAt(this.options.yAxis, 0);
+    const yOpts1 = axisAt(this.options.yAxis, 1);
     const onAxis = (s: BaseSeries, i: number) => (s.options.yAxis ?? 0) === i;
     const secondary = aggSeries.filter((s) => onAxis(s, 1));
     const hasSecondary = secondary.length > 0;
 
     // Reserve axis space. In split mode (opposite) the innermost dimension is
     // labelled at the bottom while the outer grouping dimensions sit on top.
-    const xOpts = this.firstAxis(this.options.xAxis) ?? {};
+    const xOpts = firstAxis(this.options.xAxis) ?? {};
     const split = !!xOpts.opposite;
     const rowH = 18;
     const leftReserve =
@@ -1870,7 +1804,7 @@ export class FacetViz {
     }
     const [leftS, rightS] = pair;
     const categories = this.currentCategories(pair) ?? [];
-    const yOpts = this.firstAxis(this.options.yAxis) ?? {};
+    const yOpts = firstAxis(this.options.yAxis) ?? {};
 
     // Shared value maximum across both series → symmetric halves.
     let maxVal = 0;
@@ -2350,8 +2284,8 @@ export class FacetViz {
     inverted: boolean,
   ): { xScale: Scale; yScale: Scale; yScale2?: Scale } {
     const categories = this.currentCategories(visible);
-    const xAxisOpts = this.firstAxis(this.options.xAxis) ?? {};
-    const yAxisOpts = this.axisAt(this.options.yAxis, 0);
+    const xAxisOpts = firstAxis(this.options.xAxis) ?? {};
+    const yAxisOpts = axisAt(this.options.yAxis, 0);
 
     // Secondary y-axis: series bound via `series.yAxis: 1` get their own
     // scale instead of silently sharing the primary one — otherwise a line
@@ -2486,7 +2420,7 @@ export class FacetViz {
         vMax2 = Math.max(vMax2, 0);
       }
       yScale2 = this.valueScale(
-        this.axisAt(this.options.yAxis, 1),
+        axisAt(this.options.yAxis, 1),
         [vMin2, vMax2],
         [plot.y + plot.height, plot.y],
       );
@@ -2551,7 +2485,7 @@ export class FacetViz {
   ]);
 
   private currentCategories(visible: BaseSeries[]): string[] | undefined {
-    const xAxis = this.firstAxis(this.options.xAxis);
+    const xAxis = firstAxis(this.options.xAxis);
     if (xAxis?.categories) return xAxis.categories;
     // A datetime/continuous x-axis stays numeric even for bar-family series.
     const banded =
@@ -2716,7 +2650,7 @@ export class FacetViz {
   /** Draw a guide line at the hovered point when `xAxis.crosshair` is on. */
   private showCrosshair(p: Point): void {
     const ctx = this.plotCtx;
-    if (!this.firstAxis(this.options.xAxis)?.crosshair || !ctx || ctx.inverted)
+    if (!firstAxis(this.options.xAxis)?.crosshair || !ctx || ctx.inverted)
       return;
     this.hideCrosshair();
     const x = ctx.xScale.scale(p.x);
@@ -2828,7 +2762,7 @@ export class FacetViz {
     this.options.series = [dd];
     if (dd.name) this.options.title = { text: dd.name };
     // Derive fresh categories from the drilldown data (drop the parent's).
-    const xa = this.axisAt(this.options.xAxis, 0);
+    const xa = axisAt(this.options.xAxis, 0);
     const { categories, ...rest } = xa;
     this.options.xAxis = rest;
     this.build();
@@ -3023,16 +2957,12 @@ export class FacetViz {
 
   /** Serialise the chart to a standalone SVG string. */
   getSVG(): string {
-    const clone = this.renderer.root.cloneNode(true) as SVGSVGElement;
-    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-    clone.setAttribute("width", String(this.width));
-    clone.setAttribute("height", String(this.height));
-    return new XMLSerializer().serializeToString(clone);
+    return serializeSVG(this.renderer, this.width, this.height);
   }
 
   /** Trigger a download of the chart as an SVG file. */
   downloadSVG(filename = "chart.svg"): void {
-    this.triggerDownload(
+    downloadBlob(
       new Blob([this.getSVG()], { type: "image/svg+xml" }),
       filename,
     );
@@ -3041,39 +2971,18 @@ export class FacetViz {
   /** Rasterise to PNG (`scale`× resolution) and download. */
   async downloadPNG(filename = "chart.png", scale = 2): Promise<void> {
     const blob = await this.toPNGBlob(scale);
-    if (blob) this.triggerDownload(blob, filename);
+    if (blob) downloadBlob(blob, filename);
   }
 
   /** Rasterise the chart to a PNG Blob. */
   toPNGBlob(scale = 2): Promise<Blob | null> {
-    return new Promise((resolve) => {
-      const svg =
-        "data:image/svg+xml;charset=utf-8," + encodeURIComponent(this.getSVG());
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = this.width * scale;
-        canvas.height = this.height * scale;
-        const c = canvas.getContext("2d");
-        if (!c) return resolve(null);
-        c.fillStyle =
-          this.options.chart?.backgroundColor ?? this.theme.backgroundColor;
-        c.fillRect(0, 0, canvas.width, canvas.height);
-        c.drawImage(img, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob(resolve, "image/png");
-      };
-      img.onerror = () => resolve(null);
-      img.src = svg;
-    });
-  }
-
-  private triggerDownload(blob: Blob, filename: string): void {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return rasterizePNG(
+      this.getSVG(),
+      this.width,
+      this.height,
+      this.options.chart?.backgroundColor ?? this.theme.backgroundColor,
+      scale,
+    );
   }
 
   destroy(): void {
