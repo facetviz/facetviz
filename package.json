@@ -1,6 +1,6 @@
 {
   "name": "facetviz",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "A modular TypeScript SVG charting library with a declarative config API, small-multiples trellising, and a wide range of chart types.",
   "type": "module",
   "main": "dist/index.js",
