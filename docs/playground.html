@@ -185,6 +185,18 @@
           { name: 'B', stacking: 'normal', data: [2, 3, 4, 3, 5, 4] },
         ],
       },
+      'Line with min/max range': {
+        chart: { type: 'line', height: 380 }, title: { text: 'Daily temperature' },
+        xAxis: { categories: months }, yAxis: { title: { text: '°C' } },
+        tooltip: { shared: true },
+        series: [
+          {
+            name: 'Range', type: 'arearange', color: '#2caffe', lineWidth: 0,
+            data: [['Jan', -3, 7], ['Feb', -1, 9], ['Mar', 2, 12], ['Apr', 5, 16], ['May', 9, 20], ['Jun', 13, 24]],
+          },
+          { name: 'Average', type: 'line', color: '#4338ca', marker: { enabled: true }, data: [2, 4, 7, 10, 14, 18] },
+        ],
+      },
       'Pie — with labels': {
         chart: { type: 'pie', height: 380 }, title: { text: 'Browser share' },
         series: [{ name: 'Share', dataLabels: { enabled: true }, data: [
@@ -330,6 +342,26 @@
       'Nested x-axis': {
         chart: { type: 'column', height: 400 }, title: { text: 'Sales by Region ▸ Category' },
         xAxis: { dimensions: ['Region', 'Category'], aggregate: 'sum', opposite: true },
+        yAxis: { title: { text: 'Sum of Sales' } },
+        series: [{ name: 'Sales', data: [
+          { Region: 'East', Category: 'Tech', y: 25 }, { Region: 'East', Category: 'Furniture', y: 14 }, { Region: 'East', Category: 'Office', y: 27 },
+          { Region: 'West', Category: 'Tech', y: 25 }, { Region: 'West', Category: 'Furniture', y: 30 }, { Region: 'West', Category: 'Office', y: 27 },
+          { Region: 'Central', Category: 'Tech', y: 17 }, { Region: 'Central', Category: 'Furniture', y: 22 }, { Region: 'Central', Category: 'Office', y: 22 },
+        ] }],
+      },
+      'Nested x-axis (per-group order)': {
+        chart: { type: 'column', height: 400 }, title: { text: 'Sales by Region ▸ Category' },
+        xAxis: { dimensions: ['Region', 'Category'], aggregate: 'sum' },
+        yAxis: { title: { text: 'Sum of Sales' } },
+        series: [{ name: 'Sales', data: [
+          { Region: 'East', Category: 'Tech', y: 25 }, { Region: 'East', Category: 'Furniture', y: 14 }, { Region: 'East', Category: 'Office', y: 27 },
+          { Region: 'West', Category: 'Office', y: 27 }, { Region: 'West', Category: 'Tech', y: 25 }, { Region: 'West', Category: 'Furniture', y: 30 },
+          { Region: 'Central', Category: 'Furniture', y: 22 }, { Region: 'Central', Category: 'Office', y: 22 }, { Region: 'Central', Category: 'Tech', y: 17 },
+        ] }],
+      },
+      'Nested x-axis (horizontal bar)': {
+        chart: { type: 'bar', height: 400 }, title: { text: 'Sales by Region ▸ Category' },
+        xAxis: { dimensions: ['Region', 'Category'], aggregate: 'sum' },
         yAxis: { title: { text: 'Sum of Sales' } },
         series: [{ name: 'Sales', data: [
           { Region: 'East', Category: 'Tech', y: 25 }, { Region: 'East', Category: 'Furniture', y: 14 }, { Region: 'East', Category: 'Office', y: 27 },

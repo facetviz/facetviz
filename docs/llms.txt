@@ -206,3 +206,6 @@ Datetime + zoom: `xAxis:{type:'datetime', crosshair:true}`, `chart:{zoom:'x'}`, 
 - `scatter`/`jitter`/`bubble`/`dumbbell`/`boxplot`/`candlestick`/`columnrange` auto-pad the value axis so markers/whiskers at the data extreme don't sit on or get clipped by the axis line.
 - `chart.zoom` supports independent `'x'`, `'y'`, or `'xy'` (drags both at once).
 - `dumbbell`/`columnrange` show `dataLabels:{enabled:true}` at both the low and high ends, not just one.
+- A stacked column/bar point defaults `dataLabels.position` to `'center'` instead of `'outside'` — `'outside'` for a non-topmost segment would sit inside the segment stacked above it.
+- `arearange`/`areasplinerange` show markers at both ends by default (unlike plain `line`/`area`, which default markers off) — set `series.marker: { enabled: false }` to hide them.
+- Nested x-axis (`xAxis.dimensions`) and trellis (`trellis:{...}`) both support `chart.type:'bar'`/`chart.inverted` — category axis goes vertical, value axis horizontal, same as a plain bar chart.

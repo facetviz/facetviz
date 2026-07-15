@@ -57,7 +57,12 @@ export class Axis {
 
     const labelsEnabled = options.labels?.enabled !== false;
     const gridColor = options.gridLineColor ?? THEME.axis.gridLineColor;
-    const gridWidth = options.gridLineWidth ?? (this.horizontal ? 0 : 1);
+    // Whether gridlines show at all is already decided by the caller's
+    // `grid` flag (true only for the value axis, regardless of which side
+    // it ends up on) — the width shouldn't second-guess that by defaulting
+    // to 0 just because this axis happens to be positioned horizontally
+    // (true for the value axis itself on an inverted/bar chart).
+    const gridWidth = options.gridLineWidth ?? 1;
 
     // When a categorical axis is too cramped for every label to fit without
     // overlapping, thin them out (draw every Nth) instead — ticks/gridlines
@@ -320,8 +325,8 @@ export class Axis {
     if (this.horizontal) {
       const x = plot.x + plot.width / 2;
       const y = position === 'bottom'
-        ? plot.y + plot.height + LAYOUT.tickLength + gap + 14
-        : plot.y - LAYOUT.tickLength - gap - 10;
+        ? plot.y + plot.height + LAYOUT.tickLength + gap + 22
+        : plot.y - LAYOUT.tickLength - gap - 18;
       renderer.text(text, x, y, { 'text-anchor': 'middle', ...style }, g);
     } else {
       const x = position === 'left'

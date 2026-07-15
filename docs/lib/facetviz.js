@@ -609,7 +609,7 @@ var Axis = class {
     }
     const labelsEnabled = options.labels?.enabled !== false;
     const gridColor = options.gridLineColor ?? THEME.axis.gridLineColor;
-    const gridWidth = options.gridLineWidth ?? (this.horizontal ? 0 : 1);
+    const gridWidth = options.gridLineWidth ?? 1;
     let labelStep = 1;
     if (isCategory && labelsEnabled && this.horizontal && !options.labels?.rotation) {
       const band = scale.bandwidth();
@@ -824,7 +824,7 @@ var Axis = class {
     const gap = labelsEnabled ? this.labelExtent() : 0;
     if (this.horizontal) {
       const x = plot.x + plot.width / 2;
-      const y = position === "bottom" ? plot.y + plot.height + LAYOUT.tickLength + gap + 14 : plot.y - LAYOUT.tickLength - gap - 10;
+      const y = position === "bottom" ? plot.y + plot.height + LAYOUT.tickLength + gap + 22 : plot.y - LAYOUT.tickLength - gap - 18;
       renderer.text(text, x, y, { "text-anchor": "middle", ...style }, g);
     } else {
       const x = position === "left" ? plot.x - LAYOUT.tickLength - 4 - gap - 8 : plot.x + plot.width + LAYOUT.tickLength + 4 + gap + 8;
@@ -855,6 +855,17 @@ var Axis = class {
 };
 
 // src/core/nested-axis.ts
+function nestedLevelWidths(leaves) {
+  const levels = leaves[0]?.length ?? 0;
+  const widths = [];
+  for (let level = 0; level < levels; level++) {
+    let maxLen = 0;
+    for (const leaf of leaves)
+      maxLen = Math.max(maxLen, (leaf[level] ?? "").length);
+    widths[level] = Math.max(40, maxLen * 6.6 + 12);
+  }
+  return widths;
+}
 var NestedAxis = class {
   constructor(cfg) {
     this.cfg = cfg;
@@ -864,8 +875,14 @@ var NestedAxis = class {
       { class: "facet-axis facet-axis-nested" },
       parent
     );
-    if (this.cfg.position === "split") this.renderSplit(g);
-    else this.renderStacked(g, this.cfg.position === "top");
+    if (this.cfg.vertical) {
+      if (this.cfg.position === "split") this.renderSplitVertical(g);
+      else this.renderStackedVertical(g, this.cfg.position === "top");
+    } else if (this.cfg.position === "split") {
+      this.renderSplit(g);
+    } else {
+      this.renderStacked(g, this.cfg.position === "top");
+    }
   }
   /** All tiers on one side (below or above the plot). */
   renderStacked(g, top) {
@@ -1018,6 +1035,165 @@ var NestedAxis = class {
       );
     }
   }
+  /**
+   * All tiers on one vertical side (left or right of the plot) — the
+   * transposed counterpart of {@link renderStacked}, for horizontal bar
+   * charts. Each tier is a column whose width fits its longest label
+   * (unlike the horizontal case, where every tier is just one fixed-height
+   * row regardless of label length).
+   */
+  renderStackedVertical(g, right) {
+    const { renderer, scale, plot, leaves, keys } = this.cfg;
+    const color = this.cfg.lineColor ?? THEME.axis.lineColor;
+    const levels = leaves[0]?.length ?? 0;
+    const dir = right ? 1 : -1;
+    const baseX = right ? plot.x + plot.width : plot.x;
+    const leafCenter = (i) => scale.scale(keys[i]);
+    const bandHalf = scale.fullStep() / 2;
+    renderer.create(
+      "line",
+      {
+        x1: baseX,
+        y1: plot.y,
+        x2: baseX,
+        y2: plot.y + plot.height,
+        stroke: color
+      },
+      g
+    );
+    const colWidths = nestedLevelWidths(leaves);
+    let offset = 0;
+    for (let level = levels - 1; level >= 0; level--) {
+      const w = colWidths[level];
+      const colStart = baseX + dir * (LAYOUT.tickLength + offset);
+      const segments = this.segmentsForLevel(leaves, level);
+      const labelX = colStart + dir * (w / 2);
+      for (const seg of segments) {
+        const cy = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2 + 4;
+        renderer.text(
+          seg.label,
+          labelX,
+          cy,
+          {
+            "text-anchor": "middle",
+            ...FONTS.axisLabel,
+            "font-weight": level === 0 ? "600" : "400"
+          },
+          g
+        );
+      }
+      if (level < levels - 1) {
+        for (let s = 1; s < segments.length; s++) {
+          const by = leafCenter(segments[s].startLeaf) - bandHalf;
+          renderer.create(
+            "line",
+            {
+              x1: baseX,
+              y1: by,
+              x2: colStart + dir * w,
+              y2: by,
+              stroke: color,
+              "stroke-width": 1
+            },
+            g
+          );
+        }
+      }
+      offset += w;
+    }
+    const farEdge = baseX + dir * (LAYOUT.tickLength + offset);
+    const nearEdge = right ? plot.x : plot.x + plot.width;
+    const outer = this.segmentsForLevel(leaves, 0);
+    for (let s = 1; s < outer.length; s++) {
+      const by = leafCenter(outer[s].startLeaf) - bandHalf;
+      renderer.create(
+        "line",
+        {
+          x1: nearEdge,
+          y1: by,
+          x2: farEdge,
+          y2: by,
+          stroke: color,
+          "stroke-width": 1
+        },
+        g
+      );
+    }
+  }
+  /**
+   * Split layout, vertical: innermost dimension as normal labels at the
+   * left (nearest the plot), outer grouping dimensions stacked to the
+   * right, full-width horizontal lines separating each top-level group.
+   */
+  renderSplitVertical(g) {
+    const { renderer, scale, plot, leaves, keys } = this.cfg;
+    const color = this.cfg.lineColor ?? THEME.axis.lineColor;
+    const levels = leaves[0]?.length ?? 0;
+    const leafCenter = (i) => scale.scale(keys[i]);
+    const bandHalf = scale.fullStep() / 2;
+    const rightX = plot.x + plot.width;
+    const colWidths = nestedLevelWidths(leaves);
+    renderer.create(
+      "line",
+      {
+        x1: plot.x,
+        y1: plot.y,
+        x2: plot.x,
+        y2: plot.y + plot.height,
+        stroke: color
+      },
+      g
+    );
+    const innerW = colWidths[levels - 1];
+    for (const seg of this.segmentsForLevel(leaves, levels - 1)) {
+      const cy = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2 + 4;
+      renderer.text(
+        seg.label,
+        plot.x - LAYOUT.tickLength - innerW / 2,
+        cy,
+        { "text-anchor": "middle", ...FONTS.axisLabel },
+        g
+      );
+    }
+    let offset = 0;
+    for (let level = levels - 2; level >= 0; level--) {
+      const w = colWidths[level];
+      const labelX = rightX + LAYOUT.tickLength + offset + w / 2;
+      for (const seg of this.segmentsForLevel(leaves, level)) {
+        const cy = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2 + 4;
+        renderer.text(
+          seg.label,
+          labelX,
+          cy,
+          {
+            "text-anchor": "middle",
+            ...FONTS.axisLabel,
+            "font-weight": level === 0 ? "600" : "400"
+          },
+          g
+        );
+      }
+      offset += w;
+    }
+    const leftExtent = plot.x - LAYOUT.tickLength - innerW;
+    const rightExtent = rightX + LAYOUT.tickLength + offset;
+    const outer = this.segmentsForLevel(leaves, 0);
+    for (let s = 1; s < outer.length; s++) {
+      const by = leafCenter(outer[s].startLeaf) - bandHalf;
+      renderer.create(
+        "line",
+        {
+          x1: leftExtent,
+          y1: by,
+          x2: rightExtent,
+          y2: by,
+          stroke: color,
+          "stroke-width": 1
+        },
+        g
+      );
+    }
+  }
   /** Contiguous runs of leaves sharing the same prefix up to `level`. */
   segmentsForLevel(leaves, level) {
     const segments = [];
@@ -1111,11 +1287,12 @@ var Tooltip = class {
         color: ctx.color
       });
     }
-    const head = `<span style="color:${ctx.color}">\u25CF</span> <b>${ctx.series}</b><br/>${ctx.x}`;
+    const head = `<b>${ctx.x}</b>`;
+    const bullet = `<span style="color:${ctx.color}">\u25CF</span>`;
     if (ctx.box) {
       const b = ctx.box;
       const row = (k, v) => `${k}: <b>${fmt(v)}</b>`;
-      return `${head}<br/>` + [
+      return `${head}<br/>${bullet} <b>${ctx.series}</b><br/>` + [
         row("Maximum", b.max),
         row("Upper quartile", b.q3),
         row("Median", b.median),
@@ -1124,9 +1301,9 @@ var Tooltip = class {
       ].join("<br/>");
     }
     if (ctx.low !== void 0 && ctx.high !== void 0) {
-      return `${head}<br/>${fmt(ctx.low)} \u2013 <b>${fmt(ctx.high)}</b>`;
+      return `${head}<br/>${bullet} ${ctx.series}: <b>${fmt(ctx.low)}</b> \u2013 <b>${fmt(ctx.high)}</b>`;
     }
-    return `${head}: <b>${valueStr}</b>`;
+    return `${head}<br/>${bullet} ${ctx.series}: <b>${valueStr}</b>`;
   }
 };
 
@@ -1530,9 +1707,6 @@ function drawPointLabels(renderer, parent, dl, seriesName, data, seriesColor) {
 
 // src/series/column.ts
 var ColumnSeries = class extends BaseSeries {
-  get horizontal() {
-    return this.type === "bar";
-  }
   capabilities() {
     return { grouped: true, cartesian: true, stackable: true };
   }
@@ -1542,8 +1716,9 @@ var ColumnSeries = class extends BaseSeries {
   }
   render(ctx) {
     const { renderer, groupCount, groupIndex } = ctx;
-    const catScale = this.horizontal ? ctx.yScale : ctx.xScale;
-    const valScale = this.horizontal ? ctx.xScale : ctx.yScale;
+    const horizontal = this.type === "bar" || ctx.inverted;
+    const catScale = horizontal ? ctx.yScale : ctx.xScale;
+    const valScale = horizontal ? ctx.xScale : ctx.yScale;
     const g = renderer.group({
       class: `facet-series facet-column ${this.name}`
     });
@@ -1557,7 +1732,7 @@ var ColumnSeries = class extends BaseSeries {
       const vLo = valScale.scale(loVal);
       const vHi = valScale.scale(hiVal);
       let rect;
-      if (this.horizontal) {
+      if (horizontal) {
         rect = {
           x: Math.min(vLo, vHi),
           y: catStart,
@@ -1584,9 +1759,8 @@ var ColumnSeries = class extends BaseSeries {
       );
       ctx.registerHover(el, p);
       this.wireEvents(el, p, ctx);
-      this.drawDataLabel(ctx, p, rect);
+      this.drawDataLabel(ctx, p, rect, g);
     }
-    renderer.root.appendChild(g);
   }
   /** The [low, high] value pair driving the rectangle for this point. */
   valuePair(p) {
@@ -1601,7 +1775,7 @@ var ColumnSeries = class extends BaseSeries {
     );
     el.addEventListener("mouseout", (e) => ctx.onPointEvent("mouseOut", p, e));
   }
-  drawDataLabel(ctx, p, rect) {
+  drawDataLabel(ctx, p, rect, parent) {
     const dl = this.options.dataLabels;
     if (!dl?.enabled) return;
     const total = this.points.reduce((s, pt) => s + (pt.y ?? 0), 0);
@@ -1617,9 +1791,9 @@ var ColumnSeries = class extends BaseSeries {
       percentage: total ? (p.y ?? 0) / total * 100 : void 0
     });
     const d = dl.distance ?? 0;
-    const pos = dl.position ?? "outside";
+    const pos = dl.position ?? (p.stackHigh !== void 0 ? "center" : "outside");
     let place;
-    if (this.horizontal) {
+    if (this.type === "bar" || ctx.inverted) {
       const cy = rect.y + rect.height / 2 + 4;
       const end = rect.x + rect.width;
       if (pos === "inside") place = { x: end - 4 - d, y: cy, anchor: "end" };
@@ -1638,7 +1812,7 @@ var ColumnSeries = class extends BaseSeries {
         place = { x: cx, y: rect.y + rect.height - 5 - d, anchor: "middle" };
       else place = { x: cx, y: rect.y - 4 - d, anchor: "middle" };
     }
-    drawDataLabel(ctx.renderer, ctx.renderer.root, text, place, dl);
+    drawDataLabel(ctx.renderer, parent, text, place, dl);
   }
 };
 
@@ -1727,15 +1901,24 @@ var RangeSeries = class extends BaseSeries {
     renderer.create("path", { d: `${topD} ${bottomD} Z`, fill: alpha(this.color, 0.35), stroke: "none" }, g);
     renderer.create("path", { d: topD, fill: "none", stroke: this.color, "stroke-width": this.options.lineWidth ?? 2 }, g);
     renderer.create("path", { d: line(bottom), fill: "none", stroke: this.color, "stroke-width": this.options.lineWidth ?? 2 }, g);
+    const marker = this.options.marker;
+    const visible = marker?.enabled !== false;
     drawn.forEach((p, i) => {
       for (const pt of [top[i], bottom[i]]) {
-        const el = drawMarker(renderer, g, pt.x, pt.y, {
-          symbol: "circle",
-          radius: 3.5,
-          fill: this.color,
-          stroke: "#fff",
-          strokeWidth: 1
-        });
+        const el = visible ? drawMarker(renderer, g, pt.x, pt.y, {
+          symbol: marker?.symbol ?? "circle",
+          radius: marker?.radius ?? 3.5,
+          fill: marker?.fillColor ?? this.color,
+          stroke: marker?.lineColor ?? "#fff",
+          strokeWidth: marker?.lineWidth ?? 1
+        }) : renderer.create("circle", {
+          cx: pt.x,
+          cy: pt.y,
+          r: 8,
+          fill: "transparent",
+          "pointer-events": "all",
+          class: "facet-point-hit"
+        }, g);
         ctx.registerHover(el, p);
         el.addEventListener("click", (e) => ctx.onPointEvent("click", p, e));
         el.addEventListener("mouseover", (e) => ctx.onPointEvent("mouseOver", p, e));
@@ -3853,7 +4036,7 @@ var FacetViz = class _FacetViz {
     }
     const rot = opts.labels?.rotation ?? 0;
     const rotExtra = rot ? Math.abs(Math.sin(rot * Math.PI / 180)) * labelW : 0;
-    return LAYOUT.defaultBottomAxisHeight + (title ? 24 : 0) + rotExtra;
+    return LAYOUT.defaultBottomAxisHeight + (title ? 32 : 0) + rotExtra;
   }
   renderPanel(panel) {
     const visible = panel.series.filter((s) => s.visible && s.points.length);
@@ -4544,76 +4727,126 @@ var FacetViz = class _FacetViz {
     const aggSeries = visible.map(
       (s) => s.withPoints(seriesPoints.get(s.index) ?? [])
     );
+    const inverted = this.isInverted(visible);
     const yOpts0 = axisAt(this.options.yAxis, 0);
     const yOpts1 = axisAt(this.options.yAxis, 1);
     const onAxis = (s, i) => (s.options.yAxis ?? 0) === i;
     const secondary = aggSeries.filter((s) => onAxis(s, 1));
-    const hasSecondary = secondary.length > 0;
+    const hasSecondary = !inverted && secondary.length > 0;
     const xOpts = firstAxis(this.options.xAxis) ?? {};
     const split = !!xOpts.opposite;
     const rowH = 18;
-    const leftReserve = LAYOUT.tickLength + 8 + this.valueLabelWidth(
-      aggSeries.filter((s) => onAxis(s, 0)),
-      yOpts0
-    ) + (yOpts0.title?.text ? 18 : 0);
-    const rightReserve = hasSecondary ? LAYOUT.tickLength + 8 + this.valueLabelWidth(secondary, yOpts1) + (yOpts1.title?.text ? 18 : 0) : 8;
-    const bottomReserve = LAYOUT.tickLength + (split ? 1 : dims.length) * rowH + 12;
-    const topReserve = split ? LAYOUT.tickLength + (dims.length - 1) * rowH + 8 : 6;
-    const plot = {
-      x: outer.x + leftReserve,
-      y: outer.y + topReserve,
-      width: outer.width - leftReserve - rightReserve,
-      height: outer.height - topReserve - bottomReserve
-    };
-    const xScale = new CategoryScale({
-      categories: keys,
-      range: [plot.x, plot.x + plot.width]
-    });
-    const range = [plot.y + plot.height, plot.y];
-    const scaleFor = (list, opts) => {
-      let [lo, hi] = this.valueDomain(list.length ? list : aggSeries);
-      lo = Math.min(lo, 0);
-      hi = Math.max(hi, 0);
-      return this.valueScale(opts, [lo, hi], range);
-    };
-    const yScale0 = scaleFor(
-      aggSeries.filter((s) => onAxis(s, 0)),
-      yOpts0
-    );
-    const yScale1 = hasSecondary ? scaleFor(secondary, yOpts1) : yScale0;
+    let plot;
+    let catScale;
+    let valScale0;
+    let valScale1;
     const axisLayer = this.renderer.group(
       { class: "facet-axes" },
       this.renderer.root
     );
-    const yAxis0 = new Axis({
-      renderer: this.renderer,
-      scale: yScale0,
-      position: "left",
-      plot,
-      options: yOpts0,
-      grid: true
-    });
-    yAxis0.render(axisLayer);
-    let yAxis1;
-    if (hasSecondary) {
-      yAxis1 = new Axis({
-        renderer: this.renderer,
-        scale: yScale1,
-        position: "right",
-        plot,
-        options: yOpts1,
-        grid: false
+    let valAxis0;
+    let valAxis1;
+    if (!inverted) {
+      const leftReserve = LAYOUT.tickLength + 8 + this.valueLabelWidth(
+        aggSeries.filter((s) => onAxis(s, 0)),
+        yOpts0
+      ) + (yOpts0.title?.text ? 18 : 0);
+      const rightReserve = hasSecondary ? LAYOUT.tickLength + 8 + this.valueLabelWidth(secondary, yOpts1) + (yOpts1.title?.text ? 18 : 0) : 8;
+      const bottomReserve = LAYOUT.tickLength + (split ? 1 : dims.length) * rowH + 12;
+      const topReserve = split ? LAYOUT.tickLength + (dims.length - 1) * rowH + 8 : 6;
+      plot = {
+        x: outer.x + leftReserve,
+        y: outer.y + topReserve,
+        width: outer.width - leftReserve - rightReserve,
+        height: outer.height - topReserve - bottomReserve
+      };
+      catScale = new CategoryScale({
+        categories: keys,
+        range: [plot.x, plot.x + plot.width]
       });
-      yAxis1.render(axisLayer);
+      const range = [plot.y + plot.height, plot.y];
+      const scaleFor = (list, opts) => {
+        let [lo, hi] = this.valueDomain(list.length ? list : aggSeries);
+        lo = Math.min(lo, 0);
+        hi = Math.max(hi, 0);
+        return this.valueScale(opts, [lo, hi], range);
+      };
+      valScale0 = scaleFor(
+        aggSeries.filter((s) => onAxis(s, 0)),
+        yOpts0
+      );
+      valScale1 = hasSecondary ? scaleFor(secondary, yOpts1) : valScale0;
+      valAxis0 = new Axis({
+        renderer: this.renderer,
+        scale: valScale0,
+        position: "left",
+        plot,
+        options: yOpts0,
+        grid: true
+      });
+      valAxis0.render(axisLayer);
+      if (hasSecondary) {
+        valAxis1 = new Axis({
+          renderer: this.renderer,
+          scale: valScale1,
+          position: "right",
+          plot,
+          options: yOpts1,
+          grid: false
+        });
+        valAxis1.render(axisLayer);
+      }
+      new NestedAxis({
+        renderer: this.renderer,
+        scale: catScale,
+        plot,
+        leaves,
+        keys,
+        position: split ? "split" : "bottom"
+      }).render(axisLayer);
+    } else {
+      const colWidths = nestedLevelWidths(leaves);
+      const innerW = colWidths[colWidths.length - 1] ?? 0;
+      const outerW = colWidths.slice(0, -1).reduce((a, b) => a + b, 0);
+      const totalW = colWidths.reduce((a, b) => a + b, 0);
+      const leftReserve = LAYOUT.tickLength + 8 + (split ? innerW : totalW);
+      const rightReserve = split ? LAYOUT.tickLength + 8 + outerW : 8;
+      const bottomReserve = LAYOUT.defaultBottomAxisHeight + (yOpts0.title?.text ? 32 : 0);
+      const topReserve = 6;
+      plot = {
+        x: outer.x + leftReserve,
+        y: outer.y + topReserve,
+        width: outer.width - leftReserve - rightReserve,
+        height: outer.height - topReserve - bottomReserve
+      };
+      catScale = new CategoryScale({
+        categories: keys,
+        range: [plot.y, plot.y + plot.height]
+      });
+      let [lo, hi] = this.valueDomain(aggSeries);
+      lo = Math.min(lo, 0);
+      hi = Math.max(hi, 0);
+      valScale0 = this.valueScale(yOpts0, [lo, hi], [plot.x, plot.x + plot.width]);
+      valScale1 = valScale0;
+      valAxis0 = new Axis({
+        renderer: this.renderer,
+        scale: valScale0,
+        position: "bottom",
+        plot,
+        options: yOpts0,
+        grid: true
+      });
+      valAxis0.render(axisLayer);
+      new NestedAxis({
+        renderer: this.renderer,
+        scale: catScale,
+        plot,
+        leaves,
+        keys,
+        position: split ? "split" : "bottom",
+        vertical: true
+      }).render(axisLayer);
     }
-    new NestedAxis({
-      renderer: this.renderer,
-      scale: xScale,
-      plot,
-      leaves,
-      keys,
-      position: split ? "split" : "bottom"
-    }).render(axisLayer);
     const group = this.groupInfo(aggSeries);
     const lineFamily = /* @__PURE__ */ new Set([
       "line",
@@ -4623,14 +4856,16 @@ var FacetViz = class _FacetViz {
       "areaspline"
     ]);
     for (const s of aggSeries) {
-      const yScale = onAxis(s, 1) ? yScale1 : yScale0;
+      const valScale = onAxis(s, 1) ? valScale1 : valScale0;
+      const xScale = inverted ? valScale : catScale;
+      const yScale = inverted ? catScale : valScale;
       const ctx = this.seriesContext(
         s,
         plot,
         xScale,
         yScale,
         group,
-        false,
+        inverted,
         false
       );
       if (lineFamily.has(s.type)) {
@@ -4650,8 +4885,8 @@ var FacetViz = class _FacetViz {
       { class: "facet-axes-above" },
       this.renderer.root
     );
-    yAxis0.renderAbove(aboveLayer);
-    yAxis1?.renderAbove(aboveLayer);
+    valAxis0.renderAbove(aboveLayer);
+    valAxis1?.renderAbove(aboveLayer);
   }
   // -- Butterfly (tornado) ----------------------------------------------
   /**
@@ -5005,24 +5240,38 @@ var FacetViz = class _FacetViz {
   /**
    * Collapse each series' points into one aggregated value per unique
    * combination of `dims`. Leaves are ordered so that outer dimensions form
-   * contiguous groups (first-seen order per level) so each group stays together.
+   * contiguous groups, and both the outer groups and each group's inner
+   * values are ordered by first appearance in the data (not sorted
+   * alphabetically) — see the ordering note below.
    */
   buildNested(visible, dims, agg) {
-    const order = dims.map(() => /* @__PURE__ */ new Map());
+    const orderByPrefix = dims.map(
+      () => /* @__PURE__ */ new Map()
+    );
     const tuples = /* @__PURE__ */ new Map();
     for (const s of visible) {
       for (const p of s.points) {
         const tuple = dims.map((d) => String(p.options[d] ?? ""));
+        let prefix = "";
         tuple.forEach((v, lvl) => {
-          if (!order[lvl].has(v)) order[lvl].set(v, order[lvl].size);
+          let scoped = orderByPrefix[lvl].get(prefix);
+          if (!scoped) {
+            scoped = /* @__PURE__ */ new Map();
+            orderByPrefix[lvl].set(prefix, scoped);
+          }
+          if (!scoped.has(v)) scoped.set(v, scoped.size);
+          prefix = prefix + "\0" + v;
         });
         tuples.set(tuple.join("\0"), tuple);
       }
     }
     const leaves = [...tuples.values()].sort((a, b) => {
+      let prefix = "";
       for (let lvl = 0; lvl < dims.length; lvl++) {
-        const d = order[lvl].get(a[lvl]) - order[lvl].get(b[lvl]);
+        const scoped = orderByPrefix[lvl].get(prefix);
+        const d = scoped.get(a[lvl]) - scoped.get(b[lvl]);
         if (d !== 0) return d;
+        prefix = prefix + "\0" + a[lvl];
       }
       return 0;
     });

@@ -10,10 +10,6 @@ import type { Point } from "../core/point.js";
 import { drawDataLabel, labelString, LabelPlacement } from "./data-label.js";
 
 export class ColumnSeries extends BaseSeries {
-  private get horizontal(): boolean {
-    return this.type === "bar";
-  }
-
   override capabilities(): SeriesCapabilities {
     return { grouped: true, cartesian: true, stackable: true };
   }
@@ -25,10 +21,12 @@ export class ColumnSeries extends BaseSeries {
 
   override render(ctx: SeriesRenderContext): void {
     const { renderer, groupCount, groupIndex } = ctx;
-    const catScale = (
-      this.horizontal ? ctx.yScale : ctx.xScale
-    ) as CategoryScale;
-    const valScale: Scale = this.horizontal ? ctx.xScale : ctx.yScale;
+    // `type: 'bar'` always means horizontal; `chart.inverted: true` swaps a
+    // 'column' the same way (the caller already pre-swapped ctx.xScale/
+    // ctx.yScale to match, same convention `ctx.inverted` uses elsewhere).
+    const horizontal = this.type === "bar" || ctx.inverted;
+    const catScale = (horizontal ? ctx.yScale : ctx.xScale) as CategoryScale;
+    const valScale: Scale = horizontal ? ctx.xScale : ctx.yScale;
     const g = renderer.group({
       class: `facet-series facet-column ${this.name}`,
     });
@@ -47,7 +45,7 @@ export class ColumnSeries extends BaseSeries {
       const vHi = valScale.scale(hiVal);
 
       let rect: { x: number; y: number; width: number; height: number };
-      if (this.horizontal) {
+      if (horizontal) {
         rect = {
           x: Math.min(vLo, vHi),
           y: catStart,
@@ -76,10 +74,8 @@ export class ColumnSeries extends BaseSeries {
       ctx.registerHover(el, p);
       this.wireEvents(el, p, ctx);
 
-      this.drawDataLabel(ctx, p, rect);
+      this.drawDataLabel(ctx, p, rect, g);
     }
-
-    renderer.root.appendChild(g);
   }
 
   /** The [low, high] value pair driving the rectangle for this point. */
@@ -100,6 +96,7 @@ export class ColumnSeries extends BaseSeries {
     ctx: SeriesRenderContext,
     p: Point,
     rect: { x: number; y: number; width: number; height: number },
+    parent: SVGElement,
   ): void {
     const dl = this.options.dataLabels;
     if (!dl?.enabled) return;
@@ -116,10 +113,14 @@ export class ColumnSeries extends BaseSeries {
       percentage: total ? ((p.y ?? 0) / total) * 100 : undefined,
     });
     const d = dl.distance ?? 0;
-    const pos = dl.position ?? "outside";
+    // 'outside' only makes sense for a lone bar or the topmost stacked
+    // segment — for any earlier segment it sits inside the segment stacked
+    // above it. Default a stacked point to 'center' instead, unless the
+    // caller picked a position explicitly.
+    const pos = dl.position ?? (p.stackHigh !== undefined ? "center" : "outside");
     let place: LabelPlacement;
 
-    if (this.horizontal) {
+    if (this.type === "bar" || ctx.inverted) {
       const cy = rect.y + rect.height / 2 + 4;
       const end = rect.x + rect.width;
       if (pos === "inside") place = { x: end - 4 - d, y: cy, anchor: "end" };
@@ -138,6 +139,6 @@ export class ColumnSeries extends BaseSeries {
         place = { x: cx, y: rect.y + rect.height - 5 - d, anchor: "middle" };
       else place = { x: cx, y: rect.y - 4 - d, anchor: "middle" }; // outside
     }
-    drawDataLabel(ctx.renderer, ctx.renderer.root, text, place, dl);
+    drawDataLabel(ctx.renderer, parent, text, place, dl);
   }
 }

@@ -34,12 +34,37 @@ export interface NestedAxisConfig {
    *    dimensions on top, with full-height lines separating the top-level groups.
    */
   position?: "bottom" | "top" | "split";
+  /**
+   * Category axis runs vertically along the plot's left/right edge instead
+   * of horizontally below/above it — used for horizontal bar charts
+   * (`chart.type: 'bar'` / `chart.inverted`). `position` keeps the same
+   * meaning, transposed: `bottom` → left (default, nearest the plot),
+   * `top` → right, `split` → innermost at left, outer tiers at right.
+   */
+  vertical?: boolean;
 }
 
 interface Segment {
   label: string;
   startLeaf: number;
   endLeaf: number;
+}
+
+/**
+ * Estimated px width each dimension level needs for its widest label —
+ * used both to lay out the vertical (bar-chart) axis and by the chart to
+ * reserve the correct amount of space before the plot rect is known.
+ */
+export function nestedLevelWidths(leaves: string[][]): number[] {
+  const levels = leaves[0]?.length ?? 0;
+  const widths: number[] = [];
+  for (let level = 0; level < levels; level++) {
+    let maxLen = 0;
+    for (const leaf of leaves)
+      maxLen = Math.max(maxLen, (leaf[level] ?? "").length);
+    widths[level] = Math.max(40, maxLen * 6.6 + 12);
+  }
+  return widths;
 }
 
 export class NestedAxis {
@@ -50,8 +75,14 @@ export class NestedAxis {
       { class: "facet-axis facet-axis-nested" },
       parent,
     );
-    if (this.cfg.position === "split") this.renderSplit(g);
-    else this.renderStacked(g, this.cfg.position === "top");
+    if (this.cfg.vertical) {
+      if (this.cfg.position === "split") this.renderSplitVertical(g);
+      else this.renderStackedVertical(g, this.cfg.position === "top");
+    } else if (this.cfg.position === "split") {
+      this.renderSplit(g);
+    } else {
+      this.renderStacked(g, this.cfg.position === "top");
+    }
   }
 
   /** All tiers on one side (below or above the plot). */
@@ -212,6 +243,181 @@ export class NestedAxis {
           y1: topExtent,
           x2: bx,
           y2: bottomY + LAYOUT.tickLength + 20,
+          stroke: color,
+          "stroke-width": 1,
+        },
+        g,
+      );
+    }
+  }
+
+  /**
+   * All tiers on one vertical side (left or right of the plot) — the
+   * transposed counterpart of {@link renderStacked}, for horizontal bar
+   * charts. Each tier is a column whose width fits its longest label
+   * (unlike the horizontal case, where every tier is just one fixed-height
+   * row regardless of label length).
+   */
+  private renderStackedVertical(g: SVGGElement, right: boolean): void {
+    const { renderer, scale, plot, leaves, keys } = this.cfg;
+    const color = this.cfg.lineColor ?? THEME.axis.lineColor;
+    const levels = leaves[0]?.length ?? 0;
+    const dir = right ? 1 : -1; // +1 grows rightward, -1 leftward
+    const baseX = right ? plot.x + plot.width : plot.x;
+    const leafCenter = (i: number) => scale.scale(keys[i]);
+    const bandHalf = scale.fullStep() / 2;
+
+    renderer.create(
+      "line",
+      {
+        x1: baseX,
+        y1: plot.y,
+        x2: baseX,
+        y2: plot.y + plot.height,
+        stroke: color,
+      },
+      g,
+    );
+
+    const colWidths = nestedLevelWidths(leaves);
+    let offset = 0;
+    for (let level = levels - 1; level >= 0; level--) {
+      const w = colWidths[level];
+      const colStart = baseX + dir * (LAYOUT.tickLength + offset);
+      const segments = this.segmentsForLevel(leaves, level);
+      const labelX = colStart + dir * (w / 2);
+
+      for (const seg of segments) {
+        const cy =
+          (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2 + 4;
+        renderer.text(
+          seg.label,
+          labelX,
+          cy,
+          {
+            "text-anchor": "middle",
+            ...FONTS.axisLabel,
+            "font-weight": level === 0 ? "600" : "400",
+          },
+          g,
+        );
+      }
+
+      if (level < levels - 1) {
+        for (let s = 1; s < segments.length; s++) {
+          const by = leafCenter(segments[s].startLeaf) - bandHalf;
+          renderer.create(
+            "line",
+            {
+              x1: baseX,
+              y1: by,
+              x2: colStart + dir * w,
+              y2: by,
+              stroke: color,
+              "stroke-width": 1,
+            },
+            g,
+          );
+        }
+      }
+      offset += w;
+    }
+
+    // Full-width separators between the outermost groups.
+    const farEdge = baseX + dir * (LAYOUT.tickLength + offset);
+    const nearEdge = right ? plot.x : plot.x + plot.width;
+    const outer = this.segmentsForLevel(leaves, 0);
+    for (let s = 1; s < outer.length; s++) {
+      const by = leafCenter(outer[s].startLeaf) - bandHalf;
+      renderer.create(
+        "line",
+        {
+          x1: nearEdge,
+          y1: by,
+          x2: farEdge,
+          y2: by,
+          stroke: color,
+          "stroke-width": 1,
+        },
+        g,
+      );
+    }
+  }
+
+  /**
+   * Split layout, vertical: innermost dimension as normal labels at the
+   * left (nearest the plot), outer grouping dimensions stacked to the
+   * right, full-width horizontal lines separating each top-level group.
+   */
+  private renderSplitVertical(g: SVGGElement): void {
+    const { renderer, scale, plot, leaves, keys } = this.cfg;
+    const color = this.cfg.lineColor ?? THEME.axis.lineColor;
+    const levels = leaves[0]?.length ?? 0;
+    const leafCenter = (i: number) => scale.scale(keys[i]);
+    const bandHalf = scale.fullStep() / 2;
+    const rightX = plot.x + plot.width;
+    const colWidths = nestedLevelWidths(leaves);
+
+    // Left axis line + innermost dimension labels.
+    renderer.create(
+      "line",
+      {
+        x1: plot.x,
+        y1: plot.y,
+        x2: plot.x,
+        y2: plot.y + plot.height,
+        stroke: color,
+      },
+      g,
+    );
+    const innerW = colWidths[levels - 1];
+    for (const seg of this.segmentsForLevel(leaves, levels - 1)) {
+      const cy = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2 + 4;
+      renderer.text(
+        seg.label,
+        plot.x - LAYOUT.tickLength - innerW / 2,
+        cy,
+        { "text-anchor": "middle", ...FONTS.axisLabel },
+        g,
+      );
+    }
+
+    // Outer grouping dimensions to the right of the plot (outermost farthest right).
+    let offset = 0;
+    for (let level = levels - 2; level >= 0; level--) {
+      const w = colWidths[level];
+      const labelX = rightX + LAYOUT.tickLength + offset + w / 2;
+      for (const seg of this.segmentsForLevel(leaves, level)) {
+        const cy =
+          (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2 + 4;
+        renderer.text(
+          seg.label,
+          labelX,
+          cy,
+          {
+            "text-anchor": "middle",
+            ...FONTS.axisLabel,
+            "font-weight": level === 0 ? "600" : "400",
+          },
+          g,
+        );
+      }
+      offset += w;
+    }
+
+    // Full-width separators between the outermost (rightmost) groups.
+    const leftExtent = plot.x - LAYOUT.tickLength - innerW;
+    const rightExtent = rightX + LAYOUT.tickLength + offset;
+    const outer = this.segmentsForLevel(leaves, 0);
+    for (let s = 1; s < outer.length; s++) {
+      const by = leafCenter(outer[s].startLeaf) - bandHalf;
+      renderer.create(
+        "line",
+        {
+          x1: leftExtent,
+          y1: by,
+          x2: rightExtent,
+          y2: by,
           stroke: color,
           "stroke-width": 1,
         },

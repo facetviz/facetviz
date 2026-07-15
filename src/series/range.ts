@@ -3,8 +3,10 @@
  *
  * Each point carries a `low`/`high` pair and the series fills the band between
  * them — the canonical "range chart" (e.g. daily temperature min/max). The
- * upper and lower boundaries are stroked, and markers are drawn at both ends so
- * every point is hoverable.
+ * upper and lower boundaries are stroked, and markers are drawn at both ends
+ * by default (marking the exact low/high) — set `marker: { enabled: false }`
+ * to hide them; every point stays hoverable either way via an invisible hit
+ * target when markers are off.
  */
 
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
@@ -52,12 +54,24 @@ export class RangeSeries extends BaseSeries {
     renderer.create('path', { d: topD, fill: 'none', stroke: this.color, 'stroke-width': this.options.lineWidth ?? 2 }, g);
     renderer.create('path', { d: line(bottom), fill: 'none', stroke: this.color, 'stroke-width': this.options.lineWidth ?? 2 }, g);
 
-    // Hoverable markers at each end.
+    // Markers at each end, on by default; `marker: { enabled: false }` hides
+    // them but every point stays hoverable via an invisible hit target.
+    const marker = this.options.marker;
+    const visible = marker?.enabled !== false;
     drawn.forEach((p, i) => {
       for (const pt of [top[i], bottom[i]]) {
-        const el = drawMarker(renderer, g, pt.x, pt.y, {
-          symbol: 'circle', radius: 3.5, fill: this.color, stroke: '#fff', strokeWidth: 1,
-        });
+        const el = visible
+          ? drawMarker(renderer, g, pt.x, pt.y, {
+              symbol: marker?.symbol ?? 'circle',
+              radius: marker?.radius ?? 3.5,
+              fill: marker?.fillColor ?? this.color,
+              stroke: marker?.lineColor ?? '#fff',
+              strokeWidth: marker?.lineWidth ?? 1,
+            })
+          : renderer.create('circle', {
+              cx: pt.x, cy: pt.y, r: 8, fill: 'transparent',
+              'pointer-events': 'all', class: 'facet-point-hit',
+            }, g);
         ctx.registerHover(el, p);
         el.addEventListener('click', (e: Event) => ctx.onPointEvent('click', p, e));
         el.addEventListener('mouseover', (e: Event) => ctx.onPointEvent('mouseOver', p, e));

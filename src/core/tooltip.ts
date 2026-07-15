@@ -96,14 +96,17 @@ export class Tooltip {
       });
     }
 
-    const head = `<span style="color:${ctx.color}">●</span> <b>${ctx.series}</b><br/>${ctx.x}`;
+    // Axis label as the header, series name + value(s) in the bullet row
+    // below it — the same convention the shared tooltip above uses.
+    const head = `<b>${ctx.x}</b>`;
+    const bullet = `<span style="color:${ctx.color}">●</span>`;
 
     // Boxplot five-number summary.
     if (ctx.box) {
       const b = ctx.box;
       const row = (k: string, v: number) => `${k}: <b>${fmt(v)}</b>`;
       return (
-        `${head}<br/>` +
+        `${head}<br/>${bullet} <b>${ctx.series}</b><br/>` +
         [row('Maximum', b.max), row('Upper quartile', b.q3), row('Median', b.median),
          row('Lower quartile', b.q1), row('Minimum', b.min)].join('<br/>')
       );
@@ -111,9 +114,9 @@ export class Tooltip {
 
     // Range (low/high).
     if (ctx.low !== undefined && ctx.high !== undefined) {
-      return `${head}<br/>${fmt(ctx.low)} – <b>${fmt(ctx.high)}</b>`;
+      return `${head}<br/>${bullet} ${ctx.series}: <b>${fmt(ctx.low)}</b> – <b>${fmt(ctx.high)}</b>`;
     }
 
-    return `${head}: <b>${valueStr}</b>`;
+    return `${head}<br/>${bullet} ${ctx.series}: <b>${valueStr}</b>`;
   }
 }

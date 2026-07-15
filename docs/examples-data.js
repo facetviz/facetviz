@@ -18,6 +18,20 @@ for (const r of ["East", "West", "Central"])
       Category: c,
       y: Math.round(5 + Math.random() * 20),
     });
+// Each region's categories arrive in a different order — the axis should
+// keep each region's own order rather than forcing all regions to share one.
+const nestedOrdered = [];
+for (const [r, cats] of [
+  ["East", ["Tech", "Furniture", "Office"]],
+  ["West", ["Office", "Tech", "Furniture"]],
+  ["Central", ["Furniture", "Office", "Tech"]],
+])
+  for (const c of cats)
+    nestedOrdered.push({
+      Region: r,
+      Category: c,
+      y: Math.round(5 + Math.random() * 20),
+    });
 const trellis = [];
 const trellisMargin = [];
 const trellisSouth = [];
@@ -242,6 +256,42 @@ export const EXAMPLES = [
             ["May", 9, 20],
             ["Jun", 13, 24],
           ],
+        },
+      ],
+    },
+  },
+  {
+    cat: "Lines & areas",
+    title: "Line with min/max range",
+    desc: "Shaded min–max band behind an actual-value line.",
+    types: ["arearange", "line"],
+    cfg: {
+      chart: { type: "line", height: 300 },
+      title: { text: "Daily temperature" },
+      xAxis: { categories: months },
+      yAxis: { title: { text: "°C" } },
+      tooltip: { shared: true },
+      series: [
+        {
+          name: "Range",
+          type: "arearange",
+          color: "#2caffe",
+          lineWidth: 0,
+          data: [
+            ["Jan", -3, 7],
+            ["Feb", -1, 9],
+            ["Mar", 2, 12],
+            ["Apr", 5, 16],
+            ["May", 9, 20],
+            ["Jun", 13, 24],
+          ],
+        },
+        {
+          name: "Average",
+          type: "line",
+          color: "#4338ca",
+          marker: { enabled: true },
+          data: [2, 4, 7, 10, 14, 18],
         },
       ],
     },
@@ -858,6 +908,34 @@ export const EXAMPLES = [
         aggregate: "sum",
         opposite: true,
       },
+      yAxis: { title: { text: "Sum of Sales" } },
+      series: [{ name: "Sales", data: nested }],
+    },
+  },
+  {
+    cat: "Advanced",
+    title: "Nested x-axis (per-group order)",
+    desc: "Each region keeps its own categories' data order instead of sharing one order.",
+    types: [],
+    tall: true,
+    cfg: {
+      chart: { type: "column", height: 340 },
+      title: { text: "Sales by Region ▸ Category" },
+      xAxis: { dimensions: ["Region", "Category"], aggregate: "sum" },
+      yAxis: { title: { text: "Sum of Sales" } },
+      series: [{ name: "Sales", data: nestedOrdered }],
+    },
+  },
+  {
+    cat: "Advanced",
+    title: "Nested x-axis (horizontal bar)",
+    desc: "Category axis runs vertically on the left; value axis along the bottom.",
+    types: [],
+    tall: true,
+    cfg: {
+      chart: { type: "bar", height: 340 },
+      title: { text: "Sales by Region ▸ Category" },
+      xAxis: { dimensions: ["Region", "Category"], aggregate: "sum" },
       yAxis: { title: { text: "Sum of Sales" } },
       series: [{ name: "Sales", data: nested }],
     },

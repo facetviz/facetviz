@@ -22,7 +22,7 @@ import type {
 } from "./options.js";
 import { Renderer } from "./renderer.js";
 import { Axis, Rect } from "./axis.js";
-import { NestedAxis } from "./nested-axis.js";
+import { NestedAxis, nestedLevelWidths } from "./nested-axis.js";
 import { Tooltip } from "./tooltip.js";
 import { Legend, LegendItem } from "./legend.js";
 import { EventEmitter } from "./events.js";
@@ -710,7 +710,7 @@ export class FacetViz {
     const rotExtra = rot
       ? Math.abs(Math.sin((rot * Math.PI) / 180)) * labelW
       : 0;
-    return LAYOUT.defaultBottomAxisHeight + (title ? 24 : 0) + rotExtra;
+    return LAYOUT.defaultBottomAxisHeight + (title ? 32 : 0) + rotExtra;
   }
 
   private renderPanel(panel: PanelSpec): void {
@@ -1651,94 +1651,159 @@ export class FacetViz {
       s.withPoints(seriesPoints.get(s.index) ?? []),
     );
 
-    // Dual axis: series binding to yAxis index 1 use a secondary (right) scale.
+    // Horizontal bars: category axis becomes vertical (left, or left+right
+    // when split), value axis horizontal (bottom) — the same role-swap
+    // `renderPanel`/the trellis table apply for `chart.type:'bar'` /
+    // `chart.inverted`. Dual axis is only meaningful in the normal
+    // (non-inverted) layout, same convention as elsewhere.
+    const inverted = this.isInverted(visible);
+
     const yOpts0 = axisAt(this.options.yAxis, 0);
     const yOpts1 = axisAt(this.options.yAxis, 1);
     const onAxis = (s: BaseSeries, i: number) => (s.options.yAxis ?? 0) === i;
     const secondary = aggSeries.filter((s) => onAxis(s, 1));
-    const hasSecondary = secondary.length > 0;
+    const hasSecondary = !inverted && secondary.length > 0;
 
     // Reserve axis space. In split mode (opposite) the innermost dimension is
-    // labelled at the bottom while the outer grouping dimensions sit on top.
+    // labelled nearest the plot while the outer grouping dimensions sit on
+    // the far side.
     const xOpts = firstAxis(this.options.xAxis) ?? {};
     const split = !!xOpts.opposite;
     const rowH = 18;
-    const leftReserve =
-      LAYOUT.tickLength +
-      8 +
-      this.valueLabelWidth(
-        aggSeries.filter((s) => onAxis(s, 0)),
-        yOpts0,
-      ) +
-      (yOpts0.title?.text ? 18 : 0);
-    const rightReserve = hasSecondary
-      ? LAYOUT.tickLength +
-        8 +
-        this.valueLabelWidth(secondary, yOpts1) +
-        (yOpts1.title?.text ? 18 : 0)
-      : 8;
-    const bottomReserve =
-      LAYOUT.tickLength + (split ? 1 : dims.length) * rowH + 12;
-    const topReserve = split
-      ? LAYOUT.tickLength + (dims.length - 1) * rowH + 8
-      : 6;
-    const plot: Rect = {
-      x: outer.x + leftReserve,
-      y: outer.y + topReserve,
-      width: outer.width - leftReserve - rightReserve,
-      height: outer.height - topReserve - bottomReserve,
-    };
 
-    const xScale = new CategoryScale({
-      categories: keys,
-      range: [plot.x, plot.x + plot.width],
-    });
-    const range: [number, number] = [plot.y + plot.height, plot.y];
-    const scaleFor = (list: BaseSeries[], opts: AxisOptions) => {
-      let [lo, hi] = this.valueDomain(list.length ? list : aggSeries);
-      lo = Math.min(lo, 0);
-      hi = Math.max(hi, 0);
-      return this.valueScale(opts, [lo, hi], range);
-    };
-    const yScale0 = scaleFor(
-      aggSeries.filter((s) => onAxis(s, 0)),
-      yOpts0,
-    );
-    const yScale1 = hasSecondary ? scaleFor(secondary, yOpts1) : yScale0;
-
+    let plot: Rect;
+    let catScale: CategoryScale;
+    let valScale0: Scale;
+    let valScale1: Scale;
     const axisLayer = this.renderer.group(
       { class: "facet-axes" },
       this.renderer.root,
     );
-    const yAxis0 = new Axis({
-      renderer: this.renderer,
-      scale: yScale0,
-      position: "left",
-      plot,
-      options: yOpts0,
-      grid: true,
-    });
-    yAxis0.render(axisLayer);
-    let yAxis1: Axis | undefined;
-    if (hasSecondary) {
-      yAxis1 = new Axis({
-        renderer: this.renderer,
-        scale: yScale1,
-        position: "right",
-        plot,
-        options: yOpts1,
-        grid: false,
+    let valAxis0: Axis;
+    let valAxis1: Axis | undefined;
+
+    if (!inverted) {
+      const leftReserve =
+        LAYOUT.tickLength +
+        8 +
+        this.valueLabelWidth(
+          aggSeries.filter((s) => onAxis(s, 0)),
+          yOpts0,
+        ) +
+        (yOpts0.title?.text ? 18 : 0);
+      const rightReserve = hasSecondary
+        ? LAYOUT.tickLength +
+          8 +
+          this.valueLabelWidth(secondary, yOpts1) +
+          (yOpts1.title?.text ? 18 : 0)
+        : 8;
+      const bottomReserve =
+        LAYOUT.tickLength + (split ? 1 : dims.length) * rowH + 12;
+      const topReserve = split
+        ? LAYOUT.tickLength + (dims.length - 1) * rowH + 8
+        : 6;
+      plot = {
+        x: outer.x + leftReserve,
+        y: outer.y + topReserve,
+        width: outer.width - leftReserve - rightReserve,
+        height: outer.height - topReserve - bottomReserve,
+      };
+
+      catScale = new CategoryScale({
+        categories: keys,
+        range: [plot.x, plot.x + plot.width],
       });
-      yAxis1.render(axisLayer);
+      const range: [number, number] = [plot.y + plot.height, plot.y];
+      const scaleFor = (list: BaseSeries[], opts: AxisOptions) => {
+        let [lo, hi] = this.valueDomain(list.length ? list : aggSeries);
+        lo = Math.min(lo, 0);
+        hi = Math.max(hi, 0);
+        return this.valueScale(opts, [lo, hi], range);
+      };
+      valScale0 = scaleFor(
+        aggSeries.filter((s) => onAxis(s, 0)),
+        yOpts0,
+      );
+      valScale1 = hasSecondary ? scaleFor(secondary, yOpts1) : valScale0;
+
+      valAxis0 = new Axis({
+        renderer: this.renderer,
+        scale: valScale0,
+        position: "left",
+        plot,
+        options: yOpts0,
+        grid: true,
+      });
+      valAxis0.render(axisLayer);
+      if (hasSecondary) {
+        valAxis1 = new Axis({
+          renderer: this.renderer,
+          scale: valScale1,
+          position: "right",
+          plot,
+          options: yOpts1,
+          grid: false,
+        });
+        valAxis1.render(axisLayer);
+      }
+      new NestedAxis({
+        renderer: this.renderer,
+        scale: catScale,
+        plot,
+        leaves,
+        keys,
+        position: split ? "split" : "bottom",
+      }).render(axisLayer);
+    } else {
+      // Vertical nested axis: left reserve fits the tier(s) nearest the plot
+      // (all tiers stacked when not split, just the innermost when split);
+      // the outer grouping tiers get a right reserve only when split.
+      const colWidths = nestedLevelWidths(leaves);
+      const innerW = colWidths[colWidths.length - 1] ?? 0;
+      const outerW = colWidths.slice(0, -1).reduce((a, b) => a + b, 0);
+      const totalW = colWidths.reduce((a, b) => a + b, 0);
+      const leftReserve =
+        LAYOUT.tickLength + 8 + (split ? innerW : totalW);
+      const rightReserve = split ? LAYOUT.tickLength + 8 + outerW : 8;
+      const bottomReserve =
+        LAYOUT.defaultBottomAxisHeight + (yOpts0.title?.text ? 32 : 0);
+      const topReserve = 6;
+      plot = {
+        x: outer.x + leftReserve,
+        y: outer.y + topReserve,
+        width: outer.width - leftReserve - rightReserve,
+        height: outer.height - topReserve - bottomReserve,
+      };
+
+      catScale = new CategoryScale({
+        categories: keys,
+        range: [plot.y, plot.y + plot.height],
+      });
+      let [lo, hi] = this.valueDomain(aggSeries);
+      lo = Math.min(lo, 0);
+      hi = Math.max(hi, 0);
+      valScale0 = this.valueScale(yOpts0, [lo, hi], [plot.x, plot.x + plot.width]);
+      valScale1 = valScale0;
+
+      valAxis0 = new Axis({
+        renderer: this.renderer,
+        scale: valScale0,
+        position: "bottom",
+        plot,
+        options: yOpts0,
+        grid: true,
+      });
+      valAxis0.render(axisLayer);
+      new NestedAxis({
+        renderer: this.renderer,
+        scale: catScale,
+        plot,
+        leaves,
+        keys,
+        position: split ? "split" : "bottom",
+        vertical: true,
+      }).render(axisLayer);
     }
-    new NestedAxis({
-      renderer: this.renderer,
-      scale: xScale,
-      plot,
-      leaves,
-      keys,
-      position: split ? "split" : "bottom",
-    }).render(axisLayer);
 
     const group = this.groupInfo(aggSeries);
     const lineFamily = new Set([
@@ -1749,14 +1814,16 @@ export class FacetViz {
       "areaspline",
     ]);
     for (const s of aggSeries) {
-      const yScale = onAxis(s, 1) ? yScale1 : yScale0;
+      const valScale = onAxis(s, 1) ? valScale1 : valScale0;
+      const xScale = inverted ? valScale : catScale;
+      const yScale = inverted ? catScale : valScale;
       const ctx = this.seriesContext(
         s,
         plot,
         xScale,
         yScale,
         group,
-        false,
+        inverted,
         false,
       );
       if (lineFamily.has(s.type)) {
@@ -1783,8 +1850,8 @@ export class FacetViz {
       { class: "facet-axes-above" },
       this.renderer.root,
     );
-    yAxis0.renderAbove(aboveLayer);
-    yAxis1?.renderAbove(aboveLayer);
+    valAxis0.renderAbove(aboveLayer);
+    valAxis1?.renderAbove(aboveLayer);
   }
 
   // -- Butterfly (tornado) ----------------------------------------------
@@ -2195,7 +2262,9 @@ export class FacetViz {
   /**
    * Collapse each series' points into one aggregated value per unique
    * combination of `dims`. Leaves are ordered so that outer dimensions form
-   * contiguous groups (first-seen order per level) so each group stays together.
+   * contiguous groups, and both the outer groups and each group's inner
+   * values are ordered by first appearance in the data (not sorted
+   * alphabetically) — see the ordering note below.
    */
   private buildNested(
     visible: BaseSeries[],
@@ -2206,22 +2275,38 @@ export class FacetViz {
     keys: string[];
     seriesPoints: Map<number, Point[]>;
   } {
-    // First-seen order for each dimension value, per level.
-    const order: Array<Map<string, number>> = dims.map(() => new Map());
+    // First-seen order for each dimension value, keyed by the values of the
+    // levels above it (its "parent group"). Level 0 has a single implicit
+    // parent (the whole dataset), so it's still one global order — but
+    // levels below it can order their values differently per parent group,
+    // matching the order that group's own data appeared in.
+    const orderByPrefix: Array<Map<string, Map<string, number>>> = dims.map(
+      () => new Map(),
+    );
     const tuples = new Map<string, string[]>();
     for (const s of visible) {
       for (const p of s.points) {
         const tuple = dims.map((d) => String(p.options[d] ?? ""));
+        let prefix = "";
         tuple.forEach((v, lvl) => {
-          if (!order[lvl].has(v)) order[lvl].set(v, order[lvl].size);
+          let scoped = orderByPrefix[lvl].get(prefix);
+          if (!scoped) {
+            scoped = new Map();
+            orderByPrefix[lvl].set(prefix, scoped);
+          }
+          if (!scoped.has(v)) scoped.set(v, scoped.size);
+          prefix = prefix + "\u0000" + v;
         });
         tuples.set(tuple.join("\u0000"), tuple);
       }
     }
     const leaves = [...tuples.values()].sort((a, b) => {
+      let prefix = "";
       for (let lvl = 0; lvl < dims.length; lvl++) {
-        const d = order[lvl].get(a[lvl])! - order[lvl].get(b[lvl])!;
+        const scoped = orderByPrefix[lvl].get(prefix)!;
+        const d = scoped.get(a[lvl])! - scoped.get(b[lvl])!;
         if (d !== 0) return d;
+        prefix = prefix + "\u0000" + a[lvl];
       }
       return 0;
     });

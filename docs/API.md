@@ -190,7 +190,7 @@ One object per series in the `series` array.
 | `lineWidth` | `number` | `2` | Stroke width (line/area/range). |
 | `innerSize` | `string` | – | Pie inner radius, e.g. `'60%'` (makes a donut). |
 | `dimensions` | `string[]` | – | Pie/donut **two-dimension** rings — see [Multi-level pie](#multi-level-two-dimension-pie). |
-| `marker` | [`MarkerOptions`](#markeroptions) | – | Point markers (line/area/scatter). |
+| `marker` | [`MarkerOptions`](#markeroptions) | – | Point markers (line/area/scatter/arearange). Range series (`arearange`/`areasplinerange`) show them at both the low and high end by default — set `enabled: false` to hide them (points stay hoverable via an invisible hit target either way). |
 | `dataLabels` | [`DataLabelOptions`](#datalabeloptions) | disabled | On-chart value labels. |
 | `jitter` | `number` | `0.5` | Horizontal spread (in band widths) for `jitter` charts. |
 | `states` | `{ hover?: `[`HoverStateOptions`](#hoverstateoptions)` }` | – | Interaction states. |
@@ -237,7 +237,7 @@ boxplot series **group** side-by-side within each category.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `enabled` | `boolean` | `false` (line/area), `true` (scatter) | Show markers. |
+| `enabled` | `boolean` | `false` (line/area), `true` (scatter, arearange) | Show markers. |
 | `radius` | `number` | `4` | Marker radius. |
 | `symbol` | `'circle' \| 'square' \| 'diamond' \| 'triangle'` | `'circle'` | Marker shape. |
 | `fillColor` | `string` | series colour | Marker fill. |
@@ -266,7 +266,7 @@ scatter/jitter, pie/donut and butterfly.
 
 | Family | Values (default first) |
 |--------|------------------------|
-| column / bar | `outside`, `inside`, `center`, `base` |
+| column / bar | `outside`, `inside`, `center`, `base` — defaults to `center` for a stacked point instead, since `outside` (just past that point's own segment) sits inside whichever segment is stacked above it |
 | line / area / scatter | `top`, `bottom`, `center`, `left`, `right` |
 | pie / donut | `outside`, `inside` |
 
