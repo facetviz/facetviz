@@ -22,7 +22,11 @@ import type {
 } from "./options.js";
 import { Renderer } from "./renderer.js";
 import { Axis, Rect } from "./axis.js";
-import { NestedAxis, nestedLevelWidths } from "./nested-axis.js";
+import {
+  NestedAxis,
+  nestedLevelWidths,
+  nestedInnerRotationExtent,
+} from "./nested-axis.js";
 import { Tooltip } from "./tooltip.js";
 import { Legend, LegendItem } from "./legend.js";
 import { EventEmitter } from "./events.js";
@@ -167,7 +171,64 @@ export class FacetViz {
 
   // -- Rendering ---------------------------------------------------------
 
+  /**
+   * Progressive degradation as the chart shrinks: past size thresholds, drop
+   * data labels, then axis labels, then axis lines — rather than rendering
+   * an unreadably cramped chart. Overrides `this.series`/`this.options`
+   * (both already mutable per-instance state) for the duration of this
+   * render only; returns a function that restores the originals.
+   */
+  private applyResponsiveOverrides(): () => void {
+    if (this.options.chart?.responsive === false) return () => {};
+    const shortSide = Math.min(this.width, this.height);
+    const hideLabels = shortSide < 260;
+    const hideAxisLabels = shortSide < 180;
+    const hideAxisLines = shortSide < 120;
+    if (!hideLabels && !hideAxisLabels && !hideAxisLines) return () => {};
+
+    const restores: Array<() => void> = [];
+
+    if (hideLabels) {
+      const originalSeries = this.series;
+      this.series = this.series.map((s) =>
+        s.options.dataLabels?.enabled
+          ? s.withOptions({
+              dataLabels: { ...s.options.dataLabels, enabled: false },
+            })
+          : s,
+      );
+      restores.push(() => {
+        this.series = originalSeries;
+      });
+    }
+
+    if (hideAxisLabels || hideAxisLines) {
+      const patch: Partial<AxisOptions> = {};
+      if (hideAxisLabels) patch.labels = { enabled: false };
+      if (hideAxisLines) patch.lineWidth = 0;
+      const overrideAxis = (
+        a: AxisOptions | AxisOptions[] | undefined,
+      ): AxisOptions | AxisOptions[] | undefined =>
+        Array.isArray(a)
+          ? a.map((ax) => ({ ...ax, ...patch }))
+          : { ...(a ?? {}), ...patch };
+      const originalX = this.options.xAxis;
+      const originalY = this.options.yAxis;
+      this.options.xAxis = overrideAxis(originalX);
+      this.options.yAxis = overrideAxis(originalY);
+      restores.push(() => {
+        this.options.xAxis = originalX;
+        this.options.yAxis = originalY;
+      });
+    }
+
+    return () => {
+      for (const restore of restores) restore();
+    };
+  }
+
   render(): void {
+    const restoreResponsive = this.applyResponsiveOverrides();
     if (!this.renderer) {
       this.renderer = new Renderer(this.width, this.height);
       this.renderer.mount(this.container);
@@ -294,6 +355,7 @@ export class FacetViz {
 
     this.events.emit("render", this);
     this.options.chart?.events?.render?.(this);
+    restoreResponsive();
   }
 
   /** Set root ARIA role + a <title>/<desc> for screen readers. */
@@ -823,7 +885,10 @@ export class FacetViz {
       position: catSide,
       plot: axisPlot,
       options: catOpts,
-      grid: false,
+      // Off by default (matching the usual column/bar look), but honour an
+      // explicit `gridLineWidth` — currently the only way to opt in, since
+      // a category scale never gets "nice" numeric ticks to derive one from.
+      grid: !!catOpts.gridLineWidth,
     });
     catAxis.render(axisLayer);
     const valAxis = new Axis({
@@ -1536,14 +1601,14 @@ export class FacetViz {
         const valLabelled = inverted ? isBottom : isLeft;
 
         // Category axis: labelled (no title) on the leftmost column
-        // normally / bottom row when inverted; gridlines never shown (the
-        // value axis already carries them).
+        // normally / bottom row when inverted; gridlines off unless the
+        // caller explicitly asked for them via `xOpts.gridLineWidth`.
         const catAxis = new Axis({
           renderer: this.renderer,
           scale: catScale,
           position: inverted ? "left" : "bottom",
           plot: cell,
-          grid: false,
+          grid: !!xOpts.gridLineWidth,
           options: catLabelled
             ? { ...xOpts, title: undefined, ticks: false }
             : { labels: { enabled: false }, lineWidth: 0, ticks: false },
@@ -1670,6 +1735,9 @@ export class FacetViz {
     const xOpts = firstAxis(this.options.xAxis) ?? {};
     const split = !!xOpts.opposite;
     const rowH = 18;
+    const rotExtra = !inverted
+      ? nestedInnerRotationExtent(leaves, xOpts.labels?.rotation ?? 0)
+      : 0;
 
     let plot: Rect;
     let catScale: CategoryScale;
@@ -1698,7 +1766,7 @@ export class FacetViz {
           (yOpts1.title?.text ? 18 : 0)
         : 8;
       const bottomReserve =
-        LAYOUT.tickLength + (split ? 1 : dims.length) * rowH + 12;
+        LAYOUT.tickLength + (split ? 1 : dims.length) * rowH + 12 + rotExtra;
       const topReserve = split
         ? LAYOUT.tickLength + (dims.length - 1) * rowH + 8
         : 6;
@@ -1753,6 +1821,8 @@ export class FacetViz {
         leaves,
         keys,
         position: split ? "split" : "bottom",
+        labels: xOpts.labels,
+        gridLineWidth: xOpts.gridLineWidth,
       }).render(axisLayer);
     } else {
       // Vertical nested axis: left reserve fits the tier(s) nearest the plot
@@ -1802,6 +1872,7 @@ export class FacetViz {
         keys,
         position: split ? "split" : "bottom",
         vertical: true,
+        gridLineWidth: xOpts.gridLineWidth,
       }).render(axisLayer);
     }
 
@@ -1813,6 +1884,7 @@ export class FacetViz {
       "area",
       "areaspline",
     ]);
+    const existing = new Set(this.renderer.root.children);
     for (const s of aggSeries) {
       const valScale = onAxis(s, 1) ? valScale1 : valScale0;
       const xScale = inverted ? valScale : catScale;
@@ -1844,6 +1916,11 @@ export class FacetViz {
         s.render(ctx);
       }
     }
+    // Clip series content to the plot — a zero-anchored column's baseline is
+    // always drawn at true zero, which can land well outside the plot when
+    // `yAxis.min` clips the visible domain above it; without this the bar
+    // spills straight through the axis labels to the bottom of the chart.
+    this.clipToPlot(plot, existing);
 
     // Plot lines flagged `zIndex: 'above'` paint on top of the series.
     const aboveLayer = this.renderer.group(
@@ -2431,6 +2508,27 @@ export class FacetViz {
       const valuePx = inverted ? plot.width : plot.height;
       const padY = (markerR / Math.max(1, valuePx)) * (vMax - vMin || 1);
       if (valueAxisOpts.min === undefined) vMin -= padY;
+      if (valueAxisOpts.max === undefined) vMax += padY;
+    }
+
+    // Data-label headroom: an 'outside'/'top' (or default, for non-stacked)
+    // label sits just beyond its bar/point — without extra room, a value
+    // that lands on the domain max renders its label flush against (or past)
+    // the plot edge, overlapping the title/chrome above it. Skipped when the
+    // user set an explicit max (they're opting out of auto-headroom).
+    const hasOutsideLabel = primaryVisible.some((s) => {
+      const dl = s.options.dataLabels;
+      if (!dl?.enabled) return false;
+      return (
+        dl.position === undefined ||
+        dl.position === "outside" ||
+        dl.position === "top"
+      );
+    });
+    if (hasOutsideLabel) {
+      const valueAxisOpts = inverted ? xAxisOpts : yAxisOpts;
+      const valuePx = inverted ? plot.width : plot.height;
+      const padY = (18 / Math.max(1, valuePx)) * (vMax - vMin || 1);
       if (valueAxisOpts.max === undefined) vMax += padY;
     }
 

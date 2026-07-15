@@ -147,6 +147,17 @@ export abstract class BaseSeries {
     return clone;
   }
 
+  /**
+   * Return a shallow clone of this series with `patch` merged into its
+   * options — used to temporarily suppress data labels on a shrunk container
+   * without mutating the caller's original config.
+   */
+  withOptions(patch: Partial<SeriesOptions>): BaseSeries {
+    const clone: BaseSeries = Object.create(Object.getPrototypeOf(this));
+    Object.assign(clone, this, { options: { ...this.options, ...patch } });
+    return clone;
+  }
+
   /** Build the event payload for a point. */
   protected event(kind: string, p: Point, dom?: Event): FacetVizPointEvent {
     return {

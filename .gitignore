@@ -83,3 +83,9 @@ coverage/
 # OS Files
 .DS_Store
 Thumbs.db
+
+
+# SonnarQube
+.sonarlint/
+.scannerwork/
+sonar-project.properties

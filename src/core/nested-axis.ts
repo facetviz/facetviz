@@ -26,6 +26,15 @@ export interface NestedAxisConfig {
   /** The unique category keys the scale was built from (parallel to leaves). */
   keys: string[];
   lineColor?: string;
+  /** Rotate the innermost (leaf) tier's labels — same convention as `AxisOptions.labels.rotation`. */
+  labels?: { rotation?: number };
+  /**
+   * Draw a gridline through the plot at each leaf position — same opt-in
+   * convention as the plain axis's category-axis gridlines (off by default;
+   * a category scale has no "nice" ticks to derive a default width from).
+   */
+  gridLineWidth?: number;
+  gridLineColor?: string;
   /**
    * Tier placement:
    *  - `bottom` (default): all tiers stacked below the plot.
@@ -67,6 +76,24 @@ export function nestedLevelWidths(leaves: string[][]): number[] {
   return widths;
 }
 
+/**
+ * Extra vertical room the innermost (leaf) row needs when its labels are
+ * rotated — same idea as the plain axis's rotated-label reserve, sized off
+ * the leaf labels specifically since those are what actually rotates.
+ */
+export function nestedInnerRotationExtent(
+  leaves: string[][],
+  rotation: number,
+): number {
+  if (!rotation) return 0;
+  const maxLen = leaves.reduce(
+    (m, l) => Math.max(m, String(l[l.length - 1] ?? "").length),
+    0,
+  );
+  const labelW = maxLen * 6.2 + 6;
+  return Math.abs(Math.sin((rotation * Math.PI) / 180)) * labelW;
+}
+
 export class NestedAxis {
   constructor(private cfg: NestedAxisConfig) {}
 
@@ -75,6 +102,7 @@ export class NestedAxis {
       { class: "facet-axis facet-axis-nested" },
       parent,
     );
+    this.drawLeafGridlines(g);
     if (this.cfg.vertical) {
       if (this.cfg.position === "split") this.renderSplitVertical(g);
       else this.renderStackedVertical(g, this.cfg.position === "top");
@@ -82,6 +110,25 @@ export class NestedAxis {
       this.renderSplit(g);
     } else {
       this.renderStacked(g, this.cfg.position === "top");
+    }
+  }
+
+  /** A gridline through the plot at each leaf position, opt-in via `gridLineWidth`. */
+  private drawLeafGridlines(g: SVGGElement): void {
+    const width = this.cfg.gridLineWidth;
+    if (!width) return;
+    const { renderer, scale, plot, keys } = this.cfg;
+    const color = this.cfg.gridLineColor ?? THEME.axis.gridLineColor;
+    for (const key of keys) {
+      const pos = scale.scale(key);
+      const coords = this.cfg.vertical
+        ? { x1: plot.x, y1: pos, x2: plot.x + plot.width, y2: pos }
+        : { x1: pos, y1: plot.y, x2: pos, y2: plot.y + plot.height };
+      renderer.create(
+        "line",
+        { ...coords, stroke: color, "stroke-width": width },
+        g,
+      );
     }
   }
 
@@ -93,6 +140,16 @@ export class NestedAxis {
     const dir = top ? -1 : 1; // +1 grows rows downward, -1 upward
     const baseY = top ? plot.y : plot.y + plot.height;
     const rowH = 18;
+    const rotation = this.cfg.labels?.rotation ?? 0;
+    const rotExtra = nestedInnerRotationExtent(leaves, rotation);
+    // Row 0 (innermost) grows to fit its rotated labels; every row after it
+    // shifts down by that same extra amount.
+    const rowHeight = (row: number) => (row === 0 ? rowH + rotExtra : rowH);
+    const rowOffset = (row: number) => {
+      let sum = 0;
+      for (let r = 0; r < row; r++) sum += rowHeight(r);
+      return sum;
+    };
     const leafCenter = (i: number) => scale.scale(keys[i]);
 
     const bandHalf = scale.fullStep() / 2;
@@ -112,23 +169,25 @@ export class NestedAxis {
 
     for (let level = levels - 1; level >= 0; level--) {
       const row = levels - 1 - level; // 0 = innermost
-      const rowStart = baseY + dir * (LAYOUT.tickLength + row * rowH);
+      const rotated = row === 0 && rotation;
+      const rowStart = baseY + dir * (LAYOUT.tickLength + rowOffset(row));
       const segments = this.segmentsForLevel(leaves, level);
-      const labelY = rowStart + dir * 12;
+      const labelY = rowStart + dir * (rotated ? 8 : 12);
 
       for (const seg of segments) {
         const cx = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2;
-        renderer.text(
+        const el = renderer.text(
           seg.label,
           cx,
           labelY,
           {
-            "text-anchor": "middle",
+            "text-anchor": rotated ? (rotation < 0 ? "end" : "start") : "middle",
             ...FONTS.axisLabel,
             "font-weight": level === 0 ? "600" : "400",
           },
           g,
         );
+        if (rotated) el.setAttribute("transform", `rotate(${rotation} ${cx} ${labelY})`);
       }
 
       if (level < levels - 1) {
@@ -141,7 +200,7 @@ export class NestedAxis {
               x1: bx,
               y1: baseY,
               x2: bx,
-              y2: rowStart + dir * rowH,
+              y2: rowStart + dir * rowHeight(row),
               stroke: color,
               "stroke-width": 1,
             },
@@ -197,18 +256,21 @@ export class NestedAxis {
       },
       g,
     );
+    const rotation = this.cfg.labels?.rotation ?? 0;
+    const innerLabelY = bottomY + LAYOUT.tickLength + (rotation ? 8 : 12);
     for (const seg of this.segmentsForLevel(leaves, levels - 1)) {
       const cx = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2;
-      renderer.text(
+      const el = renderer.text(
         seg.label,
         cx,
-        bottomY + LAYOUT.tickLength + 12,
+        innerLabelY,
         {
-          "text-anchor": "middle",
+          "text-anchor": rotation ? (rotation < 0 ? "end" : "start") : "middle",
           ...FONTS.axisLabel,
         },
         g,
       );
+      if (rotation) el.setAttribute("transform", `rotate(${rotation} ${cx} ${innerLabelY})`);
     }
 
     // Outer grouping dimensions on top (outermost furthest up).
@@ -323,16 +385,18 @@ export class NestedAxis {
       offset += w;
     }
 
-    // Full-width separators between the outermost groups.
+    // Separators between the outermost groups — confined to the label
+    // gutter (axis boundary to the far edge of the label columns), not
+    // spanning across the plot itself; a full-width line there reads as an
+    // oversized underline slicing through the bars rather than a label divider.
     const farEdge = baseX + dir * (LAYOUT.tickLength + offset);
-    const nearEdge = right ? plot.x : plot.x + plot.width;
     const outer = this.segmentsForLevel(leaves, 0);
     for (let s = 1; s < outer.length; s++) {
       const by = leafCenter(outer[s].startLeaf) - bandHalf;
       renderer.create(
         "line",
         {
-          x1: nearEdge,
+          x1: baseX,
           y1: by,
           x2: farEdge,
           y2: by,

@@ -81,8 +81,14 @@ export class Axis {
     ticks.forEach((tick, i) => {
       const pos = scale.scale(tick);
 
-      // Gridline across the plot (skip for category centres unless asked).
-      if (this.cfg.grid && gridWidth > 0 && !isCategory) {
+      // Gridline across the plot — skipped for category centres unless the
+      // caller explicitly set `gridLineWidth` (a category scale never gets
+      // "nice" numeric ticks to derive a default from, so it stays opt-in).
+      if (
+        this.cfg.grid &&
+        gridWidth > 0 &&
+        (!isCategory || options.gridLineWidth)
+      ) {
         this.drawGridLine(group, pos, gridColor, gridWidth);
       }
 

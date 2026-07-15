@@ -621,7 +621,7 @@ var Axis = class {
     }
     ticks.forEach((tick, i) => {
       const pos = scale.scale(tick);
-      if (this.cfg.grid && gridWidth > 0 && !isCategory) {
+      if (this.cfg.grid && gridWidth > 0 && (!isCategory || options.gridLineWidth)) {
         this.drawGridLine(group, pos, gridColor, gridWidth);
       }
       if (options.ticks !== false) this.drawTick(group, pos, axisColor);
@@ -866,6 +866,15 @@ function nestedLevelWidths(leaves) {
   }
   return widths;
 }
+function nestedInnerRotationExtent(leaves, rotation) {
+  if (!rotation) return 0;
+  const maxLen = leaves.reduce(
+    (m, l) => Math.max(m, String(l[l.length - 1] ?? "").length),
+    0
+  );
+  const labelW = maxLen * 6.2 + 6;
+  return Math.abs(Math.sin(rotation * Math.PI / 180)) * labelW;
+}
 var NestedAxis = class {
   constructor(cfg) {
     this.cfg = cfg;
@@ -875,6 +884,7 @@ var NestedAxis = class {
       { class: "facet-axis facet-axis-nested" },
       parent
     );
+    this.drawLeafGridlines(g);
     if (this.cfg.vertical) {
       if (this.cfg.position === "split") this.renderSplitVertical(g);
       else this.renderStackedVertical(g, this.cfg.position === "top");
@@ -882,6 +892,22 @@ var NestedAxis = class {
       this.renderSplit(g);
     } else {
       this.renderStacked(g, this.cfg.position === "top");
+    }
+  }
+  /** A gridline through the plot at each leaf position, opt-in via `gridLineWidth`. */
+  drawLeafGridlines(g) {
+    const width = this.cfg.gridLineWidth;
+    if (!width) return;
+    const { renderer, scale, plot, keys } = this.cfg;
+    const color = this.cfg.gridLineColor ?? THEME.axis.gridLineColor;
+    for (const key of keys) {
+      const pos = scale.scale(key);
+      const coords = this.cfg.vertical ? { x1: plot.x, y1: pos, x2: plot.x + plot.width, y2: pos } : { x1: pos, y1: plot.y, x2: pos, y2: plot.y + plot.height };
+      renderer.create(
+        "line",
+        { ...coords, stroke: color, "stroke-width": width },
+        g
+      );
     }
   }
   /** All tiers on one side (below or above the plot). */
@@ -892,6 +918,14 @@ var NestedAxis = class {
     const dir = top ? -1 : 1;
     const baseY = top ? plot.y : plot.y + plot.height;
     const rowH = 18;
+    const rotation = this.cfg.labels?.rotation ?? 0;
+    const rotExtra = nestedInnerRotationExtent(leaves, rotation);
+    const rowHeight = (row) => row === 0 ? rowH + rotExtra : rowH;
+    const rowOffset = (row) => {
+      let sum2 = 0;
+      for (let r = 0; r < row; r++) sum2 += rowHeight(r);
+      return sum2;
+    };
     const leafCenter = (i) => scale.scale(keys[i]);
     const bandHalf = scale.fullStep() / 2;
     const bottomY = plot.y + plot.height;
@@ -908,22 +942,24 @@ var NestedAxis = class {
     );
     for (let level = levels - 1; level >= 0; level--) {
       const row = levels - 1 - level;
-      const rowStart = baseY + dir * (LAYOUT.tickLength + row * rowH);
+      const rotated = row === 0 && rotation;
+      const rowStart = baseY + dir * (LAYOUT.tickLength + rowOffset(row));
       const segments = this.segmentsForLevel(leaves, level);
-      const labelY = rowStart + dir * 12;
+      const labelY = rowStart + dir * (rotated ? 8 : 12);
       for (const seg of segments) {
         const cx = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2;
-        renderer.text(
+        const el = renderer.text(
           seg.label,
           cx,
           labelY,
           {
-            "text-anchor": "middle",
+            "text-anchor": rotated ? rotation < 0 ? "end" : "start" : "middle",
             ...FONTS.axisLabel,
             "font-weight": level === 0 ? "600" : "400"
           },
           g
         );
+        if (rotated) el.setAttribute("transform", `rotate(${rotation} ${cx} ${labelY})`);
       }
       if (level < levels - 1) {
         const bandHalf2 = scale.fullStep() / 2;
@@ -935,7 +971,7 @@ var NestedAxis = class {
               x1: bx,
               y1: baseY,
               x2: bx,
-              y2: rowStart + dir * rowH,
+              y2: rowStart + dir * rowHeight(row),
               stroke: color,
               "stroke-width": 1
             },
@@ -986,18 +1022,21 @@ var NestedAxis = class {
       },
       g
     );
+    const rotation = this.cfg.labels?.rotation ?? 0;
+    const innerLabelY = bottomY + LAYOUT.tickLength + (rotation ? 8 : 12);
     for (const seg of this.segmentsForLevel(leaves, levels - 1)) {
       const cx = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2;
-      renderer.text(
+      const el = renderer.text(
         seg.label,
         cx,
-        bottomY + LAYOUT.tickLength + 12,
+        innerLabelY,
         {
-          "text-anchor": "middle",
+          "text-anchor": rotation ? rotation < 0 ? "end" : "start" : "middle",
           ...FONTS.axisLabel
         },
         g
       );
+      if (rotation) el.setAttribute("transform", `rotate(${rotation} ${cx} ${innerLabelY})`);
     }
     for (let level = levels - 2; level >= 0; level--) {
       const rowFromTop = levels - 2 - level;
@@ -1102,14 +1141,13 @@ var NestedAxis = class {
       offset += w;
     }
     const farEdge = baseX + dir * (LAYOUT.tickLength + offset);
-    const nearEdge = right ? plot.x : plot.x + plot.width;
     const outer = this.segmentsForLevel(leaves, 0);
     for (let s = 1; s < outer.length; s++) {
       const by = leafCenter(outer[s].startLeaf) - bandHalf;
       renderer.create(
         "line",
         {
-          x1: nearEdge,
+          x1: baseX,
           y1: by,
           x2: farEdge,
           y2: by,
@@ -1616,6 +1654,16 @@ var BaseSeries = class {
     const clone = Object.create(Object.getPrototypeOf(this));
     Object.assign(clone, this);
     clone.points = points;
+    return clone;
+  }
+  /**
+   * Return a shallow clone of this series with `patch` merged into its
+   * options — used to temporarily suppress data labels on a shrunk container
+   * without mutating the caller's original config.
+   */
+  withOptions(patch) {
+    const clone = Object.create(Object.getPrototypeOf(this));
+    Object.assign(clone, this, { options: { ...this.options, ...patch } });
     return clone;
   }
   /** Build the event payload for a point. */
@@ -3585,7 +3633,54 @@ var FacetViz = class _FacetViz {
     });
   }
   // -- Rendering ---------------------------------------------------------
+  /**
+   * Progressive degradation as the chart shrinks: past size thresholds, drop
+   * data labels, then axis labels, then axis lines — rather than rendering
+   * an unreadably cramped chart. Overrides `this.series`/`this.options`
+   * (both already mutable per-instance state) for the duration of this
+   * render only; returns a function that restores the originals.
+   */
+  applyResponsiveOverrides() {
+    if (this.options.chart?.responsive === false) return () => {
+    };
+    const shortSide = Math.min(this.width, this.height);
+    const hideLabels = shortSide < 260;
+    const hideAxisLabels = shortSide < 180;
+    const hideAxisLines = shortSide < 120;
+    if (!hideLabels && !hideAxisLabels && !hideAxisLines) return () => {
+    };
+    const restores = [];
+    if (hideLabels) {
+      const originalSeries = this.series;
+      this.series = this.series.map(
+        (s) => s.options.dataLabels?.enabled ? s.withOptions({
+          dataLabels: { ...s.options.dataLabels, enabled: false }
+        }) : s
+      );
+      restores.push(() => {
+        this.series = originalSeries;
+      });
+    }
+    if (hideAxisLabels || hideAxisLines) {
+      const patch = {};
+      if (hideAxisLabels) patch.labels = { enabled: false };
+      if (hideAxisLines) patch.lineWidth = 0;
+      const overrideAxis = (a) => Array.isArray(a) ? a.map((ax) => ({ ...ax, ...patch })) : { ...a ?? {}, ...patch };
+      const originalX = this.options.xAxis;
+      const originalY = this.options.yAxis;
+      this.options.xAxis = overrideAxis(originalX);
+      this.options.yAxis = overrideAxis(originalY);
+      restores.push(() => {
+        this.options.xAxis = originalX;
+        this.options.yAxis = originalY;
+      });
+    }
+    return () => {
+      for (const restore of restores) restore();
+    };
+  }
   render() {
+    const restoreResponsive = this.applyResponsiveOverrides();
     if (!this.renderer) {
       this.renderer = new Renderer(this.width, this.height);
       this.renderer.mount(this.container);
@@ -3692,6 +3787,7 @@ var FacetViz = class _FacetViz {
     this.animateNext = false;
     this.events.emit("render", this);
     this.options.chart?.events?.render?.(this);
+    restoreResponsive();
   }
   /** Set root ARIA role + a <title>/<desc> for screen readers. */
   applyAccessibility() {
@@ -4114,7 +4210,10 @@ var FacetViz = class _FacetViz {
       position: catSide,
       plot: axisPlot,
       options: catOpts,
-      grid: false
+      // Off by default (matching the usual column/bar look), but honour an
+      // explicit `gridLineWidth` — currently the only way to opt in, since
+      // a category scale never gets "nice" numeric ticks to derive one from.
+      grid: !!catOpts.gridLineWidth
     });
     catAxis.render(axisLayer);
     const valAxis = new Axis({
@@ -4651,7 +4750,7 @@ var FacetViz = class _FacetViz {
           scale: catScale,
           position: inverted ? "left" : "bottom",
           plot: cell,
-          grid: false,
+          grid: !!xOpts.gridLineWidth,
           options: catLabelled ? { ...xOpts, title: void 0, ticks: false } : { labels: { enabled: false }, lineWidth: 0, ticks: false }
         });
         catAxis.render(axisLayer);
@@ -4736,6 +4835,7 @@ var FacetViz = class _FacetViz {
     const xOpts = firstAxis(this.options.xAxis) ?? {};
     const split = !!xOpts.opposite;
     const rowH = 18;
+    const rotExtra = !inverted ? nestedInnerRotationExtent(leaves, xOpts.labels?.rotation ?? 0) : 0;
     let plot;
     let catScale;
     let valScale0;
@@ -4752,7 +4852,7 @@ var FacetViz = class _FacetViz {
         yOpts0
       ) + (yOpts0.title?.text ? 18 : 0);
       const rightReserve = hasSecondary ? LAYOUT.tickLength + 8 + this.valueLabelWidth(secondary, yOpts1) + (yOpts1.title?.text ? 18 : 0) : 8;
-      const bottomReserve = LAYOUT.tickLength + (split ? 1 : dims.length) * rowH + 12;
+      const bottomReserve = LAYOUT.tickLength + (split ? 1 : dims.length) * rowH + 12 + rotExtra;
       const topReserve = split ? LAYOUT.tickLength + (dims.length - 1) * rowH + 8 : 6;
       plot = {
         x: outer.x + leftReserve,
@@ -4802,7 +4902,9 @@ var FacetViz = class _FacetViz {
         plot,
         leaves,
         keys,
-        position: split ? "split" : "bottom"
+        position: split ? "split" : "bottom",
+        labels: xOpts.labels,
+        gridLineWidth: xOpts.gridLineWidth
       }).render(axisLayer);
     } else {
       const colWidths = nestedLevelWidths(leaves);
@@ -4844,7 +4946,8 @@ var FacetViz = class _FacetViz {
         leaves,
         keys,
         position: split ? "split" : "bottom",
-        vertical: true
+        vertical: true,
+        gridLineWidth: xOpts.gridLineWidth
       }).render(axisLayer);
     }
     const group = this.groupInfo(aggSeries);
@@ -4855,6 +4958,7 @@ var FacetViz = class _FacetViz {
       "area",
       "areaspline"
     ]);
+    const existing = new Set(this.renderer.root.children);
     for (const s of aggSeries) {
       const valScale = onAxis(s, 1) ? valScale1 : valScale0;
       const xScale = inverted ? valScale : catScale;
@@ -4881,6 +4985,7 @@ var FacetViz = class _FacetViz {
         s.render(ctx);
       }
     }
+    this.clipToPlot(plot, existing);
     const aboveLayer = this.renderer.group(
       { class: "facet-axes-above" },
       this.renderer.root
@@ -5357,6 +5462,17 @@ var FacetViz = class _FacetViz {
       const valuePx = inverted ? plot.width : plot.height;
       const padY = markerR / Math.max(1, valuePx) * (vMax - vMin || 1);
       if (valueAxisOpts.min === void 0) vMin -= padY;
+      if (valueAxisOpts.max === void 0) vMax += padY;
+    }
+    const hasOutsideLabel = primaryVisible.some((s) => {
+      const dl = s.options.dataLabels;
+      if (!dl?.enabled) return false;
+      return dl.position === void 0 || dl.position === "outside" || dl.position === "top";
+    });
+    if (hasOutsideLabel) {
+      const valueAxisOpts = inverted ? xAxisOpts : yAxisOpts;
+      const valuePx = inverted ? plot.width : plot.height;
+      const padY = 18 / Math.max(1, valuePx) * (vMax - vMin || 1);
       if (valueAxisOpts.max === void 0) vMax += padY;
     }
     const datetime = xAxisOpts.type === "datetime" && !categories;

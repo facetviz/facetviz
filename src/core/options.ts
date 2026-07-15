@@ -490,6 +490,13 @@ export interface ChartOptions {
     /** Auto re-render when the container resizes (default true). */
     reflow?: boolean;
     /**
+     * Progressively drop chrome as the container shrinks, rather than
+     * rendering an unreadably cramped chart: data labels go first, then axis
+     * labels, then the axis lines themselves. Default `true`; pass `false`
+     * to always render every element regardless of size.
+     */
+    responsive?: boolean;
+    /**
      * High-volume "boost" rendering. Cartesian point/line series with more than
      * `threshold` points are drawn to a single canvas overlay instead of one SVG
      * node per point, and lines are min/max-decimated to the pixel resolution.
