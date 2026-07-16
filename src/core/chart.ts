@@ -264,7 +264,7 @@ export class FacetViz {
       });
     }
 
-    const spacing = this.options.chart?.spacing ?? [16, 16, 16, 16];
+    const spacing = this.options.chart?.spacing ?? [5, 5, 5, 5];
     let top = spacing[0];
     top += this.renderTitles(top);
 
