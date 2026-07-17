@@ -11,7 +11,7 @@
  *          East          │        West           ← outer dimension (row 1)
  */
 
-import type { Renderer } from "./renderer.js";
+import type { Renderer, Attrs } from "./renderer.js";
 import type { CategoryScale } from "./scale.js";
 import type { Rect } from "./axis.js";
 import { FONTS, LAYOUT } from "./defaults.js";
@@ -26,8 +26,15 @@ export interface NestedAxisConfig {
   /** The unique category keys the scale was built from (parallel to leaves). */
   keys: string[];
   lineColor?: string;
-  /** Rotate the innermost (leaf) tier's labels — same convention as `AxisOptions.labels.rotation`. */
-  labels?: { rotation?: number };
+  /**
+   * Rotate the innermost (leaf) tier's labels — same convention as
+   * `AxisOptions.labels.rotation`. `enabled: false` (e.g. from the chart's
+   * responsive shrink handling) hides every tier's label text; the axis
+   * baseline and group dividers still draw unless `lineWidth: 0` too.
+   */
+  labels?: { rotation?: number; enabled?: boolean };
+  /** `0` hides the baseline and group-divider lines (gridlines are separate, see `gridLineWidth`). */
+  lineWidth?: number;
   /**
    * Draw a gridline through the plot at each leaf position — same opt-in
    * convention as the plain axis's category-axis gridlines (off by default;
@@ -97,6 +104,32 @@ export function nestedInnerRotationExtent(
 export class NestedAxis {
   constructor(private cfg: NestedAxisConfig) {}
 
+  private get labelsOn(): boolean {
+    return this.cfg.labels?.enabled !== false;
+  }
+
+  private get linesOn(): boolean {
+    return this.cfg.lineWidth !== 0;
+  }
+
+  /** No-ops (and returns undefined) when labels are switched off. */
+  private text(
+    text: string,
+    x: number,
+    y: number,
+    attrs: Attrs,
+    g: SVGGElement,
+  ): SVGTextElement | undefined {
+    if (!this.labelsOn) return undefined;
+    return this.cfg.renderer.text(text, x, y, attrs, g);
+  }
+
+  /** No-ops when the axis's own lines (baseline, dividers) are switched off. */
+  private line(attrs: Attrs, g: SVGGElement): void {
+    if (!this.linesOn) return;
+    this.cfg.renderer.create("line", attrs, g);
+  }
+
   render(parent: SVGGElement): void {
     const g = this.cfg.renderer.group(
       { class: "facet-axis facet-axis-nested" },
@@ -134,7 +167,7 @@ export class NestedAxis {
 
   /** All tiers on one side (below or above the plot). */
   private renderStacked(g: SVGGElement, top: boolean): void {
-    const { renderer, scale, plot, leaves, keys } = this.cfg;
+    const { scale, plot, leaves, keys } = this.cfg;
     const color = this.cfg.lineColor ?? THEME.axis.lineColor;
     const levels = leaves[0]?.length ?? 0;
     const dir = top ? -1 : 1; // +1 grows rows downward, -1 upward
@@ -151,19 +184,11 @@ export class NestedAxis {
       return sum;
     };
     const leafCenter = (i: number) => scale.scale(keys[i]);
-
     const bandHalf = scale.fullStep() / 2;
     const bottomY = plot.y + plot.height;
 
-    renderer.create(
-      "line",
-      {
-        x1: plot.x,
-        y1: baseY,
-        x2: plot.x + plot.width,
-        y2: baseY,
-        stroke: color,
-      },
+    this.line(
+      { x1: plot.x, y1: baseY, x2: plot.x + plot.width, y2: baseY, stroke: color },
       g,
     );
 
@@ -173,10 +198,18 @@ export class NestedAxis {
       const rowStart = baseY + dir * (LAYOUT.tickLength + rowOffset(row));
       const segments = this.segmentsForLevel(leaves, level);
       const labelY = rowStart + dir * (rotated ? 8 : 12);
+      // Only the innermost, unrotated row can overlap from sheer leaf count
+      // as the chart narrows — rotated labels already dodge that, and outer
+      // tiers have far fewer, wider segments. Dividers below still use the
+      // full, unthinned `segments` — only the label text thins out.
+      const labelSegs =
+        row === 0 && !rotated
+          ? this.thinnedInnerSegments(scale.bandwidth())
+          : segments;
 
-      for (const seg of segments) {
+      for (const seg of labelSegs) {
         const cx = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2;
-        const el = renderer.text(
+        const el = this.text(
           seg.label,
           cx,
           labelY,
@@ -187,15 +220,13 @@ export class NestedAxis {
           },
           g,
         );
-        if (rotated) el.setAttribute("transform", `rotate(${rotation} ${cx} ${labelY})`);
+        if (rotated && el) el.setAttribute("transform", `rotate(${rotation} ${cx} ${labelY})`);
       }
 
       if (level < levels - 1) {
-        const bandHalf = scale.fullStep() / 2;
         for (let s = 1; s < segments.length; s++) {
           const bx = leafCenter(segments[s].startLeaf) - bandHalf;
-          renderer.create(
-            "line",
+          this.line(
             {
               x1: bx,
               y1: baseY,
@@ -215,8 +246,7 @@ export class NestedAxis {
     const outer = this.segmentsForLevel(leaves, 0);
     for (let s = 1; s < outer.length; s++) {
       const bx = leafCenter(outer[s].startLeaf) - bandHalf;
-      renderer.create(
-        "line",
+      this.line(
         {
           x1: bx,
           y1: topExtent,
@@ -236,7 +266,7 @@ export class NestedAxis {
    * separating each top-level group.
    */
   private renderSplit(g: SVGGElement): void {
-    const { renderer, scale, plot, leaves, keys } = this.cfg;
+    const { scale, plot, leaves, keys } = this.cfg;
     const color = this.cfg.lineColor ?? THEME.axis.lineColor;
     const levels = leaves[0]?.length ?? 0;
     const rowH = 18;
@@ -245,22 +275,18 @@ export class NestedAxis {
     const bottomY = plot.y + plot.height;
 
     // Bottom axis line + innermost dimension labels.
-    renderer.create(
-      "line",
-      {
-        x1: plot.x,
-        y1: bottomY,
-        x2: plot.x + plot.width,
-        y2: bottomY,
-        stroke: color,
-      },
+    this.line(
+      { x1: plot.x, y1: bottomY, x2: plot.x + plot.width, y2: bottomY, stroke: color },
       g,
     );
     const rotation = this.cfg.labels?.rotation ?? 0;
     const innerLabelY = bottomY + LAYOUT.tickLength + (rotation ? 8 : 12);
-    for (const seg of this.segmentsForLevel(leaves, levels - 1)) {
+    const innerSegments = rotation
+      ? this.segmentsForLevel(leaves, levels - 1)
+      : this.thinnedInnerSegments(scale.bandwidth());
+    for (const seg of innerSegments) {
       const cx = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2;
-      const el = renderer.text(
+      const el = this.text(
         seg.label,
         cx,
         innerLabelY,
@@ -270,7 +296,7 @@ export class NestedAxis {
         },
         g,
       );
-      if (rotation) el.setAttribute("transform", `rotate(${rotation} ${cx} ${innerLabelY})`);
+      if (rotation && el) el.setAttribute("transform", `rotate(${rotation} ${cx} ${innerLabelY})`);
     }
 
     // Outer grouping dimensions on top (outermost furthest up).
@@ -279,7 +305,7 @@ export class NestedAxis {
       const labelY = plot.y - LAYOUT.tickLength - rowFromTop * rowH - 4;
       for (const seg of this.segmentsForLevel(leaves, level)) {
         const cx = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2;
-        renderer.text(
+        this.text(
           seg.label,
           cx,
           labelY,
@@ -298,8 +324,7 @@ export class NestedAxis {
     const outer = this.segmentsForLevel(leaves, 0);
     for (let s = 1; s < outer.length; s++) {
       const bx = leafCenter(outer[s].startLeaf) - bandHalf;
-      renderer.create(
-        "line",
+      this.line(
         {
           x1: bx,
           y1: topExtent,
@@ -321,7 +346,7 @@ export class NestedAxis {
    * row regardless of label length).
    */
   private renderStackedVertical(g: SVGGElement, right: boolean): void {
-    const { renderer, scale, plot, leaves, keys } = this.cfg;
+    const { scale, plot, leaves, keys } = this.cfg;
     const color = this.cfg.lineColor ?? THEME.axis.lineColor;
     const levels = leaves[0]?.length ?? 0;
     const dir = right ? 1 : -1; // +1 grows rightward, -1 leftward
@@ -329,15 +354,8 @@ export class NestedAxis {
     const leafCenter = (i: number) => scale.scale(keys[i]);
     const bandHalf = scale.fullStep() / 2;
 
-    renderer.create(
-      "line",
-      {
-        x1: baseX,
-        y1: plot.y,
-        x2: baseX,
-        y2: plot.y + plot.height,
-        stroke: color,
-      },
+    this.line(
+      { x1: baseX, y1: plot.y, x2: baseX, y2: plot.y + plot.height, stroke: color },
       g,
     );
 
@@ -350,9 +368,8 @@ export class NestedAxis {
       const labelX = colStart + dir * (w / 2);
 
       for (const seg of segments) {
-        const cy =
-          (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2 + 4;
-        renderer.text(
+        const cy = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2 + 4;
+        this.text(
           seg.label,
           labelX,
           cy,
@@ -368,8 +385,7 @@ export class NestedAxis {
       if (level < levels - 1) {
         for (let s = 1; s < segments.length; s++) {
           const by = leafCenter(segments[s].startLeaf) - bandHalf;
-          renderer.create(
-            "line",
+          this.line(
             {
               x1: baseX,
               y1: by,
@@ -393,16 +409,8 @@ export class NestedAxis {
     const outer = this.segmentsForLevel(leaves, 0);
     for (let s = 1; s < outer.length; s++) {
       const by = leafCenter(outer[s].startLeaf) - bandHalf;
-      renderer.create(
-        "line",
-        {
-          x1: baseX,
-          y1: by,
-          x2: farEdge,
-          y2: by,
-          stroke: color,
-          "stroke-width": 1,
-        },
+      this.line(
+        { x1: baseX, y1: by, x2: farEdge, y2: by, stroke: color, "stroke-width": 1 },
         g,
       );
     }
@@ -414,7 +422,7 @@ export class NestedAxis {
    * right, full-width horizontal lines separating each top-level group.
    */
   private renderSplitVertical(g: SVGGElement): void {
-    const { renderer, scale, plot, leaves, keys } = this.cfg;
+    const { scale, plot, leaves, keys } = this.cfg;
     const color = this.cfg.lineColor ?? THEME.axis.lineColor;
     const levels = leaves[0]?.length ?? 0;
     const leafCenter = (i: number) => scale.scale(keys[i]);
@@ -423,21 +431,15 @@ export class NestedAxis {
     const colWidths = nestedLevelWidths(leaves);
 
     // Left axis line + innermost dimension labels.
-    renderer.create(
-      "line",
-      {
-        x1: plot.x,
-        y1: plot.y,
-        x2: plot.x,
-        y2: plot.y + plot.height,
-        stroke: color,
-      },
+    this.line(
+      { x1: plot.x, y1: plot.y, x2: plot.x, y2: plot.y + plot.height, stroke: color },
       g,
     );
     const innerW = colWidths[levels - 1];
-    for (const seg of this.segmentsForLevel(leaves, levels - 1)) {
+    const innerSegments = this.segmentsForLevel(leaves, levels - 1);
+    for (const seg of innerSegments) {
       const cy = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2 + 4;
-      renderer.text(
+      this.text(
         seg.label,
         plot.x - LAYOUT.tickLength - innerW / 2,
         cy,
@@ -452,9 +454,8 @@ export class NestedAxis {
       const w = colWidths[level];
       const labelX = rightX + LAYOUT.tickLength + offset + w / 2;
       for (const seg of this.segmentsForLevel(leaves, level)) {
-        const cy =
-          (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2 + 4;
-        renderer.text(
+        const cy = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2 + 4;
+        this.text(
           seg.label,
           labelX,
           cy,
@@ -475,19 +476,40 @@ export class NestedAxis {
     const outer = this.segmentsForLevel(leaves, 0);
     for (let s = 1; s < outer.length; s++) {
       const by = leafCenter(outer[s].startLeaf) - bandHalf;
-      renderer.create(
-        "line",
-        {
-          x1: leftExtent,
-          y1: by,
-          x2: rightExtent,
-          y2: by,
-          stroke: color,
-          "stroke-width": 1,
-        },
+      this.line(
+        { x1: leftExtent, y1: by, x2: rightExtent, y2: by, stroke: color, "stroke-width": 1 },
         g,
       );
     }
+  }
+
+  /**
+   * Which of the innermost tier's segments to actually draw, thinning out
+   * ("every Nth") when they'd otherwise overlap — the same idea the plain
+   * axis uses for a cramped category axis. With an outer dimension, the
+   * "every Nth" counter resets at each outer-group boundary so the kept/
+   * skipped pattern reads the same within every group instead of sliding
+   * across group lines, which would otherwise make it look like different,
+   * arbitrary leaves are missing from each group.
+   */
+  private thinnedInnerSegments(bandPx: number): Segment[] {
+    const { leaves } = this.cfg;
+    const levels = leaves[0]?.length ?? 0;
+    const inner = this.segmentsForLevel(leaves, levels - 1);
+    if (bandPx <= 0 || inner.length < 2) return inner;
+    const maxLen = inner.reduce((m, s) => Math.max(m, s.label.length), 0);
+    const estW = maxLen * 6.2 + 6;
+    const step = estW > bandPx ? Math.ceil(estW / bandPx) : 1;
+    if (step <= 1) return inner;
+    if (levels <= 1) return inner.filter((_, i) => i % step === 0);
+    const outer = this.segmentsForLevel(leaves, 0);
+    let outerIdx = 0;
+    return inner.filter((seg) => {
+      while (outerIdx < outer.length - 1 && seg.startLeaf > outer[outerIdx].endLeaf) {
+        outerIdx++;
+      }
+      return (seg.startLeaf - outer[outerIdx].startLeaf) % step === 0;
+    });
   }
 
   /** Contiguous runs of leaves sharing the same prefix up to `level`. */

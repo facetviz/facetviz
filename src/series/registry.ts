@@ -34,6 +34,9 @@ import { CalendarSeries } from './calendar.js';
 import { GanttSeries } from './gantt.js';
 import { RadarSeries } from './radar.js';
 import { MarimekkoSeries } from './marimekko.js';
+import { LollipopSeries } from './lollipop.js';
+import { SlopeSeries } from './slope.js';
+import { SparklineSeries } from './sparkline.js';
 
 type SeriesCtor = new (options: SeriesOptions, categories?: string[]) => BaseSeries;
 
@@ -53,6 +56,9 @@ const REGISTRY: Record<ChartType, SeriesCtor> = {
   jitter: ScatterSeries,
   boxplot: BoxplotSeries,
   dumbbell: DumbbellSeries,
+  lollipop: LollipopSeries,
+  slope: SlopeSeries,
+  sparkline: SparklineSeries,
   // Butterfly is laid out by the chart (back-to-back); series just hold data.
   butterfly: ColumnSeries,
   columnrange: ColumnRangeSeries,

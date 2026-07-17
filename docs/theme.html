@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FacetViz Theme Builder</title>
+  <style>
+    :root {
+      --bg: #f5f6fb; --panel: #ffffff; --border: #e7e8f0; --text: #16181d;
+      --muted: #6b7280; --accent: #6366f1; --accent-2: #8b5cf6; --accent-fg: #fff;
+      --editor-bg: #0d1117; --editor-fg: #e6edf7;
+      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg:#0b0e16; --panel:#141926; --border:#232a3b; --text:#e7ecf6; --muted:#97a0b5; }
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { font-family: var(--sans); background: var(--bg); color: var(--text); display: flex; flex-direction: column; }
+
+    header {
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      padding: 9px 16px; background: color-mix(in srgb, var(--panel) 88%, transparent);
+      backdrop-filter: saturate(1.4) blur(10px); border-bottom: 1px solid var(--border);
+    }
+    .brand { display: flex; align-items: center; gap: 9px; font-weight: 800; font-size: 16px; letter-spacing: -.4px; color: var(--text); text-decoration: none; }
+    .brand .mark { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; color: #fff; font-size: 14px; font-weight: 800; background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+    .topnav { display: flex; gap: 2px; }
+    .topnav a { color: var(--muted); font-size: 13.5px; font-weight: 600; padding: 6px 10px; border-radius: 8px; text-decoration: none; }
+    .topnav a:hover { color: var(--text); }
+    .topnav a.active { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+    header .spacer { flex: 1; }
+    select, button, input[type="text"] {
+      font-family: var(--sans); font-size: 13px; padding: 7px 12px; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer;
+    }
+    button.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--accent-fg); border: 0; font-weight: 600; }
+    button:hover { filter: brightness(0.97); }
+
+    main { flex: 1; display: grid; grid-template-columns: minmax(300px, 34%) 1fr; min-height: 0; }
+    .pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+    .pane.left { border-right: 1px solid var(--border); overflow-y: auto; }
+    .pane-head {
+      display: flex; align-items: center; gap: 10px; padding: 8px 14px;
+      font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); background: var(--panel);
+      position: sticky; top: 0; z-index: 2;
+    }
+
+    .controls { padding: 14px 16px 40px; }
+    .group { margin-bottom: 22px; }
+    .group h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin: 0 0 10px; }
+    .row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .row label { flex: 1; font-size: 13px; color: var(--text); }
+    .row input[type="color"] { width: 36px; height: 28px; padding: 2px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); cursor: pointer; }
+    .row select { flex: 1; }
+    .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+    .swatch-item { position: relative; }
+    .swatch-item input[type="color"] { width: 32px; height: 32px; }
+    .swatch-item .rm {
+      position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; border-radius: 50%;
+      background: var(--panel); border: 1px solid var(--border); font-size: 10px; line-height: 1;
+      padding: 0; display: grid; place-items: center; color: var(--muted);
+    }
+    .swatch-add {
+      width: 32px; height: 32px; border-radius: 8px; border: 1px dashed var(--border);
+      background: transparent; color: var(--muted); font-size: 16px; display: grid; place-items: center; padding: 0;
+    }
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 20px; }
+    .btn-row button { font-size: 12px; padding: 6px 10px; }
+
+    .preview-wrap { flex: 1; overflow: auto; padding: 18px; display: flex; flex-direction: column; gap: 16px; }
+    .preview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+    .chart-card { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; height: 260px; }
+    #code-wrap { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    #code-wrap .pane-head { position: static; }
+    #code {
+      margin: 0; padding: 14px 16px; background: var(--editor-bg); color: var(--editor-fg);
+      font-family: var(--mono); font-size: 12.5px; line-height: 1.55; overflow: auto; max-height: 340px;
+    }
+    .hint { font-size: 11.5px; color: var(--muted); padding: 2px 2px 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="./"><span class="mark">F</span> FacetViz</a>
+    <nav class="topnav">
+      <a href="./">Guide</a>
+      <a href="./examples.html">Examples</a>
+      <a href="./api.html">API</a>
+      <a href="./theme.html" class="active">Theme</a>
+    </nav>
+    <div class="spacer"></div>
+    <a class="btn primary" href="./playground.html" style="text-decoration:none; display:inline-flex; align-items:center;">▶ Playground</a>
+  </header>
+
+  <main>
+    <section class="pane left">
+      <div class="pane-head">
+        <span>theme controls</span>
+      </div>
+      <div class="controls">
+        <div class="group">
+          <h3>Start from</h3>
+          <div class="row">
+            <select id="baseSelect">
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+              <option value="high-contrast">High contrast</option>
+              <option value="pastel">Pastel</option>
+            </select>
+          </div>
+          <div class="btn-row">
+            <button id="resetBtn">Reset to base</button>
+            <button id="randomBtn">Randomize palette</button>
+          </div>
+        </div>
+
+        <div class="group">
+          <h3>Palette</h3>
+          <div class="swatches" id="paletteSwatches"></div>
+          <p class="hint">Series colors, cycled in order. Click <b>+</b> to add one.</p>
+        </div>
+
+        <div class="group">
+          <h3>Background</h3>
+          <div class="row"><label>Chart background</label><input type="color" id="c-backgroundColor" /></div>
+        </div>
+
+        <div class="group">
+          <h3>Title &amp; subtitle</h3>
+          <div class="row"><label>Title color</label><input type="color" id="c-title-color" /></div>
+          <div class="row"><label>Subtitle color</label><input type="color" id="c-subtitle-color" /></div>
+        </div>
+
+        <div class="group">
+          <h3>Axis</h3>
+          <div class="row"><label>Label color</label><input type="color" id="c-axis-labelColor" /></div>
+          <div class="row"><label>Title color</label><input type="color" id="c-axis-titleColor" /></div>
+          <div class="row"><label>Line color</label><input type="color" id="c-axis-lineColor" /></div>
+          <div class="row"><label>Gridline color</label><input type="color" id="c-axis-gridLineColor" /></div>
+        </div>
+
+        <div class="group">
+          <h3>Labels &amp; legend</h3>
+          <div class="row"><label>Data label color</label><input type="color" id="c-dataLabel-color" /></div>
+          <div class="row"><label>Legend color</label><input type="color" id="c-legend-color" /></div>
+          <div class="row"><label>Legend (hidden item)</label><input type="color" id="c-legend-hiddenColor" /></div>
+        </div>
+
+        <div class="group">
+          <h3>Tooltip</h3>
+          <div class="row"><label>Background</label><input type="color" id="c-tooltip-backgroundColor" /></div>
+          <div class="row"><label>Border</label><input type="color" id="c-tooltip-borderColor" /></div>
+          <div class="row"><label>Text color</label><input type="color" id="c-tooltip-color" /></div>
+        </div>
+
+        <div class="group">
+          <h3>Neutral</h3>
+          <div class="row"><label>Connector / neutral mark</label><input type="color" id="c-neutralColor" /></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="pane right">
+      <div class="pane-head"><span>live preview</span></div>
+      <div class="preview-wrap">
+        <div class="preview-grid">
+          <div class="chart-card" id="p-column"></div>
+          <div class="chart-card" id="p-line"></div>
+          <div class="chart-card" id="p-donut"></div>
+          <div class="chart-card" id="p-dumbbell"></div>
+        </div>
+        <div id="code-wrap">
+          <div class="pane-head">
+            <span>theme config — paste into any chart's <code>theme</code> option</span>
+            <button id="copyBtn" style="margin-left:auto; padding:4px 10px; font-size:11.5px;">Copy</button>
+          </div>
+          <pre id="code"></pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module">
+    import { FacetViz } from './lib/facetviz.js';
+
+    // Colours a custom theme can override — mirrors src/core/theme.ts's Theme
+    // interface. `path` is dot-notation into the theme object; `input` is the
+    // <input type="color"> element id.
+    const FIELDS = [
+      ['backgroundColor', 'c-backgroundColor'],
+      ['title.color', 'c-title-color'],
+      ['subtitle.color', 'c-subtitle-color'],
+      ['axis.labelColor', 'c-axis-labelColor'],
+      ['axis.titleColor', 'c-axis-titleColor'],
+      ['axis.lineColor', 'c-axis-lineColor'],
+      ['axis.gridLineColor', 'c-axis-gridLineColor'],
+      ['dataLabel.color', 'c-dataLabel-color'],
+      ['legend.color', 'c-legend-color'],
+      ['legend.hiddenColor', 'c-legend-hiddenColor'],
+      ['tooltip.backgroundColor', 'c-tooltip-backgroundColor'],
+      ['tooltip.borderColor', 'c-tooltip-borderColor'],
+      ['tooltip.color', 'c-tooltip-color'],
+      ['neutralColor', 'c-neutralColor'],
+    ];
+
+    // Built-in bases, inlined (kept in sync with src/core/theme.ts) so this
+    // page works standalone without reaching into library internals.
+    const BASES = {
+      light: {
+        colors: ['#2caffe','#544fc5','#00e272','#fe6a35','#6b8abc','#d568fb','#feb56a','#91e8e1','#f45b5b','#8085e9'],
+        backgroundColor: '#ffffff',
+        title: { color: '#333333' }, subtitle: { color: '#666666' },
+        axis: { labelColor: '#666666', titleColor: '#444444', lineColor: '#ccd6eb', gridLineColor: '#e6e6e6' },
+        dataLabel: { color: '#333333' },
+        legend: { color: '#333333', hiddenColor: '#999999' },
+        tooltip: { backgroundColor: '#ffffff', borderColor: '#cccccc', color: '#333333' },
+        neutralColor: '#b0b0b0',
+      },
+      dark: {
+        colors: ['#2caffe','#00e272','#fe6a35','#d568fb','#feb56a','#2ee0ca','#8a7bff','#fa4b6b','#91e8e1','#a6c1ff'],
+        backgroundColor: '#1e1e2e',
+        title: { color: '#f5f5fa' }, subtitle: { color: '#a6a6bd' },
+        axis: { labelColor: '#a6a6bd', titleColor: '#c8c8dc', lineColor: '#40405a', gridLineColor: '#2c2c40' },
+        dataLabel: { color: '#e8e8f2' },
+        legend: { color: '#d5d5e5', hiddenColor: '#5a5a70' },
+        tooltip: { backgroundColor: '#262636', borderColor: '#4a4a64', color: '#f0f0f8' },
+        neutralColor: '#5a5a72',
+      },
+      'high-contrast': {
+        colors: ['#0050ef','#e3170a','#00a300','#a700d8','#ff8c00','#008a8a','#c8006e','#5a3d00'],
+        backgroundColor: '#ffffff',
+        title: { color: '#000000' }, subtitle: { color: '#222222' },
+        axis: { labelColor: '#000000', titleColor: '#000000', lineColor: '#000000', gridLineColor: '#bbbbbb' },
+        dataLabel: { color: '#000000' },
+        legend: { color: '#000000', hiddenColor: '#888888' },
+        tooltip: { backgroundColor: '#ffffff', borderColor: '#000000', color: '#000000' },
+        neutralColor: '#555555',
+      },
+      pastel: {
+        colors: ['#8ecae6','#ffb5a7','#b7e4c7','#ffd6a5','#cdb4db','#a2d2ff','#fde4cf','#bde0fe'],
+        backgroundColor: '#fbfbfd',
+        title: { color: '#4a4a5a' }, subtitle: { color: '#8a8a9a' },
+        axis: { labelColor: '#8a8a9a', titleColor: '#6a6a7a', lineColor: '#dfe3ec', gridLineColor: '#eef0f5' },
+        dataLabel: { color: '#5a5a6a' },
+        legend: { color: '#5a5a6a', hiddenColor: '#b5b5c5' },
+        tooltip: { backgroundColor: '#ffffff', borderColor: '#dfe3ec', color: '#4a4a5a' },
+        neutralColor: '#c7ccd6',
+      },
+    };
+
+    const get = (obj, path) => path.split('.').reduce((o, k) => (o ? o[k] : undefined), obj);
+    const set = (obj, path, val) => {
+      const keys = path.split('.');
+      let o = obj;
+      for (let i = 0; i < keys.length - 1; i++) o = (o[keys[i]] ??= {});
+      o[keys[keys.length - 1]] = val;
+    };
+
+    let palette = [];
+    let current = {};
+    const baseSelect = document.getElementById('baseSelect');
+    const paletteEl = document.getElementById('paletteSwatches');
+    const codeEl = document.getElementById('code');
+
+    function loadBase(name) {
+      current = JSON.parse(JSON.stringify(BASES[name]));
+      palette = [...current.colors];
+      for (const [path, id] of FIELDS) {
+        document.getElementById(id).value = get(current, path);
+      }
+      renderPalette();
+      renderAll();
+    }
+
+    function renderPalette() {
+      paletteEl.innerHTML = '';
+      palette.forEach((color, i) => {
+        const item = document.createElement('div');
+        item.className = 'swatch-item';
+        const input = document.createElement('input');
+        input.type = 'color'; input.value = color;
+        input.addEventListener('input', () => { palette[i] = input.value; renderAll(); });
+        const rm = document.createElement('button');
+        rm.className = 'rm'; rm.textContent = '×'; rm.title = 'Remove';
+        rm.addEventListener('click', () => { palette.splice(i, 1); renderPalette(); renderAll(); });
+        item.appendChild(input); item.appendChild(rm);
+        paletteEl.appendChild(item);
+      });
+      const add = document.createElement('button');
+      add.className = 'swatch-add'; add.textContent = '+'; add.title = 'Add color';
+      add.addEventListener('click', () => {
+        palette.push('#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0'));
+        renderPalette(); renderAll();
+      });
+      paletteEl.appendChild(add);
+    }
+
+    function currentTheme() {
+      const theme = JSON.parse(JSON.stringify(current));
+      theme.colors = palette;
+      for (const [path, id] of FIELDS) set(theme, path, document.getElementById(id).value);
+      return theme;
+    }
+
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+
+    // One persistent chart instance per card, created once and updated
+    // thereafter (`chart.update({ theme })`) — constructing a fresh
+    // `FacetViz` on every colour tweak would mount a new <svg> into the same
+    // container each time without removing the old one, stacking charts and
+    // making the card grow without bound.
+    const previewCharts = [
+      () => new FacetViz(document.getElementById('p-column'), {
+        chart: { type: 'column' },
+        title: { text: 'Column' },
+        xAxis: { categories: months },
+        series: [
+          { name: 'North', data: [5, 8, 6, 9, 7, 6] },
+          { name: 'South', data: [3, 4, 5, 6, 4, 5] },
+        ],
+      }),
+      () => new FacetViz(document.getElementById('p-line'), {
+        chart: { type: 'line' },
+        title: { text: 'Line' },
+        xAxis: { categories: months },
+        series: [
+          { name: 'A', marker: { enabled: true }, data: [4, 6, 5, 8, 7, 9] },
+          { name: 'B', type: 'spline', data: [7, 5, 6, 4, 6, 5] },
+        ],
+      }),
+      () => new FacetViz(document.getElementById('p-donut'), {
+        chart: { type: 'donut' },
+        title: { text: 'Donut' },
+        series: [{ name: 'Share', dataLabels: { enabled: true }, data: [
+          { name: 'Chrome', y: 48 }, { name: 'Safari', y: 19 }, { name: 'Edge', y: 12 },
+          { name: 'Firefox', y: 9 }, { name: 'Other', y: 12 },
+        ] }],
+      }),
+      () => new FacetViz(document.getElementById('p-dumbbell'), {
+        chart: { type: 'dumbbell' },
+        title: { text: 'Dumbbell' },
+        xAxis: { categories: ['A', 'B', 'C', 'D'] },
+        series: [{ name: 'Change', data: [['A', 20, 45], ['B', 35, 30], ['C', 10, 55], ['D', 40, 60]] }],
+      }),
+    ].map((factory) => factory());
+
+    function renderAll() {
+      const theme = currentTheme();
+      codeEl.textContent = 'theme: ' + JSON.stringify(theme, null, 2);
+      for (const chart of previewCharts) chart.update({ theme });
+    }
+
+    for (const [, id] of FIELDS) {
+      document.getElementById(id).addEventListener('input', renderAll);
+    }
+    baseSelect.addEventListener('change', () => loadBase(baseSelect.value));
+    document.getElementById('resetBtn').addEventListener('click', () => loadBase(baseSelect.value));
+    document.getElementById('randomBtn').addEventListener('click', () => {
+      palette = palette.map(() => '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0'));
+      renderPalette();
+      renderAll();
+    });
+    document.getElementById('copyBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('copyBtn');
+      try {
+        await navigator.clipboard.writeText(codeEl.textContent);
+        const old = btn.textContent; btn.textContent = 'Copied ✓';
+        setTimeout(() => { btn.textContent = old; }, 1200);
+      } catch (e) { /* clipboard permission denied — silently ignore */ }
+    });
+
+    loadBase('light');
+  </script>
+</body>
+</html>

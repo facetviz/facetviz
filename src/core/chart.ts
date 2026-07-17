@@ -173,18 +173,30 @@ export class FacetViz {
 
   /**
    * Progressive degradation as the chart shrinks: past size thresholds, drop
-   * data labels, then axis labels, then axis lines — rather than rendering
-   * an unreadably cramped chart. Overrides `this.series`/`this.options`
-   * (both already mutable per-instance state) for the duration of this
-   * render only; returns a function that restores the originals.
+   * data labels, then the legend, then axis titles, then axis tick labels,
+   * then finally the axis lines themselves — leaving just gridlines and the
+   * series geometry at the smallest sizes — rather than rendering an
+   * unreadably cramped chart. Overrides `this.series`/`this.options` (both
+   * already mutable per-instance state) for the duration of this render
+   * only; returns a function that restores the originals.
    */
   private applyResponsiveOverrides(): () => void {
     if (this.options.chart?.responsive === false) return () => {};
     const shortSide = Math.min(this.width, this.height);
     const hideLabels = shortSide < 260;
-    const hideAxisLabels = shortSide < 180;
-    const hideAxisLines = shortSide < 120;
-    if (!hideLabels && !hideAxisLabels && !hideAxisLines) return () => {};
+    const hideLegend = shortSide < 220;
+    const hideAxisTitles = shortSide < 190;
+    const hideAxisLabels = shortSide < 150;
+    const hideAxisLines = shortSide < 110;
+    if (
+      !hideLabels &&
+      !hideLegend &&
+      !hideAxisTitles &&
+      !hideAxisLabels &&
+      !hideAxisLines
+    ) {
+      return () => {};
+    }
 
     const restores: Array<() => void> = [];
 
@@ -202,8 +214,17 @@ export class FacetViz {
       });
     }
 
-    if (hideAxisLabels || hideAxisLines) {
+    if (hideLegend && this.options.legend?.enabled !== false) {
+      const originalLegend = this.options.legend;
+      this.options.legend = { ...originalLegend, enabled: false };
+      restores.push(() => {
+        this.options.legend = originalLegend;
+      });
+    }
+
+    if (hideAxisTitles || hideAxisLabels || hideAxisLines) {
       const patch: Partial<AxisOptions> = {};
+      if (hideAxisTitles) patch.title = { text: undefined };
       if (hideAxisLabels) patch.labels = { enabled: false };
       if (hideAxisLines) patch.lineWidth = 0;
       const overrideAxis = (
@@ -315,10 +336,14 @@ export class FacetViz {
       for (const panel of panels) this.renderPanel(panel);
     }
 
-    // Draw the legend in its reserved area.
+    // Draw the legend in its reserved area. For `bottom`, anchor to the
+    // actual end of the plot/axis content (`outer.bottom`) rather than a
+    // fixed offset from the container's bottom edge — otherwise any slack
+    // in the axis's own reserve (e.g. a short axis title) shows up as dead
+    // space between it and the legend instead of just shrinking the chart.
     if (showLegend) {
       let lx = outer.x;
-      let ly = this.height - spacing[2] - LAYOUT.legendHeight + 12;
+      let ly = outer.y + outer.height + 14;
       let lw = outer.width;
       let lh = LAYOUT.legendHeight;
       if (legendPlace === "top") {
@@ -358,7 +383,12 @@ export class FacetViz {
     restoreResponsive();
   }
 
-  /** Set root ARIA role + a <title>/<desc> for screen readers. */
+  /**
+   * Set root ARIA role + label for screen readers. Deliberately not using an
+   * SVG <title> element here — browsers render that as a native hover
+   * tooltip over the whole chart, which is a worse experience than no
+   * tooltip. aria-label carries the same accessible name without it.
+   */
   private applyAccessibility(): void {
     if (this.options.accessibility?.enabled === false) return;
     const root = this.renderer.root;
@@ -368,12 +398,6 @@ export class FacetViz {
       `${this.options.chart?.type ?? "chart"} chart with ${this.series.length} series`;
     root.setAttribute("role", "img");
     root.setAttribute("aria-label", label);
-    const title = document.createElementNS(
-      "http://www.w3.org/2000/svg",
-      "title",
-    );
-    title.textContent = label;
-    root.insertBefore(title, root.firstChild);
   }
 
   /** Enter animation: bars grow from the baseline, lines draw in, the rest fade. */
@@ -772,7 +796,13 @@ export class FacetViz {
     const rotExtra = rot
       ? Math.abs(Math.sin((rot * Math.PI) / 180)) * labelW
       : 0;
-    return LAYOUT.defaultBottomAxisHeight + (title ? 32 : 0) + rotExtra;
+    // The title's own placement (see Axis#drawTitle) already reaches past
+    // the tick + label band via `tickLength + labelExtent + 14`, which is
+    // roughly what `defaultBottomAxisHeight` alone already covers — so this
+    // only needs a small top-up for the title's own text height, not that
+    // whole distance again (that used to double-count it and leave a big
+    // gap below the title before anything else, like a legend, started).
+    return LAYOUT.defaultBottomAxisHeight + (title ? 8 : 0) + rotExtra;
   }
 
   private renderPanel(panel: PanelSpec): void {
@@ -1249,7 +1279,7 @@ export class FacetViz {
     );
     if (
       (primaryVisible.length ? primaryVisible : allVisible).some((s) =>
-        ["column", "bar", "area", "areaspline"].includes(s.type),
+        ["column", "bar", "area", "areaspline", "lollipop"].includes(s.type),
       )
     ) {
       vMin = Math.min(vMin, 0);
@@ -1270,7 +1300,7 @@ export class FacetViz {
       [vMin2, vMax2] = this.valueDomain(secondaryVisible);
       if (
         secondaryVisible.some((s) =>
-          ["column", "bar", "area", "areaspline"].includes(s.type),
+          ["column", "bar", "area", "areaspline", "lollipop"].includes(s.type),
         )
       ) {
         vMin2 = Math.min(vMin2, 0);
@@ -1822,6 +1852,7 @@ export class FacetViz {
         keys,
         position: split ? "split" : "bottom",
         labels: xOpts.labels,
+        lineWidth: xOpts.lineWidth,
         gridLineWidth: xOpts.gridLineWidth,
       }).render(axisLayer);
     } else {
@@ -1872,6 +1903,8 @@ export class FacetViz {
         keys,
         position: split ? "split" : "bottom",
         vertical: true,
+        labels: xOpts.labels,
+        lineWidth: xOpts.lineWidth,
         gridLineWidth: xOpts.gridLineWidth,
       }).render(axisLayer);
     }
@@ -2468,7 +2501,7 @@ export class FacetViz {
       primaryVisible.length ? primaryVisible : visible,
     );
     const includeZero = primaryVisible.some((s) =>
-      ["column", "bar", "area", "areaspline", "errorbar"].includes(s.type),
+      ["column", "bar", "area", "areaspline", "errorbar", "lollipop"].includes(s.type),
     );
     if (includeZero) {
       vMin = Math.min(vMin, 0);
@@ -2497,7 +2530,8 @@ export class FacetViz {
           (s) =>
             s.type === "scatter" ||
             s.type === "jitter" ||
-            s.type === "dumbbell",
+            s.type === "dumbbell" ||
+            s.type === "slope",
         )
         .map((s) => (s.options.marker?.radius ?? 5) + 2),
       ...primaryVisible.map((s) => GEOM_PAD[s.type] ?? 0),
@@ -2596,7 +2630,7 @@ export class FacetViz {
       const secondaryVisible = visible.filter(onSecondary);
       let [vMin2, vMax2] = this.valueDomain(secondaryVisible);
       const includeZero2 = secondaryVisible.some((s) =>
-        ["column", "bar", "area", "areaspline", "errorbar"].includes(s.type),
+        ["column", "bar", "area", "areaspline", "errorbar", "lollipop"].includes(s.type),
       );
       if (includeZero2) {
         vMin2 = Math.min(vMin2, 0);
@@ -2665,6 +2699,7 @@ export class FacetViz {
     "bullet",
     "dumbbell",
     "butterfly",
+    "lollipop",
   ]);
 
   private currentCategories(visible: BaseSeries[]): string[] | undefined {
@@ -3087,10 +3122,19 @@ export class FacetViz {
     return this.events.on(event, listener);
   }
 
-  /** Merge new options and re-render (rebuilds series when `series` is given). */
+  /**
+   * Merge new options and re-render (rebuilds series when `series` is
+   * given). `theme` is re-resolved too — previously it was only read once,
+   * in the constructor, so `update({ theme })` silently had no effect.
+   */
   update(options: Partial<ChartOptions>): void {
     Object.assign(this.options, merge(this.options, options as ChartOptions));
     if (options.series) this.build();
+    if (options.theme !== undefined) {
+      this.theme = resolveTheme(this.options.theme);
+      this.colors =
+        this.options.chart?.colors ?? this.options.colors ?? this.theme.colors;
+    }
     this.animateNext = true;
     this.render();
   }

@@ -879,6 +879,22 @@ var NestedAxis = class {
   constructor(cfg) {
     this.cfg = cfg;
   }
+  get labelsOn() {
+    return this.cfg.labels?.enabled !== false;
+  }
+  get linesOn() {
+    return this.cfg.lineWidth !== 0;
+  }
+  /** No-ops (and returns undefined) when labels are switched off. */
+  text(text, x, y, attrs, g) {
+    if (!this.labelsOn) return void 0;
+    return this.cfg.renderer.text(text, x, y, attrs, g);
+  }
+  /** No-ops when the axis's own lines (baseline, dividers) are switched off. */
+  line(attrs, g) {
+    if (!this.linesOn) return;
+    this.cfg.renderer.create("line", attrs, g);
+  }
   render(parent) {
     const g = this.cfg.renderer.group(
       { class: "facet-axis facet-axis-nested" },
@@ -912,7 +928,7 @@ var NestedAxis = class {
   }
   /** All tiers on one side (below or above the plot). */
   renderStacked(g, top) {
-    const { renderer, scale, plot, leaves, keys } = this.cfg;
+    const { scale, plot, leaves, keys } = this.cfg;
     const color = this.cfg.lineColor ?? THEME.axis.lineColor;
     const levels = leaves[0]?.length ?? 0;
     const dir = top ? -1 : 1;
@@ -929,15 +945,8 @@ var NestedAxis = class {
     const leafCenter = (i) => scale.scale(keys[i]);
     const bandHalf = scale.fullStep() / 2;
     const bottomY = plot.y + plot.height;
-    renderer.create(
-      "line",
-      {
-        x1: plot.x,
-        y1: baseY,
-        x2: plot.x + plot.width,
-        y2: baseY,
-        stroke: color
-      },
+    this.line(
+      { x1: plot.x, y1: baseY, x2: plot.x + plot.width, y2: baseY, stroke: color },
       g
     );
     for (let level = levels - 1; level >= 0; level--) {
@@ -946,9 +955,10 @@ var NestedAxis = class {
       const rowStart = baseY + dir * (LAYOUT.tickLength + rowOffset(row));
       const segments = this.segmentsForLevel(leaves, level);
       const labelY = rowStart + dir * (rotated ? 8 : 12);
-      for (const seg of segments) {
+      const labelSegs = row === 0 && !rotated ? this.thinnedInnerSegments(scale.bandwidth()) : segments;
+      for (const seg of labelSegs) {
         const cx = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2;
-        const el = renderer.text(
+        const el = this.text(
           seg.label,
           cx,
           labelY,
@@ -959,14 +969,12 @@ var NestedAxis = class {
           },
           g
         );
-        if (rotated) el.setAttribute("transform", `rotate(${rotation} ${cx} ${labelY})`);
+        if (rotated && el) el.setAttribute("transform", `rotate(${rotation} ${cx} ${labelY})`);
       }
       if (level < levels - 1) {
-        const bandHalf2 = scale.fullStep() / 2;
         for (let s = 1; s < segments.length; s++) {
-          const bx = leafCenter(segments[s].startLeaf) - bandHalf2;
-          renderer.create(
-            "line",
+          const bx = leafCenter(segments[s].startLeaf) - bandHalf;
+          this.line(
             {
               x1: bx,
               y1: baseY,
@@ -984,8 +992,7 @@ var NestedAxis = class {
     const outer = this.segmentsForLevel(leaves, 0);
     for (let s = 1; s < outer.length; s++) {
       const bx = leafCenter(outer[s].startLeaf) - bandHalf;
-      renderer.create(
-        "line",
+      this.line(
         {
           x1: bx,
           y1: topExtent,
@@ -1004,29 +1011,23 @@ var NestedAxis = class {
    * separating each top-level group.
    */
   renderSplit(g) {
-    const { renderer, scale, plot, leaves, keys } = this.cfg;
+    const { scale, plot, leaves, keys } = this.cfg;
     const color = this.cfg.lineColor ?? THEME.axis.lineColor;
     const levels = leaves[0]?.length ?? 0;
     const rowH = 18;
     const leafCenter = (i) => scale.scale(keys[i]);
     const bandHalf = scale.fullStep() / 2;
     const bottomY = plot.y + plot.height;
-    renderer.create(
-      "line",
-      {
-        x1: plot.x,
-        y1: bottomY,
-        x2: plot.x + plot.width,
-        y2: bottomY,
-        stroke: color
-      },
+    this.line(
+      { x1: plot.x, y1: bottomY, x2: plot.x + plot.width, y2: bottomY, stroke: color },
       g
     );
     const rotation = this.cfg.labels?.rotation ?? 0;
     const innerLabelY = bottomY + LAYOUT.tickLength + (rotation ? 8 : 12);
-    for (const seg of this.segmentsForLevel(leaves, levels - 1)) {
+    const innerSegments = rotation ? this.segmentsForLevel(leaves, levels - 1) : this.thinnedInnerSegments(scale.bandwidth());
+    for (const seg of innerSegments) {
       const cx = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2;
-      const el = renderer.text(
+      const el = this.text(
         seg.label,
         cx,
         innerLabelY,
@@ -1036,14 +1037,14 @@ var NestedAxis = class {
         },
         g
       );
-      if (rotation) el.setAttribute("transform", `rotate(${rotation} ${cx} ${innerLabelY})`);
+      if (rotation && el) el.setAttribute("transform", `rotate(${rotation} ${cx} ${innerLabelY})`);
     }
     for (let level = levels - 2; level >= 0; level--) {
       const rowFromTop = levels - 2 - level;
       const labelY = plot.y - LAYOUT.tickLength - rowFromTop * rowH - 4;
       for (const seg of this.segmentsForLevel(leaves, level)) {
         const cx = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2;
-        renderer.text(
+        this.text(
           seg.label,
           cx,
           labelY,
@@ -1060,8 +1061,7 @@ var NestedAxis = class {
     const outer = this.segmentsForLevel(leaves, 0);
     for (let s = 1; s < outer.length; s++) {
       const bx = leafCenter(outer[s].startLeaf) - bandHalf;
-      renderer.create(
-        "line",
+      this.line(
         {
           x1: bx,
           y1: topExtent,
@@ -1082,22 +1082,15 @@ var NestedAxis = class {
    * row regardless of label length).
    */
   renderStackedVertical(g, right) {
-    const { renderer, scale, plot, leaves, keys } = this.cfg;
+    const { scale, plot, leaves, keys } = this.cfg;
     const color = this.cfg.lineColor ?? THEME.axis.lineColor;
     const levels = leaves[0]?.length ?? 0;
     const dir = right ? 1 : -1;
     const baseX = right ? plot.x + plot.width : plot.x;
     const leafCenter = (i) => scale.scale(keys[i]);
     const bandHalf = scale.fullStep() / 2;
-    renderer.create(
-      "line",
-      {
-        x1: baseX,
-        y1: plot.y,
-        x2: baseX,
-        y2: plot.y + plot.height,
-        stroke: color
-      },
+    this.line(
+      { x1: baseX, y1: plot.y, x2: baseX, y2: plot.y + plot.height, stroke: color },
       g
     );
     const colWidths = nestedLevelWidths(leaves);
@@ -1109,7 +1102,7 @@ var NestedAxis = class {
       const labelX = colStart + dir * (w / 2);
       for (const seg of segments) {
         const cy = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2 + 4;
-        renderer.text(
+        this.text(
           seg.label,
           labelX,
           cy,
@@ -1124,8 +1117,7 @@ var NestedAxis = class {
       if (level < levels - 1) {
         for (let s = 1; s < segments.length; s++) {
           const by = leafCenter(segments[s].startLeaf) - bandHalf;
-          renderer.create(
-            "line",
+          this.line(
             {
               x1: baseX,
               y1: by,
@@ -1144,16 +1136,8 @@ var NestedAxis = class {
     const outer = this.segmentsForLevel(leaves, 0);
     for (let s = 1; s < outer.length; s++) {
       const by = leafCenter(outer[s].startLeaf) - bandHalf;
-      renderer.create(
-        "line",
-        {
-          x1: baseX,
-          y1: by,
-          x2: farEdge,
-          y2: by,
-          stroke: color,
-          "stroke-width": 1
-        },
+      this.line(
+        { x1: baseX, y1: by, x2: farEdge, y2: by, stroke: color, "stroke-width": 1 },
         g
       );
     }
@@ -1164,28 +1148,22 @@ var NestedAxis = class {
    * right, full-width horizontal lines separating each top-level group.
    */
   renderSplitVertical(g) {
-    const { renderer, scale, plot, leaves, keys } = this.cfg;
+    const { scale, plot, leaves, keys } = this.cfg;
     const color = this.cfg.lineColor ?? THEME.axis.lineColor;
     const levels = leaves[0]?.length ?? 0;
     const leafCenter = (i) => scale.scale(keys[i]);
     const bandHalf = scale.fullStep() / 2;
     const rightX = plot.x + plot.width;
     const colWidths = nestedLevelWidths(leaves);
-    renderer.create(
-      "line",
-      {
-        x1: plot.x,
-        y1: plot.y,
-        x2: plot.x,
-        y2: plot.y + plot.height,
-        stroke: color
-      },
+    this.line(
+      { x1: plot.x, y1: plot.y, x2: plot.x, y2: plot.y + plot.height, stroke: color },
       g
     );
     const innerW = colWidths[levels - 1];
-    for (const seg of this.segmentsForLevel(leaves, levels - 1)) {
+    const innerSegments = this.segmentsForLevel(leaves, levels - 1);
+    for (const seg of innerSegments) {
       const cy = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2 + 4;
-      renderer.text(
+      this.text(
         seg.label,
         plot.x - LAYOUT.tickLength - innerW / 2,
         cy,
@@ -1199,7 +1177,7 @@ var NestedAxis = class {
       const labelX = rightX + LAYOUT.tickLength + offset + w / 2;
       for (const seg of this.segmentsForLevel(leaves, level)) {
         const cy = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2 + 4;
-        renderer.text(
+        this.text(
           seg.label,
           labelX,
           cy,
@@ -1218,19 +1196,39 @@ var NestedAxis = class {
     const outer = this.segmentsForLevel(leaves, 0);
     for (let s = 1; s < outer.length; s++) {
       const by = leafCenter(outer[s].startLeaf) - bandHalf;
-      renderer.create(
-        "line",
-        {
-          x1: leftExtent,
-          y1: by,
-          x2: rightExtent,
-          y2: by,
-          stroke: color,
-          "stroke-width": 1
-        },
+      this.line(
+        { x1: leftExtent, y1: by, x2: rightExtent, y2: by, stroke: color, "stroke-width": 1 },
         g
       );
     }
+  }
+  /**
+   * Which of the innermost tier's segments to actually draw, thinning out
+   * ("every Nth") when they'd otherwise overlap — the same idea the plain
+   * axis uses for a cramped category axis. With an outer dimension, the
+   * "every Nth" counter resets at each outer-group boundary so the kept/
+   * skipped pattern reads the same within every group instead of sliding
+   * across group lines, which would otherwise make it look like different,
+   * arbitrary leaves are missing from each group.
+   */
+  thinnedInnerSegments(bandPx) {
+    const { leaves } = this.cfg;
+    const levels = leaves[0]?.length ?? 0;
+    const inner = this.segmentsForLevel(leaves, levels - 1);
+    if (bandPx <= 0 || inner.length < 2) return inner;
+    const maxLen = inner.reduce((m, s) => Math.max(m, s.label.length), 0);
+    const estW = maxLen * 6.2 + 6;
+    const step = estW > bandPx ? Math.ceil(estW / bandPx) : 1;
+    if (step <= 1) return inner;
+    if (levels <= 1) return inner.filter((_, i) => i % step === 0);
+    const outer = this.segmentsForLevel(leaves, 0);
+    let outerIdx = 0;
+    return inner.filter((seg) => {
+      while (outerIdx < outer.length - 1 && seg.startLeaf > outer[outerIdx].endLeaf) {
+        outerIdx++;
+      }
+      return (seg.startLeaf - outer[outerIdx].startLeaf) % step === 0;
+    });
   }
   /** Contiguous runs of leaves sharing the same prefix up to `level`. */
   segmentsForLevel(leaves, level) {
@@ -1444,10 +1442,18 @@ var EventEmitter = class {
 };
 
 // src/core/chart-options.ts
+var SPARKLINE_DEFAULTS = {
+  chart: { spacing: [2, 2, 2, 2] },
+  xAxis: { visible: false },
+  yAxis: { visible: false },
+  legend: { enabled: false }
+};
 function resolveChartOptions(user) {
+  const sparkline = user.chart?.type === "sparkline" ? SPARKLINE_DEFAULTS : {};
   const merged = merge(
     {},
     DEFAULT_OPTIONS,
+    sparkline,
     user
   );
   const globalType = merged.chart?.type ?? "line";
@@ -3520,6 +3526,229 @@ var MarimekkoSeries = class extends BaseSeries {
   }
 };
 
+// src/series/lollipop.ts
+var LollipopSeries = class extends BaseSeries {
+  capabilities() {
+    return { grouped: true, cartesian: true, stackable: false };
+  }
+  pointValues(p) {
+    return [0, p.y];
+  }
+  render(ctx) {
+    const { renderer, groupCount, groupIndex, inverted } = ctx;
+    const catScale = inverted ? ctx.yScale : ctx.xScale;
+    const valScale = inverted ? ctx.xScale : ctx.yScale;
+    const g = renderer.group(
+      { class: `facet-series facet-lollipop ${this.name}` },
+      renderer.root
+    );
+    const band = catScale.bandwidth ? catScale.bandwidth() : 0;
+    const subWidth = band / groupCount;
+    const radius = this.options.marker?.radius ?? 5;
+    const stemWidth = this.options.lineWidth ?? 2;
+    for (const p of this.points) {
+      if (p.y === void 0) continue;
+      const color = p.color ?? this.color;
+      const cat = catScale.scale(p.x) - band / 2 + (groupIndex + 0.5) * subWidth;
+      const vBase = valScale.scale(0);
+      const vEnd = valScale.scale(p.y);
+      const stem = inverted ? { x1: vBase, y1: cat, x2: vEnd, y2: cat } : { x1: cat, y1: vBase, x2: cat, y2: vEnd };
+      renderer.create(
+        "line",
+        {
+          ...stem,
+          stroke: alpha(color, 0.55),
+          "stroke-width": stemWidth,
+          "stroke-linecap": "round"
+        },
+        g
+      );
+      const cx = inverted ? vEnd : cat;
+      const cy = inverted ? cat : vEnd;
+      const el = drawMarker(renderer, g, cx, cy, {
+        symbol: this.options.marker?.symbol ?? "circle",
+        radius,
+        fill: color,
+        stroke: "#fff",
+        strokeWidth: 1.5
+      });
+      ctx.registerHover(el, p);
+      el.addEventListener("click", (e) => ctx.onPointEvent("click", p, e));
+      el.addEventListener(
+        "mouseover",
+        (e) => ctx.onPointEvent("mouseOver", p, e)
+      );
+      el.addEventListener("mouseout", (e) => ctx.onPointEvent("mouseOut", p, e));
+      this.drawLabel(ctx, p, cx, cy, radius, inverted);
+    }
+  }
+  drawLabel(ctx, p, cx, cy, radius, inverted) {
+    const dl = this.options.dataLabels;
+    if (!dl?.enabled) return;
+    const text = labelString(dl, {
+      x: p.x,
+      y: p.y,
+      point: p.options,
+      series: this.name,
+      name: p.name ?? p.x,
+      index: p.index,
+      color: p.color ?? this.color
+    });
+    const d = dl.distance ?? 0;
+    const gap = radius + 6 + d;
+    const negative = (p.y ?? 0) < 0;
+    let place;
+    if (inverted) {
+      place = negative ? { x: cx - gap, y: cy + 4, anchor: "end" } : { x: cx + gap, y: cy + 4, anchor: "start" };
+    } else {
+      place = negative ? { x: cx, y: cy + gap + 8, anchor: "middle" } : { x: cx, y: cy - gap, anchor: "middle" };
+    }
+    drawDataLabel(ctx.renderer, ctx.renderer.root, text, place, dl);
+  }
+};
+
+// src/series/slope.ts
+var SlopeSeries = class extends BaseSeries {
+  capabilities() {
+    return { grouped: false, cartesian: true, stackable: false };
+  }
+  render(ctx) {
+    const { renderer } = ctx;
+    const g = renderer.group(
+      { class: `facet-series facet-slope ${this.name}` },
+      renderer.root
+    );
+    const data = [];
+    for (const p of this.points) {
+      if (p.y === void 0) continue;
+      data.push({ pt: { x: ctx.xScale.scale(p.x), y: ctx.yScale.scale(p.y) }, p });
+    }
+    if (!data.length) return;
+    renderer.create(
+      "path",
+      {
+        d: linePath(data.map((d) => d.pt)),
+        fill: "none",
+        stroke: this.color,
+        "stroke-width": this.options.lineWidth ?? 2.5,
+        "stroke-linejoin": "round",
+        "stroke-linecap": "round"
+      },
+      g
+    );
+    const radius = this.options.marker?.radius ?? 4.5;
+    data.forEach(({ pt, p }, i) => {
+      const color = p.color ?? this.color;
+      const el = drawMarker(renderer, g, pt.x, pt.y, {
+        symbol: this.options.marker?.symbol ?? "circle",
+        radius,
+        fill: color,
+        stroke: "#fff",
+        strokeWidth: 1.5
+      });
+      ctx.registerHover(el, p);
+      el.addEventListener("click", (e) => ctx.onPointEvent("click", p, e));
+      el.addEventListener(
+        "mouseover",
+        (e) => ctx.onPointEvent("mouseOver", p, e)
+      );
+      el.addEventListener("mouseout", (e) => ctx.onPointEvent("mouseOut", p, e));
+      this.drawLabel(ctx, p, pt, radius, i === 0, i === data.length - 1);
+    });
+  }
+  /** The value at each end (first point labelled to its left, last to its right). */
+  drawLabel(ctx, p, pt, radius, isFirst, isLast) {
+    const dl = this.options.dataLabels;
+    if (!dl?.enabled || !(isFirst || isLast)) return;
+    const text = labelString(dl, {
+      x: p.x,
+      y: p.y,
+      point: p.options,
+      series: this.name,
+      name: p.name ?? p.x,
+      index: p.index,
+      color: p.color ?? this.color
+    });
+    const d = dl.distance ?? 0;
+    const gap = radius + 6 + d;
+    const place = isLast ? { x: pt.x + gap, y: pt.y + 4, anchor: "start" } : { x: pt.x - gap, y: pt.y + 4, anchor: "end" };
+    drawDataLabel(ctx.renderer, ctx.renderer.root, text, place, dl);
+  }
+};
+
+// src/series/sparkline.ts
+var MIN_COLOR = "#e63946";
+var MAX_COLOR = "#00b894";
+var SparklineSeries = class extends BaseSeries {
+  capabilities() {
+    return { grouped: false, cartesian: true, stackable: false };
+  }
+  render(ctx) {
+    const { renderer } = ctx;
+    const g = renderer.group(
+      { class: `facet-series facet-sparkline ${this.name}` },
+      renderer.root
+    );
+    const data = [];
+    for (const p of this.points) {
+      if (p.y === void 0) continue;
+      data.push({ pt: { x: ctx.xScale.scale(p.x), y: ctx.yScale.scale(p.y) }, p });
+    }
+    if (!data.length) return;
+    renderer.create(
+      "path",
+      {
+        d: linePath(data.map((d) => d.pt)),
+        fill: "none",
+        stroke: this.color,
+        "stroke-width": this.options.lineWidth ?? 1.5,
+        "stroke-linejoin": "round",
+        "stroke-linecap": "round"
+      },
+      g
+    );
+    for (const { pt, p } of data) {
+      const hit = renderer.create(
+        "circle",
+        { cx: pt.x, cy: pt.y, r: 6, fill: "transparent", "pointer-events": "all" },
+        g
+      );
+      ctx.registerHover(hit, p);
+      hit.addEventListener("click", (e) => ctx.onPointEvent("click", p, e));
+      hit.addEventListener("mouseover", (e) => ctx.onPointEvent("mouseOver", p, e));
+      hit.addEventListener("mouseout", (e) => ctx.onPointEvent("mouseOut", p, e));
+    }
+    this.drawHighlights(renderer, g, data);
+  }
+  /** The last/min/max point markers, per `series.sparkline`. */
+  drawHighlights(renderer, g, data) {
+    const opts = this.options.sparkline ?? {};
+    const radius = this.options.marker?.radius ?? 2.5;
+    const dot = (point, spec, defaultColor) => {
+      if (!spec) return;
+      const color = (typeof spec === "object" ? spec.color : void 0) ?? defaultColor;
+      drawMarker(renderer, g, point.pt.x, point.pt.y, {
+        symbol: this.options.marker?.symbol ?? "circle",
+        radius,
+        fill: color,
+        stroke: "#fff",
+        strokeWidth: 1
+      });
+    };
+    dot(data[data.length - 1], opts.last ?? true, this.color);
+    if (opts.min || opts.max) {
+      let minPt = data[0];
+      let maxPt = data[0];
+      for (const d of data) {
+        if ((d.p.y ?? 0) < (minPt.p.y ?? 0)) minPt = d;
+        if ((d.p.y ?? 0) > (maxPt.p.y ?? 0)) maxPt = d;
+      }
+      dot(minPt, opts.min, MIN_COLOR);
+      dot(maxPt, opts.max, MAX_COLOR);
+    }
+  }
+};
+
 // src/series/registry.ts
 var REGISTRY = {
   bar: ColumnSeries,
@@ -3537,6 +3766,9 @@ var REGISTRY = {
   jitter: ScatterSeries,
   boxplot: BoxplotSeries,
   dumbbell: DumbbellSeries,
+  lollipop: LollipopSeries,
+  slope: SlopeSeries,
+  sparkline: SparklineSeries,
   // Butterfly is laid out by the chart (back-to-back); series just hold data.
   butterfly: ColumnSeries,
   columnrange: ColumnRangeSeries,
@@ -3635,20 +3867,26 @@ var FacetViz = class _FacetViz {
   // -- Rendering ---------------------------------------------------------
   /**
    * Progressive degradation as the chart shrinks: past size thresholds, drop
-   * data labels, then axis labels, then axis lines — rather than rendering
-   * an unreadably cramped chart. Overrides `this.series`/`this.options`
-   * (both already mutable per-instance state) for the duration of this
-   * render only; returns a function that restores the originals.
+   * data labels, then the legend, then axis titles, then axis tick labels,
+   * then finally the axis lines themselves — leaving just gridlines and the
+   * series geometry at the smallest sizes — rather than rendering an
+   * unreadably cramped chart. Overrides `this.series`/`this.options` (both
+   * already mutable per-instance state) for the duration of this render
+   * only; returns a function that restores the originals.
    */
   applyResponsiveOverrides() {
     if (this.options.chart?.responsive === false) return () => {
     };
     const shortSide = Math.min(this.width, this.height);
     const hideLabels = shortSide < 260;
-    const hideAxisLabels = shortSide < 180;
-    const hideAxisLines = shortSide < 120;
-    if (!hideLabels && !hideAxisLabels && !hideAxisLines) return () => {
-    };
+    const hideLegend = shortSide < 220;
+    const hideAxisTitles = shortSide < 190;
+    const hideAxisLabels = shortSide < 150;
+    const hideAxisLines = shortSide < 110;
+    if (!hideLabels && !hideLegend && !hideAxisTitles && !hideAxisLabels && !hideAxisLines) {
+      return () => {
+      };
+    }
     const restores = [];
     if (hideLabels) {
       const originalSeries = this.series;
@@ -3661,8 +3899,16 @@ var FacetViz = class _FacetViz {
         this.series = originalSeries;
       });
     }
-    if (hideAxisLabels || hideAxisLines) {
+    if (hideLegend && this.options.legend?.enabled !== false) {
+      const originalLegend = this.options.legend;
+      this.options.legend = { ...originalLegend, enabled: false };
+      restores.push(() => {
+        this.options.legend = originalLegend;
+      });
+    }
+    if (hideAxisTitles || hideAxisLabels || hideAxisLines) {
       const patch = {};
+      if (hideAxisTitles) patch.title = { text: void 0 };
       if (hideAxisLabels) patch.labels = { enabled: false };
       if (hideAxisLines) patch.lineWidth = 0;
       const overrideAxis = (a) => Array.isArray(a) ? a.map((ax) => ({ ...ax, ...patch })) : { ...a ?? {}, ...patch };
@@ -3709,7 +3955,7 @@ var FacetViz = class _FacetViz {
         ...this.options.tooltip
       });
     }
-    const spacing = this.options.chart?.spacing ?? [16, 16, 16, 16];
+    const spacing = this.options.chart?.spacing ?? [5, 5, 5, 5];
     let top = spacing[0];
     top += this.renderTitles(top);
     const legendItems = this.buildLegendItems();
@@ -3752,7 +3998,7 @@ var FacetViz = class _FacetViz {
     }
     if (showLegend) {
       let lx = outer.x;
-      let ly = this.height - spacing[2] - LAYOUT.legendHeight + 12;
+      let ly = outer.y + outer.height + 14;
       let lw = outer.width;
       let lh = LAYOUT.legendHeight;
       if (legendPlace === "top") {
@@ -3789,19 +4035,18 @@ var FacetViz = class _FacetViz {
     this.options.chart?.events?.render?.(this);
     restoreResponsive();
   }
-  /** Set root ARIA role + a <title>/<desc> for screen readers. */
+  /**
+   * Set root ARIA role + label for screen readers. Deliberately not using an
+   * SVG <title> element here — browsers render that as a native hover
+   * tooltip over the whole chart, which is a worse experience than no
+   * tooltip. aria-label carries the same accessible name without it.
+   */
   applyAccessibility() {
     if (this.options.accessibility?.enabled === false) return;
     const root = this.renderer.root;
     const label = this.options.accessibility?.description ?? this.options.title?.text ?? `${this.options.chart?.type ?? "chart"} chart with ${this.series.length} series`;
     root.setAttribute("role", "img");
     root.setAttribute("aria-label", label);
-    const title = document.createElementNS(
-      "http://www.w3.org/2000/svg",
-      "title"
-    );
-    title.textContent = label;
-    root.insertBefore(title, root.firstChild);
   }
   /** Enter animation: bars grow from the baseline, lines draw in, the rest fade. */
   animateEnter() {
@@ -4132,7 +4377,7 @@ var FacetViz = class _FacetViz {
     }
     const rot = opts.labels?.rotation ?? 0;
     const rotExtra = rot ? Math.abs(Math.sin(rot * Math.PI / 180)) * labelW : 0;
-    return LAYOUT.defaultBottomAxisHeight + (title ? 32 : 0) + rotExtra;
+    return LAYOUT.defaultBottomAxisHeight + (title ? 8 : 0) + rotExtra;
   }
   renderPanel(panel) {
     const visible = panel.series.filter((s) => s.visible && s.points.length);
@@ -4495,7 +4740,7 @@ var FacetViz = class _FacetViz {
       primaryVisible.length ? primaryVisible : allVisible
     );
     if ((primaryVisible.length ? primaryVisible : allVisible).some(
-      (s) => ["column", "bar", "area", "areaspline"].includes(s.type)
+      (s) => ["column", "bar", "area", "areaspline", "lollipop"].includes(s.type)
     )) {
       vMin = Math.min(vMin, 0);
       vMax = Math.max(vMax, 0);
@@ -4509,7 +4754,7 @@ var FacetViz = class _FacetViz {
     if (hasSecondary && yOpts1) {
       [vMin2, vMax2] = this.valueDomain(secondaryVisible);
       if (secondaryVisible.some(
-        (s) => ["column", "bar", "area", "areaspline"].includes(s.type)
+        (s) => ["column", "bar", "area", "areaspline", "lollipop"].includes(s.type)
       )) {
         vMin2 = Math.min(vMin2, 0);
         vMax2 = Math.max(vMax2, 0);
@@ -4904,6 +5149,7 @@ var FacetViz = class _FacetViz {
         keys,
         position: split ? "split" : "bottom",
         labels: xOpts.labels,
+        lineWidth: xOpts.lineWidth,
         gridLineWidth: xOpts.gridLineWidth
       }).render(axisLayer);
     } else {
@@ -4947,6 +5193,8 @@ var FacetViz = class _FacetViz {
         keys,
         position: split ? "split" : "bottom",
         vertical: true,
+        labels: xOpts.labels,
+        lineWidth: xOpts.lineWidth,
         gridLineWidth: xOpts.gridLineWidth
       }).render(axisLayer);
     }
@@ -5436,7 +5684,7 @@ var FacetViz = class _FacetViz {
       primaryVisible.length ? primaryVisible : visible
     );
     const includeZero = primaryVisible.some(
-      (s) => ["column", "bar", "area", "areaspline", "errorbar"].includes(s.type)
+      (s) => ["column", "bar", "area", "areaspline", "errorbar", "lollipop"].includes(s.type)
     );
     if (includeZero) {
       vMin = Math.min(vMin, 0);
@@ -5452,7 +5700,7 @@ var FacetViz = class _FacetViz {
     const markerR = Math.max(
       bubbleR,
       ...primaryVisible.filter(
-        (s) => s.type === "scatter" || s.type === "jitter" || s.type === "dumbbell"
+        (s) => s.type === "scatter" || s.type === "jitter" || s.type === "dumbbell" || s.type === "slope"
       ).map((s) => (s.options.marker?.radius ?? 5) + 2),
       ...primaryVisible.map((s) => GEOM_PAD[s.type] ?? 0),
       0
@@ -5527,7 +5775,7 @@ var FacetViz = class _FacetViz {
       const secondaryVisible = visible.filter(onSecondary);
       let [vMin2, vMax2] = this.valueDomain(secondaryVisible);
       const includeZero2 = secondaryVisible.some(
-        (s) => ["column", "bar", "area", "areaspline", "errorbar"].includes(s.type)
+        (s) => ["column", "bar", "area", "areaspline", "errorbar", "lollipop"].includes(s.type)
       );
       if (includeZero2) {
         vMin2 = Math.min(vMin2, 0);
@@ -5586,7 +5834,8 @@ var FacetViz = class _FacetViz {
       "errorbar",
       "bullet",
       "dumbbell",
-      "butterfly"
+      "butterfly",
+      "lollipop"
     ]);
   }
   currentCategories(visible) {
@@ -5944,10 +6193,18 @@ var FacetViz = class _FacetViz {
   on(event, listener) {
     return this.events.on(event, listener);
   }
-  /** Merge new options and re-render (rebuilds series when `series` is given). */
+  /**
+   * Merge new options and re-render (rebuilds series when `series` is
+   * given). `theme` is re-resolved too — previously it was only read once,
+   * in the constructor, so `update({ theme })` silently had no effect.
+   */
   update(options) {
     Object.assign(this.options, merge(this.options, options));
     if (options.series) this.build();
+    if (options.theme !== void 0) {
+      this.theme = resolveTheme(this.options.theme);
+      this.colors = this.options.chart?.colors ?? this.options.colors ?? this.theme.colors;
+    }
     this.animateNext = true;
     this.render();
   }

@@ -35,6 +35,8 @@ export type ChartType =
   | 'jitter' // scatter with categorical x + random spread
   | 'boxplot'
   | 'dumbbell' // two connected points per category (low → high)
+  | 'lollipop' // zero-anchored stem + marker per category, a lighter column
+  | 'slope' // one line per series across x-categories (before/after comparison)
   | 'butterfly' // two series mirrored back-to-back around a central axis
   | 'columnrange' // rounded-capsule range bar (vertical; horizontal when inverted)
   | 'radialbar' // bars drawn around a polar centre
@@ -54,7 +56,8 @@ export type ChartType =
   | 'calendar' // day-grid heatmap by date
   | 'gantt' // duration bars per row
   | 'marimekko' // variable-width 100% stacked columns
-  | 'errorbar'; // low/high whiskers, usually overlaid
+  | 'errorbar' // low/high whiskers, usually overlaid
+  | 'sparkline'; // tiny axis-less trend line, one per table cell/row
 
 export type StackingMode = 'normal' | 'percent';
 
@@ -163,8 +166,19 @@ export interface SeriesOptions {
   states?: { hover?: HoverStateOptions };
   /** Per-series tooltip formatter override. */
   tooltip?: SeriesTooltipOptions;
+  /** Sparkline point highlights (last point on by default; min/max opt-in). */
+  sparkline?: SparklineOptions;
   /** Arbitrary user data. */
   [key: string]: unknown;
+}
+
+export interface SparklineOptions {
+  /** Highlight the final point. Default `true`. */
+  last?: boolean | { color?: string };
+  /** Highlight the minimum-value point. Default `false`. */
+  min?: boolean | { color?: string };
+  /** Highlight the maximum-value point. Default `false`. */
+  max?: boolean | { color?: string };
 }
 
 export interface MarkerOptions {

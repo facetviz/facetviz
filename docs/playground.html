@@ -61,7 +61,15 @@
     .preview-wrap { flex: 1; overflow: auto; padding: 18px; }
     #preview {
       background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
-      padding: 12px; min-height: 200px;
+      padding: 12px; min-height: 160px; min-width: 160px;
+      width: 100%; height: 420px; max-width: 100%;
+      resize: both; overflow: hidden;
+      /* A visible corner so the native resize handle reads as intentional,
+         not stray clipping. */
+      box-shadow: inset -14px -14px 0 -12px color-mix(in srgb, var(--muted) 30%, transparent);
+    }
+    #previewSize {
+      font-variant-numeric: tabular-nums; color: var(--muted); font-size: 11px;
     }
     #error {
       display: none; margin: 0 18px 14px; padding: 10px 14px; border-radius: 8px;
@@ -85,6 +93,7 @@
       <a href="./">Guide</a>
       <a href="./examples.html">Examples</a>
       <a href="./api.html">API</a>
+      <a href="./theme.html">Theme</a>
     </nav>
     <div class="spacer"></div>
     <label class="field">Example
@@ -105,7 +114,11 @@
     </section>
 
     <section class="pane right">
-      <div class="pane-head"><span>preview</span></div>
+      <div class="pane-head">
+        <span>preview</span>
+        <span id="previewSize"></span>
+        <button id="resetSize" title="Reset preview size" style="margin-left:auto; padding:4px 9px; font-size:11px;">Reset size</button>
+      </div>
       <div class="preview-wrap">
         <div id="error"></div>
         <div id="preview"></div>
@@ -294,6 +307,25 @@
         xAxis: { categories: ['A', 'B', 'C', 'D', 'E'] }, yAxis: { title: { text: 'Value' } },
         series: [{ name: 'Change', lowColor: '#adb5bd', highColor: '#2caffe',
           data: [['A', 20, 45], ['B', 35, 30], ['C', 10, 55], ['D', 40, 60], ['E', 25, 35]] }],
+      },
+      'Lollipop': {
+        chart: { type: 'lollipop', height: 380 }, title: { text: 'Monthly change' },
+        xAxis: { categories: months }, yAxis: { title: { text: 'Units' } },
+        series: [{ name: 'Sales', dataLabels: { enabled: true }, data: [5, -3, 8, 6, -2, 4] }],
+      },
+      'Slope': {
+        chart: { type: 'slope', height: 380 }, title: { text: 'Share of segment: 2020 vs 2024' },
+        xAxis: { categories: ['2020', '2024'] }, yAxis: { title: { text: 'Share %' } },
+        series: [
+          { name: 'Product A', dataLabels: { enabled: true }, data: [30, 45] },
+          { name: 'Product B', dataLabels: { enabled: true }, data: [50, 32] },
+          { name: 'Product C', dataLabels: { enabled: true }, data: [20, 38] },
+        ],
+      },
+      'Sparkline': {
+        chart: { type: 'sparkline', height: 380 },
+        series: [{ name: 'Trend', sparkline: { min: true, max: true },
+          data: [5, 8, 6, 9, 12, 10, 14, 13, 16] }],
       },
       'Column range — rounded': {
         chart: { type: 'columnrange', height: 380 }, title: { text: 'Temp range' },
@@ -521,6 +553,22 @@
     const errorEl = document.getElementById('error');
     const statusEl = document.getElementById('status');
     const presetSel = document.getElementById('preset');
+    const previewSizeEl = document.getElementById('previewSize');
+    const resetSizeBtn = document.getElementById('resetSize');
+
+    // Drag the preview's bottom-right corner (native CSS `resize`) to check
+    // how the chart behaves as its container shrinks or grows — FacetViz's
+    // own ResizeObserver (chart.reflow, on by default) picks up the change
+    // and re-renders automatically. This readout just mirrors the size back.
+    const sizeObserver = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      previewSizeEl.textContent = `${Math.round(width)} × ${Math.round(height)}`;
+    });
+    sizeObserver.observe(preview);
+    resetSizeBtn.addEventListener('click', () => {
+      preview.style.width = '';
+      preview.style.height = '';
+    });
 
     for (const name of Object.keys(PRESETS)) {
       const opt = document.createElement('option');

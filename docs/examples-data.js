@@ -597,6 +597,58 @@ export const EXAMPLES = [
   },
   {
     cat: "Points",
+    title: "Lollipop",
+    desc: "Zero-anchored stem + marker per category, a lighter column.",
+    types: ["lollipop"],
+    cfg: {
+      chart: { type: "lollipop", height: 300 },
+      title: { text: "Monthly change" },
+      xAxis: { categories: months },
+      yAxis: { title: { text: "Units" } },
+      series: [
+        {
+          name: "Sales",
+          dataLabels: { enabled: true },
+          data: [5, -3, 8, 6, -2, 4],
+        },
+      ],
+    },
+  },
+  {
+    cat: "Advanced",
+    title: "Slope",
+    desc: "One line per series across two (or more) x-categories — before/after comparison.",
+    types: ["slope"],
+    cfg: {
+      chart: { type: "slope", height: 340 },
+      title: { text: "Share of segment: 2020 vs 2024" },
+      xAxis: { categories: ["2020", "2024"] },
+      yAxis: { title: { text: "Share %" } },
+      series: [
+        { name: "Product A", dataLabels: { enabled: true }, data: [30, 45] },
+        { name: "Product B", dataLabels: { enabled: true }, data: [50, 32] },
+        { name: "Product C", dataLabels: { enabled: true }, data: [20, 38] },
+      ],
+    },
+  },
+  {
+    cat: "Lines & areas",
+    title: "Sparkline",
+    desc: "Bare trend line for a table cell — no axes, last point highlighted.",
+    types: ["sparkline"],
+    cfg: {
+      chart: { type: "sparkline", height: 60 },
+      series: [
+        {
+          name: "Trend",
+          sparkline: { min: true, max: true },
+          data: [5, 8, 6, 9, 12, 10, 14, 13, 16],
+        },
+      ],
+    },
+  },
+  {
+    cat: "Points",
     title: "Timeline",
     desc: "Events along a line.",
     types: ["timeline"],

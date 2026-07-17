@@ -8,11 +8,27 @@ import type { AxisOptions, ChartOptions, ChartType, SeriesOptions } from "./opti
 import { DEFAULT_OPTIONS } from "./defaults.js";
 import { merge } from "./utils.js";
 
+/**
+ * Baseline chrome for a sparkline: no axes, no legend, minimal spacing — the
+ * whole point is a bare trend line sized for a table cell. Layered in
+ * *before* the user's own options, so any of these can still be overridden
+ * (e.g. turning the x-axis back on) same as any other default.
+ */
+const SPARKLINE_DEFAULTS: Partial<ChartOptions> = {
+  chart: { spacing: [2, 2, 2, 2] },
+  xAxis: { visible: false },
+  yAxis: { visible: false },
+  legend: { enabled: false },
+};
+
 /** Apply global and per-type plot options to every series. */
 export function resolveChartOptions(user: ChartOptions): ChartOptions {
+  const sparkline =
+    user.chart?.type === "sparkline" ? SPARKLINE_DEFAULTS : {};
   const merged = merge(
     {} as ChartOptions,
     DEFAULT_OPTIONS as ChartOptions,
+    sparkline as ChartOptions,
     user,
   );
   const globalType = merged.chart?.type ?? "line";
