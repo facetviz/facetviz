@@ -4366,18 +4366,35 @@ var FacetViz = class _FacetViz {
     ) * 6.6;
   }
   /** Space to reserve for an axis on a given side (vertical → width, else height). */
+  /**
+   * How many px to shave off a fixed axis-reserve constant as the chart's
+   * shorter side shrinks below 300px. A flat reserve stays the same size
+   * regardless of chart size, so on a small chart (dashboard card,
+   * resizable panel) it ends up as a visibly dead gap that doesn't shrink
+   * along with everything else. Ramps from 0 at 300px up to `maxReduce` at
+   * 100px and below.
+   */
+  smallChartTaper(maxReduce) {
+    const shortSide = Math.min(this.width, this.height);
+    const t = Math.max(0, Math.min(1, (300 - shortSide) / 200));
+    return t * maxReduce;
+  }
   axisReserve(opts, side, labelW) {
     if (opts.visible === false) return 6;
     const title = opts.title?.text ? 1 : 0;
+    const labelsOn = opts.labels?.enabled !== false;
     if (side === "left" || side === "right") {
-      return Math.max(
-        LAYOUT.defaultLeftAxisWidth,
-        LAYOUT.tickLength + 8 + labelW + (title ? 18 : 0)
-      );
+      if (!labelsOn) return LAYOUT.tickLength + 6 + (title ? 18 : 0);
+      const floor = title ? LAYOUT.defaultLeftAxisWidth : LAYOUT.defaultLeftAxisWidth - this.smallChartTaper(14);
+      return Math.max(floor, LAYOUT.tickLength + 8 + labelW + (title ? 18 : 0));
     }
     const rot = opts.labels?.rotation ?? 0;
     const rotExtra = rot ? Math.abs(Math.sin(rot * Math.PI / 180)) * labelW : 0;
-    return LAYOUT.defaultBottomAxisHeight + (title ? 8 : 0) + rotExtra;
+    if (!labelsOn) {
+      return title ? LAYOUT.tickLength + 22 + 8 : LAYOUT.tickLength + 6;
+    }
+    const base = title ? LAYOUT.defaultBottomAxisHeight : LAYOUT.defaultBottomAxisHeight - this.smallChartTaper(10);
+    return base + (title ? 8 : 0) + rotExtra;
   }
   renderPanel(panel) {
     const visible = panel.series.filter((s) => s.visible && s.points.length);

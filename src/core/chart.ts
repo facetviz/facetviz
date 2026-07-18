@@ -777,6 +777,20 @@ export class FacetViz {
   }
 
   /** Space to reserve for an axis on a given side (vertical → width, else height). */
+  /**
+   * How many px to shave off a fixed axis-reserve constant as the chart's
+   * shorter side shrinks below 300px. A flat reserve stays the same size
+   * regardless of chart size, so on a small chart (dashboard card,
+   * resizable panel) it ends up as a visibly dead gap that doesn't shrink
+   * along with everything else. Ramps from 0 at 300px up to `maxReduce` at
+   * 100px and below.
+   */
+  private smallChartTaper(maxReduce: number): number {
+    const shortSide = Math.min(this.width, this.height);
+    const t = Math.max(0, Math.min(1, (300 - shortSide) / 200));
+    return t * maxReduce;
+  }
+
   private axisReserve(
     opts: AxisOptions,
     side: "top" | "bottom" | "left" | "right",
@@ -784,11 +798,13 @@ export class FacetViz {
   ): number {
     if (opts.visible === false) return 6;
     const title = opts.title?.text ? 1 : 0;
+    const labelsOn = opts.labels?.enabled !== false;
     if (side === "left" || side === "right") {
-      return Math.max(
-        LAYOUT.defaultLeftAxisWidth,
-        LAYOUT.tickLength + 8 + labelW + (title ? 18 : 0),
-      );
+      if (!labelsOn) return LAYOUT.tickLength + 6 + (title ? 18 : 0);
+      const floor = title
+        ? LAYOUT.defaultLeftAxisWidth
+        : LAYOUT.defaultLeftAxisWidth - this.smallChartTaper(14);
+      return Math.max(floor, LAYOUT.tickLength + 8 + labelW + (title ? 18 : 0));
     }
     // Horizontal axis: rotated labels project downward, so grow the band by the
     // label's vertical extent at that angle.
@@ -796,13 +812,25 @@ export class FacetViz {
     const rotExtra = rot
       ? Math.abs(Math.sin((rot * Math.PI) / 180)) * labelW
       : 0;
+    if (!labelsOn) {
+      // Axis#drawTitle still offsets by its fixed `tickLength + 22` even
+      // with no labels (its own label-gap term collapses to 0 there) — a
+      // title still needs that room. Only the label band itself collapses
+      // to just the tick mark.
+      return title ? LAYOUT.tickLength + 22 + 8 : LAYOUT.tickLength + 6;
+    }
     // The title's own placement (see Axis#drawTitle) already reaches past
     // the tick + label band via `tickLength + labelExtent + 14`, which is
     // roughly what `defaultBottomAxisHeight` alone already covers — so this
     // only needs a small top-up for the title's own text height, not that
     // whole distance again (that used to double-count it and leave a big
     // gap below the title before anything else, like a legend, started).
-    return LAYOUT.defaultBottomAxisHeight + (title ? 8 : 0) + rotExtra;
+    // The band itself only tapers when there's no title, since the title's
+    // placement above isn't itself responsive to chart size.
+    const base = title
+      ? LAYOUT.defaultBottomAxisHeight
+      : LAYOUT.defaultBottomAxisHeight - this.smallChartTaper(10);
+    return base + (title ? 8 : 0) + rotExtra;
   }
 
   private renderPanel(panel: PanelSpec): void {
