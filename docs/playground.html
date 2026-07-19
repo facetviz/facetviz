@@ -1,662 +1,1349 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>FacetViz Playground</title>
-  <style>
-    :root {
-      --bg: #f5f6fb; --panel: #ffffff; --border: #e7e8f0; --text: #16181d;
-      --muted: #6b7280; --accent: #6366f1; --accent-2: #8b5cf6; --accent-fg: #fff;
-      --editor-bg: #0d1117; --editor-fg: #e6edf7; --error: #e5484d; --ok: #16a34a;
-      --chip: #eef0fe; --chip-fg: #4338ca;
-      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-      --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root { --bg:#0b0e16; --panel:#141926; --border:#232a3b; --text:#e7ecf6; --muted:#97a0b5; --chip:#1e2333; --chip-fg:#a5b4fc; }
-    }
-    * { box-sizing: border-box; }
-    html, body { height: 100%; margin: 0; }
-    body { font-family: var(--sans); background: var(--bg); color: var(--text); display: flex; flex-direction: column; }
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FacetViz Playground</title>
+    <style>
+      :root {
+        --bg: #f5f6fb;
+        --panel: #ffffff;
+        --border: #e7e8f0;
+        --text: #16181d;
+        --muted: #6b7280;
+        --accent: #6366f1;
+        --accent-2: #8b5cf6;
+        --accent-fg: #fff;
+        --editor-bg: #0d1117;
+        --editor-fg: #e6edf7;
+        --error: #e5484d;
+        --ok: #16a34a;
+        --chip: #eef0fe;
+        --chip-fg: #4338ca;
+        --mono:
+          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0b0e16;
+          --panel: #141926;
+          --border: #232a3b;
+          --text: #e7ecf6;
+          --muted: #97a0b5;
+          --chip: #1e2333;
+          --chip-fg: #a5b4fc;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        font-family: var(--sans);
+        background: var(--bg);
+        color: var(--text);
+        display: flex;
+        flex-direction: column;
+      }
 
-    header {
-      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-      padding: 9px 16px; background: color-mix(in srgb, var(--panel) 88%, transparent);
-      backdrop-filter: saturate(1.4) blur(10px); border-bottom: 1px solid var(--border);
-    }
-    .brand { display: flex; align-items: center; gap: 9px; font-weight: 800; font-size: 16px; letter-spacing: -.4px; color: var(--text); text-decoration: none; }
-    .brand .mark { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; color: #fff; font-size: 14px; font-weight: 800; background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
-    .topnav { display: flex; gap: 2px; }
-    .topnav a { color: var(--muted); font-size: 13.5px; font-weight: 600; padding: 6px 10px; border-radius: 8px; text-decoration: none; }
-    .topnav a:hover { color: var(--text); }
-    .topnav a.active { color: var(--chip-fg); background: var(--chip); }
-    header .badge { font-size: 11px; color: var(--muted); font-weight: 500; }
-    header .spacer { flex: 1; }
-    select, button {
-      font-family: var(--sans); font-size: 13px; padding: 7px 12px; border-radius: 8px;
-      border: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer;
-    }
-    button.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--accent-fg); border: 0; font-weight: 600; }
-    button:hover { filter: brightness(0.97); }
-    label.field { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding: 9px 16px;
+        background: color-mix(in srgb, var(--panel) 88%, transparent);
+        backdrop-filter: saturate(1.4) blur(10px);
+        border-bottom: 1px solid var(--border);
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        font-weight: 800;
+        font-size: 16px;
+        letter-spacing: -0.4px;
+        color: var(--text);
+        text-decoration: none;
+      }
+      .brand .mark {
+        width: 24px;
+        height: 24px;
+        border-radius: 7px;
+        display: grid;
+        place-items: center;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 800;
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      }
+      .topnav {
+        display: flex;
+        gap: 2px;
+      }
+      .topnav a {
+        color: var(--muted);
+        font-size: 13.5px;
+        font-weight: 600;
+        padding: 6px 10px;
+        border-radius: 8px;
+        text-decoration: none;
+      }
+      .topnav a:hover {
+        color: var(--text);
+      }
+      .topnav a.active {
+        color: var(--chip-fg);
+        background: var(--chip);
+      }
+      header .badge {
+        font-size: 11px;
+        color: var(--muted);
+        font-weight: 500;
+      }
+      header .spacer {
+        flex: 1;
+      }
+      select,
+      button {
+        font-family: var(--sans);
+        font-size: 13px;
+        padding: 7px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--panel);
+        color: var(--text);
+        cursor: pointer;
+      }
+      button.primary {
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        color: var(--accent-fg);
+        border: 0;
+        font-weight: 600;
+      }
+      button:hover {
+        filter: brightness(0.97);
+      }
+      label.field {
+        font-size: 12px;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
 
-    main { flex: 1; display: grid; grid-template-columns: minmax(320px, 42%) 1fr; min-height: 0; }
-    .pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-    .pane.left { border-right: 1px solid var(--border); }
-    .pane-head {
-      display: flex; align-items: center; gap: 10px; padding: 8px 14px;
-      font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); background: var(--panel);
-    }
-    .status { margin-left: auto; font-weight: 600; }
-    .status.ok { color: var(--ok); }
-    .status.err { color: var(--error); }
+      main {
+        flex: 1;
+        display: grid;
+        grid-template-columns: minmax(320px, 42%) 1fr;
+        min-height: 0;
+      }
+      .pane {
+        min-width: 0;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .pane.left {
+        border-right: 1px solid var(--border);
+      }
+      .pane-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 14px;
+        font-size: 12px;
+        color: var(--muted);
+        border-bottom: 1px solid var(--border);
+        background: var(--panel);
+      }
+      .status {
+        margin-left: auto;
+        font-weight: 600;
+      }
+      .status.ok {
+        color: var(--ok);
+      }
+      .status.err {
+        color: var(--error);
+      }
 
-    #editor {
-      flex: 1; width: 100%; resize: none; border: 0; outline: none; padding: 14px 16px;
-      background: var(--editor-bg); color: var(--editor-fg); font-family: var(--mono);
-      font-size: 13px; line-height: 1.55; tab-size: 2; white-space: pre; overflow: auto;
-    }
+      #editor {
+        flex: 1;
+        width: 100%;
+        resize: none;
+        border: 0;
+        outline: none;
+        padding: 14px 16px;
+        background: var(--editor-bg);
+        color: var(--editor-fg);
+        font-family: var(--mono);
+        font-size: 13px;
+        line-height: 1.55;
+        tab-size: 2;
+        white-space: pre;
+        overflow: auto;
+      }
 
-    .preview-wrap { flex: 1; overflow: auto; padding: 18px; }
-    #preview {
-      background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
-      padding: 12px; min-height: 160px; min-width: 160px;
-      width: 100%; height: 420px; max-width: 100%;
-      resize: both; overflow: hidden;
-      /* A visible corner so the native resize handle reads as intentional,
+      .preview-wrap {
+        flex: 1;
+        overflow: auto;
+        padding: 18px;
+      }
+      #preview {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px;
+        min-height: 160px;
+        min-width: 160px;
+        width: 100%;
+        height: 420px;
+        max-width: 100%;
+        resize: both;
+        overflow: hidden;
+        /* A visible corner so the native resize handle reads as intentional,
          not stray clipping. */
-      box-shadow: inset -14px -14px 0 -12px color-mix(in srgb, var(--muted) 30%, transparent);
-    }
-    #previewSize {
-      font-variant-numeric: tabular-nums; color: var(--muted); font-size: 11px;
-    }
-    #error {
-      display: none; margin: 0 18px 14px; padding: 10px 14px; border-radius: 8px;
-      background: color-mix(in srgb, var(--error) 12%, transparent);
-      color: var(--error); font-family: var(--mono); font-size: 12px; white-space: pre-wrap;
-    }
-    #error.show { display: block; }
-    .hint { padding: 6px 18px 14px; font-size: 11px; color: var(--muted); }
-    kbd { font-family: var(--mono); background: var(--border); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+        box-shadow: inset -14px -14px 0 -12px
+          color-mix(in srgb, var(--muted) 30%, transparent);
+      }
+      #previewSize {
+        font-variant-numeric: tabular-nums;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      #error {
+        display: none;
+        margin: 0 18px 14px;
+        padding: 10px 14px;
+        border-radius: 8px;
+        background: color-mix(in srgb, var(--error) 12%, transparent);
+        color: var(--error);
+        font-family: var(--mono);
+        font-size: 12px;
+        white-space: pre-wrap;
+      }
+      #error.show {
+        display: block;
+      }
+      .hint {
+        padding: 6px 18px 14px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      kbd {
+        font-family: var(--mono);
+        background: var(--border);
+        padding: 1px 5px;
+        border-radius: 4px;
+        font-size: 11px;
+      }
 
-    @media (max-width: 820px) {
-      main { grid-template-columns: 1fr; grid-template-rows: 45% 55%; }
-      .pane.left { border-right: 0; border-bottom: 1px solid var(--border); }
-    }
-  </style>
-</head>
-<body>
-  <header>
-    <a class="brand" href="./"><span class="mark">F</span> FacetViz</a>
-    <nav class="topnav">
-      <a href="./">Guide</a>
-      <a href="./examples.html">Examples</a>
-      <a href="./api.html">API</a>
-      <a href="./theme.html">Theme</a>
-    </nav>
-    <div class="spacer"></div>
-    <label class="field">Example
-      <select id="preset"></select>
-    </label>
-    <button id="format" title="Prettify JSON">Format</button>
-    <button id="run" class="primary" title="Ctrl/Cmd + Enter">Run ▶</button>
-  </header>
+      @media (max-width: 820px) {
+        main {
+          grid-template-columns: 1fr;
+          grid-template-rows: 45% 55%;
+        }
+        .pane.left {
+          border-right: 0;
+          border-bottom: 1px solid var(--border);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="./"><span class="mark">F</span> FacetViz</a>
+      <nav class="topnav">
+        <a href="./">Guide</a>
+        <a href="./examples.html">Examples</a>
+        <a href="./api.html">API</a>
+        <a href="./theme.html">Theme</a>
+      </nav>
+      <div class="spacer"></div>
+      <label class="field"
+        >Example
+        <select id="preset"></select>
+      </label>
+      <button id="format" title="Prettify JSON">Format</button>
+      <button id="run" class="primary" title="Ctrl/Cmd + Enter">Run ▶</button>
+    </header>
 
-  <main>
-    <section class="pane left">
-      <div class="pane-head">
-        <span>config.json</span>
-        <span id="status" class="status ok">ready</span>
-      </div>
-      <textarea id="editor" spellcheck="false" autocomplete="off"></textarea>
-      <div class="hint">Data-only JSON (no functions). <kbd>Tab</kbd> inserts spaces · <kbd>Ctrl/Cmd</kbd>+<kbd>Enter</kbd> runs.</div>
-    </section>
+    <main>
+      <section class="pane left">
+        <div class="pane-head">
+          <span>config.json</span>
+          <span id="status" class="status ok">ready</span>
+        </div>
+        <textarea id="editor" spellcheck="false" autocomplete="off"></textarea>
+        <div class="hint">
+          Data-only JSON (no functions). <kbd>Tab</kbd> inserts spaces ·
+          <kbd>Ctrl/Cmd</kbd>+<kbd>Enter</kbd> runs.
+        </div>
+      </section>
 
-    <section class="pane right">
-      <div class="pane-head">
-        <span>preview</span>
-        <span id="previewSize"></span>
-        <button id="resetSize" title="Reset preview size" style="margin-left:auto; padding:4px 9px; font-size:11px;">Reset size</button>
-      </div>
-      <div class="preview-wrap">
-        <div id="error"></div>
-        <div id="preview"></div>
-      </div>
-    </section>
-  </main>
+      <section class="pane right">
+        <div class="pane-head">
+          <span>preview</span>
+          <span id="previewSize"></span>
+          <button
+            id="resetSize"
+            title="Reset preview size"
+            style="margin-left: auto; padding: 4px 9px; font-size: 11px"
+          >
+            Reset size
+          </button>
+        </div>
+        <div class="preview-wrap">
+          <div id="error"></div>
+          <div id="preview"></div>
+        </div>
+      </section>
+    </main>
 
-  <script type="module">
-    import { FacetViz } from './lib/facetviz.js';
+    <script type="module">
+      import { FacetViz } from "./lib/facetviz.js";
 
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-    const trellisMonths = ['Jan', 'Feb', 'Mar', 'Apr'];
-    function trellisData(valueFn) {
-      const out = [];
-      for (const region of ['East', 'West'])
-        for (const cat of ['Tech', 'Furniture'])
-          for (const x of trellisMonths) out.push({ x, region, cat, y: valueFn() });
-      return out;
-    }
-    function trellisBoxData() {
-      const out = [];
-      for (const region of ['East', 'West'])
-        for (const cat of ['Tech', 'Furniture'])
-          for (const x of ['A', 'B', 'C']) {
-            out.push({
-              x, region, cat, min: 2,
-              q1: 4 + Math.random() * 2, median: 6 + Math.random() * 2,
-              q3: 8 + Math.random() * 2, max: 12,
-            });
-          }
-      return out;
-    }
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
+      const trellisMonths = ["Jan", "Feb", "Mar", "Apr"];
+      function trellisData(valueFn) {
+        const out = [];
+        for (const region of ["East", "West"])
+          for (const cat of ["Tech", "Furniture"])
+            for (const x of trellisMonths)
+              out.push({ x, region, cat, y: valueFn() });
+        return out;
+      }
+      function trellisBoxData() {
+        const out = [];
+        for (const region of ["East", "West"])
+          for (const cat of ["Tech", "Furniture"])
+            for (const x of ["A", "B", "C"]) {
+              out.push({
+                x,
+                region,
+                cat,
+                min: 2,
+                q1: 4 + Math.random() * 2,
+                median: 6 + Math.random() * 2,
+                q3: 8 + Math.random() * 2,
+                max: 12,
+              });
+            }
+        return out;
+      }
 
-    // -- Example configs (data-only JSON) --------------------------------------
-    const PRESETS = {
-      'Column — grouped': {
-        chart: { type: 'column', height: 380 },
-        title: { text: 'Monthly sales' }, subtitle: { text: 'by region' },
-        xAxis: { categories: months }, yAxis: { title: { text: 'Units' } },
-        series: [
-          { name: 'North', data: [5, 3, 4, 7, 2, 6] },
-          { name: 'South', data: [2, 4, 6, 3, 5, 4] },
-        ],
-      },
-      'Column — stacked': {
-        chart: { type: 'column', height: 380 }, title: { text: 'Stacked' },
-        xAxis: { categories: months },
-        series: [
-          { name: 'A', stacking: 'normal', data: [5, 3, 4, 7, 2, 6] },
-          { name: 'B', stacking: 'normal', data: [2, 4, 6, 3, 5, 4] },
-          { name: 'C', stacking: 'normal', data: [3, 3, 3, 3, 3, 3] },
-        ],
-      },
-      'Rotated x-axis labels': {
-        chart: { type: 'column', height: 380 }, title: { text: 'Sales by country' },
-        xAxis: {
-          categories: ['United States', 'United Kingdom', 'Germany', 'France', 'Japan', 'Australia'],
-          labels: { rotation: -45 }, title: { text: 'Country' },
+      // -- Example configs (data-only JSON) --------------------------------------
+      const PRESETS = {
+        "Column — grouped": {
+          chart: { type: "column", height: 380 },
+          title: { text: "Monthly sales" },
+          subtitle: { text: "by region" },
+          xAxis: { categories: months },
+          yAxis: { title: { text: "Units" } },
+          series: [
+            { name: "North", data: [5, 3, 4, 7, 2, 6] },
+            { name: "South", data: [2, 4, 6, 3, 5, 4] },
+          ],
         },
-        yAxis: { title: { text: 'Units' } },
-        series: [{ name: 'Sales', data: [5, 3, 4, 7, 2, 6] }],
-      },
-      'Line / spline / step': {
-        chart: { height: 380 }, title: { text: 'Line family' },
-        xAxis: { categories: months }, yAxis: { title: { text: 'Value' } },
-        series: [
-          { type: 'line', name: 'Line', data: [3, 5, 4, 7, 6, 8], marker: { enabled: true } },
-          { type: 'spline', name: 'Spline', data: [2, 4, 3, 6, 5, 7] },
-          { type: 'step', name: 'Step', data: [1, 2, 2, 4, 3, 6] },
-        ],
-      },
-      'Area — stacked': {
-        chart: { type: 'area', height: 380 }, title: { text: 'Stacked area' },
-        xAxis: { categories: months },
-        series: [
-          { name: 'A', stacking: 'normal', data: [3, 4, 3, 5, 4, 6] },
-          { name: 'B', stacking: 'normal', data: [2, 3, 4, 3, 5, 4] },
-        ],
-      },
-      'Line with min/max range': {
-        chart: { type: 'line', height: 380 }, title: { text: 'Daily temperature' },
-        xAxis: { categories: months }, yAxis: { title: { text: '°C' } },
-        tooltip: { shared: true },
-        series: [
-          {
-            name: 'Range', type: 'arearange', color: '#2caffe', lineWidth: 0,
-            data: [['Jan', -3, 7], ['Feb', -1, 9], ['Mar', 2, 12], ['Apr', 5, 16], ['May', 9, 20], ['Jun', 13, 24]],
+        "Column — stacked": {
+          chart: { type: "column", height: 380 },
+          title: { text: "Stacked" },
+          xAxis: { categories: months },
+          series: [
+            { name: "A", stacking: "normal", data: [5, 3, 4, 7, 2, 6] },
+            { name: "B", stacking: "normal", data: [2, 4, 6, 3, 5, 4] },
+            { name: "C", stacking: "normal", data: [3, 3, 3, 3, 3, 3] },
+          ],
+        },
+        "Rotated x-axis labels": {
+          chart: { type: "column", height: 380 },
+          title: { text: "Sales by country" },
+          xAxis: {
+            categories: [
+              "United States",
+              "United Kingdom",
+              "Germany",
+              "France",
+              "Japan",
+              "Australia",
+            ],
+            labels: { rotation: -45 },
+            title: { text: "Country" },
           },
-          { name: 'Average', type: 'line', color: '#4338ca', marker: { enabled: true }, data: [2, 4, 7, 10, 14, 18] },
-        ],
-      },
-      'Pie — with labels': {
-        chart: { type: 'pie', height: 380 }, title: { text: 'Browser share' },
-        series: [{ name: 'Share', dataLabels: { enabled: true }, data: [
-          { name: 'Chrome', y: 63 }, { name: 'Safari', y: 19 },
-          { name: 'Edge', y: 5 }, { name: 'Firefox', y: 4 }, { name: 'Other', y: 9 },
-        ] }],
-      },
-      'Formatter — currency / SI / %': {
-        chart: { type: 'column', height: 400 }, title: { text: 'Revenue by region' },
-        xAxis: { categories: ['North', 'South', 'East', 'West'] },
-        yAxis: { title: { text: 'USD' }, labels: { format: '${value:,.0f}' } },
-        tooltip: { format: '<b>{name}</b><br/>Revenue: {y:$,.0f}<br/>Share: {percentage:.1f}% of {total:$,.2s}' },
-        series: [{
-          name: 'Revenue',
-          dataLabels: { enabled: true, format: '{y:$,.1s} ({percentage:.0f}%)', fontWeight: '600' },
-          data: [1250000, 1875000, 2340000, 3100000],
-        }],
-      },
-      'Formatter — dates on x-axis': {
-        chart: { type: 'line', height: 380 }, title: { text: 'Daily signups' },
-        xAxis: { labels: { format: '{value:%b %d}' } },
-        series: [{ name: 'Signups', marker: { enabled: true }, dataLabels: { enabled: true, format: '{y:,.0f}' }, data: [
-          [Date.UTC(2026, 0, 1), 1200], [Date.UTC(2026, 0, 8), 1850], [Date.UTC(2026, 0, 15), 2400],
-          [Date.UTC(2026, 0, 22), 2100], [Date.UTC(2026, 0, 29), 3050],
-        ] }],
-      },
-      'Donut — two dimensions': {
-        chart: { type: 'donut', height: 400 }, title: { text: 'Sessions' },
-        series: [{ name: 'Sessions', innerSize: '35%', dimensions: ['Region', 'Device'],
-          dataLabels: { enabled: true, format: '{name}' }, data: [
-          { Region: 'Americas', Device: 'Mobile', y: 30 }, { Region: 'Americas', Device: 'Desktop', y: 22 },
-          { Region: 'EMEA', Device: 'Mobile', y: 24 }, { Region: 'EMEA', Device: 'Desktop', y: 18 },
-          { Region: 'APAC', Device: 'Mobile', y: 28 }, { Region: 'APAC', Device: 'Desktop', y: 12 },
-        ] }],
-      },
-      'Pie — variable radius': {
-        chart: { type: 'pie', height: 400 }, title: { text: 'Share × intensity' },
-        series: [{ name: 'V', dataLabels: { enabled: true, format: '{name}' }, data: [
-          { name: 'A', y: 30, z: 100 }, { name: 'B', y: 25, z: 60 },
-          { name: 'C', y: 25, z: 90 }, { name: 'D', y: 20, z: 40 },
-        ] }],
-      },
-      'Heatmap': {
-        chart: { type: 'heatmap', height: 360 }, title: { text: 'Activity' },
-        series: [{ name: 'Activity', color: '#2caffe', data: [
-          { x: 'Mon', y: 'AM', value: 74 }, { x: 'Mon', y: 'PM', value: 40 },
-          { x: 'Tue', y: 'AM', value: 38 }, { x: 'Tue', y: 'PM', value: 55 },
-          { x: 'Wed', y: 'AM', value: 35 }, { x: 'Wed', y: 'PM', value: 89 },
-          { x: 'Thu', y: 'AM', value: 53 }, { x: 'Thu', y: 'PM', value: 27 },
-          { x: 'Fri', y: 'AM', value: 19 }, { x: 'Fri', y: 'PM', value: 45 },
-        ] }],
-      },
-      'Gauge': {
-        chart: { type: 'gauge', height: 380 }, title: { text: 'Speed' },
-        series: [{ name: 'km/h', min: 0, max: 120, data: [{ name: 'km/h', y: 82 }],
-          bands: [
-            { from: 0, to: 60, color: '#26a69a' },
-            { from: 60, to: 90, color: '#ffca28' },
-            { from: 90, to: 120, color: '#ef5350' },
-          ] }],
-      },
-      'Waterfall': {
-        chart: { type: 'waterfall', height: 380 }, title: { text: 'Cash flow' },
-        xAxis: { categories: ['Start', 'Sales', 'Refunds', 'Services', 'Costs', 'Net'] },
-        yAxis: { title: { text: '$k' } },
-        series: [{ name: 'Flow', data: [
-          { x: 'Start', y: 120 }, { x: 'Sales', y: 80 }, { x: 'Refunds', y: -30 },
-          { x: 'Services', y: 45 }, { x: 'Costs', y: -60 }, { x: 'Net', isSum: true },
-        ] }],
-      },
-      'Candlestick': {
-        chart: { type: 'candlestick', height: 380 }, title: { text: 'Price (OHLC)' },
-        xAxis: { categories: months }, yAxis: { title: { text: 'Price' } },
-        series: [{ name: 'ACME', data: [
-          { x: 'Jan', open: 100, high: 108, low: 98, close: 106 },
-          { x: 'Feb', open: 106, high: 110, low: 101, close: 103 },
-          { x: 'Mar', open: 103, high: 105, low: 95, close: 97 },
-          { x: 'Apr', open: 97, high: 104, low: 96, close: 102 },
-          { x: 'May', open: 102, high: 112, low: 100, close: 110 },
-          { x: 'Jun', open: 110, high: 114, low: 107, close: 108 },
-        ] }],
-      },
-      'Boxplot': {
-        chart: { type: 'boxplot', height: 380 }, title: { text: 'Distributions' },
-        xAxis: { categories: ['A', 'B', 'C', 'D'] },
-        series: [{ name: 'obs', boxColors: { lower: '#74c0fc', upper: '#f08c4b' }, data: [
-          { min: 2, q1: 4, median: 5, q3: 6.5, max: 8 },
-          { min: 1, q1: 4.5, median: 6, q3: 8, max: 12 },
-          { min: 3, q1: 5.5, median: 6, q3: 7.5, max: 10 },
-          { min: 0, q1: 3, median: 6, q3: 9, max: 14 },
-        ] }],
-      },
-      'Dumbbell': {
-        chart: { type: 'dumbbell', height: 380 }, title: { text: 'Change by category' },
-        xAxis: { categories: ['A', 'B', 'C', 'D', 'E'] }, yAxis: { title: { text: 'Value' } },
-        series: [{ name: 'Change', lowColor: '#adb5bd', highColor: '#2caffe',
-          data: [['A', 20, 45], ['B', 35, 30], ['C', 10, 55], ['D', 40, 60], ['E', 25, 35]] }],
-      },
-      'Lollipop': {
-        chart: { type: 'lollipop', height: 380 }, title: { text: 'Monthly change' },
-        xAxis: { categories: months }, yAxis: { title: { text: 'Units' } },
-        series: [{ name: 'Sales', dataLabels: { enabled: true }, data: [5, -3, 8, 6, -2, 4] }],
-      },
-      'Slope': {
-        chart: { type: 'slope', height: 380 }, title: { text: 'Share of segment: 2020 vs 2024' },
-        xAxis: { categories: ['2020', '2024'] }, yAxis: { title: { text: 'Share %' } },
-        series: [
-          { name: 'Product A', dataLabels: { enabled: true }, data: [30, 45] },
-          { name: 'Product B', dataLabels: { enabled: true }, data: [50, 32] },
-          { name: 'Product C', dataLabels: { enabled: true }, data: [20, 38] },
-        ],
-      },
-      'Sparkline': {
-        chart: { type: 'sparkline', height: 380 },
-        series: [{ name: 'Trend', sparkline: { min: true, max: true },
-          data: [5, 8, 6, 9, 12, 10, 14, 13, 16] }],
-      },
-      'Column range — rounded': {
-        chart: { type: 'columnrange', height: 380 }, title: { text: 'Temp range' },
-        xAxis: { categories: months }, yAxis: { title: { text: '°C' } },
-        series: [{ name: 'Range', color: '#fe6a35',
-          data: [['Jan', -2, 7], ['Feb', -1, 9], ['Mar', 2, 12], ['Apr', 5, 16], ['May', 9, 20], ['Jun', 13, 24]] }],
-      },
-      'Radial bar': {
-        chart: { type: 'radialbar', height: 380 }, title: { text: 'Activity' },
-        series: [{ name: 'Goals', data: [
-          { name: 'Move', y: 80 }, { name: 'Exercise', y: 55 }, { name: 'Stand', y: 95 },
-        ] }],
-      },
-      'Funnel': {
-        chart: { type: 'funnel', height: 400 }, title: { text: 'Conversion' },
-        legend: { enabled: false },
-        series: [{ name: 'Users', data: [
-          { name: 'Visits', y: 1500 }, { name: 'Signups', y: 900 },
-          { name: 'Trials', y: 500 }, { name: 'Paid', y: 220 },
-        ] }],
-      },
-      'Bullet': {
-        chart: { type: 'bullet', height: 360 }, title: { text: 'KPIs vs target' },
-        series: [{ name: 'KPI', data: [
-          { name: 'Revenue', y: 275, target: 250, ranges: [150, 225, 300] },
-          { name: 'Profit', y: 22, target: 26, ranges: [20, 25, 30] },
-          { name: 'Orders', y: 1650, target: 2000, ranges: [1400, 2000, 2500] },
-        ] }],
-      },
-      'Treegraph': {
-        chart: { type: 'treegraph', height: 380 }, title: { text: 'Org chart' },
-        series: [{ name: 'Org', data: [
-          { id: 'ceo', name: 'CEO' },
-          { id: 'cto', parent: 'ceo', name: 'CTO' }, { id: 'cfo', parent: 'ceo', name: 'CFO' },
-          { id: 'eng', parent: 'cto', name: 'Eng' }, { id: 'qa', parent: 'cto', name: 'QA' },
-          { id: 'fin', parent: 'cfo', name: 'Finance' },
-        ] }],
-      },
-      'Timeline': {
-        chart: { type: 'timeline', height: 340 }, title: { text: 'Roadmap' },
-        series: [{ name: 'Milestones', data: [
-          { x: '2023', name: 'Kickoff' }, { x: '2024', name: 'Beta' },
-          { x: '2025', name: 'GA' }, { x: '2026', name: 'v2' },
-        ] }],
-      },
-      'Nested x-axis': {
-        chart: { type: 'column', height: 400 }, title: { text: 'Sales by Region ▸ Category' },
-        xAxis: { dimensions: ['Region', 'Category'], aggregate: 'sum', opposite: true },
-        yAxis: { title: { text: 'Sum of Sales' } },
-        series: [{ name: 'Sales', data: [
-          { Region: 'East', Category: 'Tech', y: 25 }, { Region: 'East', Category: 'Furniture', y: 14 }, { Region: 'East', Category: 'Office', y: 27 },
-          { Region: 'West', Category: 'Tech', y: 25 }, { Region: 'West', Category: 'Furniture', y: 30 }, { Region: 'West', Category: 'Office', y: 27 },
-          { Region: 'Central', Category: 'Tech', y: 17 }, { Region: 'Central', Category: 'Furniture', y: 22 }, { Region: 'Central', Category: 'Office', y: 22 },
-        ] }],
-      },
-      'Nested x-axis (per-group order)': {
-        chart: { type: 'column', height: 400 }, title: { text: 'Sales by Region ▸ Category' },
-        xAxis: { dimensions: ['Region', 'Category'], aggregate: 'sum' },
-        yAxis: { title: { text: 'Sum of Sales' } },
-        series: [{ name: 'Sales', data: [
-          { Region: 'East', Category: 'Tech', y: 25 }, { Region: 'East', Category: 'Furniture', y: 14 }, { Region: 'East', Category: 'Office', y: 27 },
-          { Region: 'West', Category: 'Office', y: 27 }, { Region: 'West', Category: 'Tech', y: 25 }, { Region: 'West', Category: 'Furniture', y: 30 },
-          { Region: 'Central', Category: 'Furniture', y: 22 }, { Region: 'Central', Category: 'Office', y: 22 }, { Region: 'Central', Category: 'Tech', y: 17 },
-        ] }],
-      },
-      'Nested x-axis (horizontal bar)': {
-        chart: { type: 'bar', height: 400 }, title: { text: 'Sales by Region ▸ Category' },
-        xAxis: { dimensions: ['Region', 'Category'], aggregate: 'sum' },
-        yAxis: { title: { text: 'Sum of Sales' } },
-        series: [{ name: 'Sales', data: [
-          { Region: 'East', Category: 'Tech', y: 25 }, { Region: 'East', Category: 'Furniture', y: 14 }, { Region: 'East', Category: 'Office', y: 27 },
-          { Region: 'West', Category: 'Tech', y: 25 }, { Region: 'West', Category: 'Furniture', y: 30 }, { Region: 'West', Category: 'Office', y: 27 },
-          { Region: 'Central', Category: 'Tech', y: 17 }, { Region: 'Central', Category: 'Furniture', y: 22 }, { Region: 'Central', Category: 'Office', y: 22 },
-        ] }],
-      },
-      'Nested x-axis + line': {
-        chart: { type: 'column', height: 400 }, title: { text: 'Sales by Region ▸ Category' },
-        xAxis: { dimensions: ['Region', 'Category'], aggregate: 'sum', opposite: true },
-        yAxis: { title: { text: 'Sum of Sales' } },
-        series: [{ name: 'Sales', data: [
-          { Region: 'East', Category: 'Tech', y: 25 }, { Region: 'East', Category: 'Furniture', y: 14 }, { Region: 'East', Category: 'Office', y: 27 },
-          { Region: 'West', Category: 'Tech', y: 25 }, { Region: 'West', Category: 'Furniture', y: 30 }, { Region: 'West', Category: 'Office', y: 27 },
-          { Region: 'Central', Category: 'Tech', y: 17 }, { Region: 'Central', Category: 'Furniture', y: 22 }, { Region: 'Central', Category: 'Office', y: 22 },
-        ] }, 
-{ name: 'Trend', type: "line", marker: { enabled: true }, data: [
-          { Region: 'East', Category: 'Tech', y: 25 }, { Region: 'East', Category: 'Furniture', y: 14 }, { Region: 'East', Category: 'Office', y: 27 },
-          { Region: 'West', Category: 'Tech', y: 25 }, { Region: 'West', Category: 'Furniture', y: 30 }, { Region: 'West', Category: 'Office', y: 27 },
-          { Region: 'Central', Category: 'Tech', y: 17 }, { Region: 'Central', Category: 'Furniture', y: 22 }, { Region: 'Central', Category: 'Office', y: 22 },
-        ] }
-        ],
-      },
-      'Boost — 30k scatter (canvas)': {
-        chart: { type: 'scatter', height: 400 }, title: { text: '30,000 points on one canvas' },
-        xAxis: { title: { text: 'x' } }, yAxis: { title: { text: 'y' } },
-        series: [{ name: 'Cloud', color: '#2caffe', data: Array.from({ length: 30000 }, () => {
-          const a = Math.random() * 6.28, r = Math.random() * 50;
-          return [50 + r * Math.cos(a) + (Math.random() - 0.5) * 20, 50 + r * Math.sin(a)];
-        }) }],
-      },
-      'Bubble': {
-        chart: { type: 'bubble', height: 380 }, title: { text: 'Bubble (x, y, z→size)' },
-        xAxis: { title: { text: 'GDP/capita' } }, yAxis: { title: { text: 'Life expectancy' } },
-        series: [{ name: 'Countries', data: [
-          { x: 12, y: 72, z: 80 }, { x: 45, y: 81, z: 320 }, { x: 28, y: 76, z: 140 },
-          { x: 60, y: 83, z: 60 }, { x: 8, y: 65, z: 210 }, { x: 35, y: 79, z: 25 },
-        ] }],
-      },
-      'Radar': {
-        chart: { type: 'radar', height: 400 }, title: { text: 'Skills' },
-        xAxis: { categories: ['Speed', 'Power', 'Range', 'Control', 'Stamina', 'Agility'] },
-        series: [
-          { name: 'Alpha', data: [8, 6, 7, 9, 5, 8] },
-          { name: 'Bravo', type: 'area', data: [6, 8, 5, 6, 9, 6] },
-        ],
-      },
-      'Sunburst': {
-        chart: { type: 'sunburst', height: 400 }, title: { text: 'Org' },
-        series: [{ name: 'Org', data: [
-          { id: 'eng', name: 'Eng' }, { id: 'fe', parent: 'eng', name: 'FE', value: 8 }, { id: 'be', parent: 'eng', name: 'BE', value: 12 },
-          { id: 'sales', name: 'Sales' }, { id: 'in', parent: 'sales', name: 'In', value: 6 }, { id: 'out', parent: 'sales', name: 'Out', value: 5 },
-          { id: 'ops', name: 'Ops', value: 4 },
-        ] }],
-      },
-      'Sankey': {
-        chart: { type: 'sankey', height: 380 }, title: { text: 'Energy flow' }, legend: { enabled: false },
-        series: [{ name: 'Flow', data: [
-          { from: 'Coal', to: 'Grid', weight: 40 }, { from: 'Solar', to: 'Grid', weight: 25 }, { from: 'Wind', to: 'Grid', weight: 20 },
-          { from: 'Grid', to: 'Homes', weight: 45 }, { from: 'Grid', to: 'Industry', weight: 40 },
-        ] }],
-      },
-      'Gantt': {
-        chart: { type: 'gantt', height: 300 }, title: { text: 'Project plan' }, legend: { enabled: false },
-        series: [{ name: 'Tasks', data: [
-          { name: 'Research', start: Date.UTC(2026, 0, 1), end: Date.UTC(2026, 0, 10) },
-          { name: 'Design', start: Date.UTC(2026, 0, 8), end: Date.UTC(2026, 0, 20) },
-          { name: 'Build', start: Date.UTC(2026, 0, 18), end: Date.UTC(2026, 1, 10) },
-          { name: 'Launch', start: Date.UTC(2026, 1, 8), end: Date.UTC(2026, 1, 14) },
-        ] }],
-      },
-      'Marimekko': {
-        chart: { type: 'marimekko', height: 380 }, title: { text: 'Share by segment' },
-        xAxis: { categories: ['Enterprise', 'SMB', 'Consumer'] },
-        series: [
-          { name: 'Product A', data: [40, 20, 10] },
-          { name: 'Product B', data: [25, 30, 25] },
-          { name: 'Product C', data: [15, 25, 45] },
-        ],
-      },
-      'Trellis table': {
-        chart: { type: 'column', height: 380 }, title: { text: 'Sales small multiples' },
-        xAxis: { title: { text: 'Month' } }, yAxis: { title: { text: 'Sales' } },
-        trellis: { columns: 'cat', rows: 'region' },
-        series: [{ name: 'Sales', data: trellisData(() => Math.round(2 + Math.random() * 8)) }],
-      },
-      'Trellis table (dual axis)': {
-        chart: { type: 'column', height: 380 }, title: { text: 'Sales vs Margin % small multiples' },
-        xAxis: { title: { text: 'Month' } },
-        yAxis: [{ title: { text: 'Sales' } }, { title: { text: 'Margin %' } }],
-        trellis: { columns: 'cat', rows: 'region' },
-        series: [
-          { name: 'Sales', data: trellisData(() => Math.round(2 + Math.random() * 8)) },
-          {
-            type: 'line', name: 'Margin %', yAxis: 1, color: '#e8590c', marker: { enabled: true },
-            data: trellisData(() => Math.round(40 + Math.random() * 20)),
+          yAxis: { title: { text: "Units" } },
+          series: [{ name: "Sales", data: [5, 3, 4, 7, 2, 6] }],
+        },
+        "Line / spline / step": {
+          chart: { height: 380 },
+          title: { text: "Line family" },
+          xAxis: { categories: months },
+          yAxis: { title: { text: "Value" } },
+          series: [
+            {
+              type: "line",
+              name: "Line",
+              data: [3, 5, 4, 7, 6, 8],
+              marker: { enabled: true },
+            },
+            { type: "spline", name: "Spline", data: [2, 4, 3, 6, 5, 7] },
+            { type: "step", name: "Step", data: [1, 2, 2, 4, 3, 6] },
+          ],
+        },
+        "Area — stacked": {
+          chart: { type: "area", height: 380 },
+          title: { text: "Stacked area" },
+          xAxis: { categories: months },
+          series: [
+            { name: "A", stacking: "normal", data: [3, 4, 3, 5, 4, 6] },
+            { name: "B", stacking: "normal", data: [2, 3, 4, 3, 5, 4] },
+          ],
+        },
+        "Line with min/max range": {
+          chart: { type: "line", height: 380 },
+          title: { text: "Daily temperature" },
+          xAxis: { categories: months },
+          yAxis: { title: { text: "°C" } },
+          tooltip: { shared: true },
+          series: [
+            {
+              name: "Range",
+              type: "arearange",
+              color: "#2caffe",
+              lineWidth: 0,
+              data: [
+                ["Jan", -3, 7],
+                ["Feb", -1, 9],
+                ["Mar", 2, 12],
+                ["Apr", 5, 16],
+                ["May", 9, 20],
+                ["Jun", 13, 24],
+              ],
+            },
+            {
+              name: "Average",
+              type: "line",
+              color: "#4338ca",
+              marker: { enabled: true },
+              data: [2, 4, 7, 10, 14, 18],
+            },
+          ],
+        },
+        "Pie — with labels": {
+          chart: { type: "pie", height: 380 },
+          title: { text: "Browser share" },
+          series: [
+            {
+              name: "Share",
+              dataLabels: { enabled: true },
+              data: [
+                { name: "Chrome", y: 63 },
+                { name: "Safari", y: 19 },
+                { name: "Edge", y: 5 },
+                { name: "Firefox", y: 4 },
+                { name: "Other", y: 9 },
+              ],
+            },
+          ],
+        },
+        "Formatter — currency / SI / %": {
+          chart: { type: "column", height: 400 },
+          title: { text: "Revenue by region" },
+          xAxis: { categories: ["North", "South", "East", "West"] },
+          yAxis: {
+            title: { text: "USD" },
+            labels: { format: "${value:,.0f}" },
           },
-        ],
-      },
-      'Trellis table (stacked column)': {
-        chart: { type: 'column', height: 380 }, title: { text: 'Sales by team, small multiples' },
-        xAxis: { title: { text: 'Month' } }, yAxis: { title: { text: 'Sales' } },
-        trellis: { columns: 'cat', rows: 'region' },
-        series: [
-          { name: 'North', stacking: 'normal', data: trellisData(() => Math.round(2 + Math.random() * 8)) },
-          { name: 'South', stacking: 'normal', data: trellisData(() => Math.round(2 + Math.random() * 8)) },
-        ],
-      },
-      'Trellis table (bar)': {
-        chart: { type: 'bar', height: 380 }, title: { text: 'Sales small multiples (horizontal)' },
-        xAxis: { title: { text: 'Month' } }, yAxis: { title: { text: 'Sales' } },
-        trellis: { columns: 'cat', rows: 'region' },
-        series: [{ name: 'Sales', data: trellisData(() => Math.round(2 + Math.random() * 8)) }],
-      },
-      'Trellis table (boxplot)': {
-        chart: { type: 'boxplot', height: 380 }, title: { text: 'Distributions, small multiples' },
-        yAxis: { title: { text: 'Value' } },
-        trellis: { columns: 'cat', rows: 'region' },
-        series: [{ name: 'Distribution', data: trellisBoxData() }],
-      },
-      'Datetime + zoom + crosshair': {
-        chart: { type: 'line', height: 380, zoom: 'x' }, title: { text: 'Drag to zoom' },
-        xAxis: { type: 'datetime', crosshair: true }, yAxis: { title: { text: 'Value' } },
-        tooltip: { shared: true, format: '{x:%b %d}<br/><b>{y}</b>' },
-        series: [{ name: 'Signal', marker: { enabled: true }, data: [
-          [Date.UTC(2026,0,1),52],[Date.UTC(2026,0,5),61],[Date.UTC(2026,0,9),74],[Date.UTC(2026,0,13),68],
-          [Date.UTC(2026,0,17),80],[Date.UTC(2026,0,21),72],[Date.UTC(2026,0,25),88],[Date.UTC(2026,0,29),79],
-        ] }],
-      },
-      'Drill-down': {
-        chart: { type: 'column', height: 380 }, title: { text: 'Fruit → varieties' },
-        legend: { enabled: false }, xAxis: { categories: ['Apples', 'Pears', 'Bananas'] },
-        series: [{ name: 'Fruit', data: [
-          { y: 12, name: 'Apples', drilldown: 'apples' },
-          { y: 8, name: 'Pears', drilldown: 'pears' },
-          { y: 15, name: 'Bananas' },
-        ] }],
-        drilldown: { series: [
-          { id: 'apples', name: 'Apple varieties', data: [{ x: 'Gala', y: 5 }, { x: 'Fuji', y: 4 }, { x: 'Granny', y: 3 }] },
-          { id: 'pears', name: 'Pear varieties', data: [{ x: 'Bartlett', y: 5 }, { x: 'Bosc', y: 3 }] },
-        ] },
-      },
-      'Dark theme': {
-        chart: { type: 'column', height: 380 }, theme: 'dark',
-        title: { text: 'Monthly sales' }, xAxis: { categories: months },
-        yAxis: { title: { text: 'Units' } },
-        series: [
-          { name: 'North', data: [5, 3, 4, 7, 2, 6] },
-          { name: 'South', data: [2, 4, 6, 3, 5, 4] },
-        ],
-      },
-    };
+          tooltip: {
+            format:
+              "<b>{name}</b><br/>Revenue: {y:$,.0f}<br/>Share: {percentage:.1f}% of {total:$,.2s}",
+          },
+          series: [
+            {
+              name: "Revenue",
+              dataLabels: {
+                enabled: true,
+                format: "{y:$,.1s} ({percentage:.0f}%)",
+                fontWeight: "600",
+              },
+              data: [1250000, 1875000, 2340000, 3100000],
+            },
+          ],
+        },
+        "Formatter — dates on x-axis": {
+          chart: { type: "line", height: 380 },
+          title: { text: "Daily signups" },
+          xAxis: { labels: { format: "{value:%b %d}" } },
+          series: [
+            {
+              name: "Signups",
+              marker: { enabled: true },
+              dataLabels: { enabled: true, format: "{y:,.0f}" },
+              data: [
+                [Date.UTC(2026, 0, 1), 1200],
+                [Date.UTC(2026, 0, 8), 1850],
+                [Date.UTC(2026, 0, 15), 2400],
+                [Date.UTC(2026, 0, 22), 2100],
+                [Date.UTC(2026, 0, 29), 3050],
+              ],
+            },
+          ],
+        },
+        "Donut — two dimensions": {
+          chart: { type: "donut", height: 400 },
+          title: { text: "Sessions" },
+          series: [
+            {
+              name: "Sessions",
+              innerSize: "35%",
+              dimensions: ["Region", "Device"],
+              dataLabels: { enabled: true, format: "{name}" },
+              data: [
+                { Region: "Americas", Device: "Mobile", y: 30 },
+                { Region: "Americas", Device: "Desktop", y: 22 },
+                { Region: "EMEA", Device: "Mobile", y: 24 },
+                { Region: "EMEA", Device: "Desktop", y: 18 },
+                { Region: "APAC", Device: "Mobile", y: 28 },
+                { Region: "APAC", Device: "Desktop", y: 12 },
+              ],
+            },
+          ],
+        },
+        "Pie — variable radius": {
+          chart: { type: "pie", height: 400 },
+          title: { text: "Share × intensity" },
+          series: [
+            {
+              name: "V",
+              dataLabels: { enabled: true, format: "{name}" },
+              data: [
+                { name: "A", y: 30, z: 100 },
+                { name: "B", y: 25, z: 60 },
+                { name: "C", y: 25, z: 90 },
+                { name: "D", y: 20, z: 40 },
+              ],
+            },
+          ],
+        },
+        Heatmap: {
+          chart: { type: "heatmap", height: 360 },
+          title: { text: "Activity" },
+          series: [
+            {
+              name: "Activity",
+              color: "#2caffe",
+              data: [
+                { x: "Mon", y: "AM", value: 74 },
+                { x: "Mon", y: "PM", value: 40 },
+                { x: "Tue", y: "AM", value: 38 },
+                { x: "Tue", y: "PM", value: 55 },
+                { x: "Wed", y: "AM", value: 35 },
+                { x: "Wed", y: "PM", value: 89 },
+                { x: "Thu", y: "AM", value: 53 },
+                { x: "Thu", y: "PM", value: 27 },
+                { x: "Fri", y: "AM", value: 19 },
+                { x: "Fri", y: "PM", value: 45 },
+              ],
+            },
+          ],
+        },
+        Gauge: {
+          chart: { type: "gauge", height: 380 },
+          title: { text: "Speed" },
+          series: [
+            {
+              name: "km/h",
+              min: 0,
+              max: 120,
+              data: [{ name: "km/h", y: 82 }],
+              bands: [
+                { from: 0, to: 60, color: "#26a69a" },
+                { from: 60, to: 90, color: "#ffca28" },
+                { from: 90, to: 120, color: "#ef5350" },
+              ],
+            },
+          ],
+        },
+        Waterfall: {
+          chart: { type: "waterfall", height: 380 },
+          title: { text: "Cash flow" },
+          xAxis: {
+            categories: [
+              "Start",
+              "Sales",
+              "Refunds",
+              "Services",
+              "Costs",
+              "Net",
+            ],
+          },
+          yAxis: { title: { text: "$k" } },
+          series: [
+            {
+              name: "Flow",
+              data: [
+                { x: "Start", y: 120 },
+                { x: "Sales", y: 80 },
+                { x: "Refunds", y: -30 },
+                { x: "Services", y: 45 },
+                { x: "Costs", y: -60 },
+                { x: "Net", isSum: true },
+              ],
+            },
+          ],
+        },
+        Candlestick: {
+          chart: { type: "candlestick", height: 380 },
+          title: { text: "Price (OHLC)" },
+          xAxis: { categories: months },
+          yAxis: { title: { text: "Price" } },
+          series: [
+            {
+              name: "ACME",
+              data: [
+                { x: "Jan", open: 100, high: 108, low: 98, close: 106 },
+                { x: "Feb", open: 106, high: 110, low: 101, close: 103 },
+                { x: "Mar", open: 103, high: 105, low: 95, close: 97 },
+                { x: "Apr", open: 97, high: 104, low: 96, close: 102 },
+                { x: "May", open: 102, high: 112, low: 100, close: 110 },
+                { x: "Jun", open: 110, high: 114, low: 107, close: 108 },
+              ],
+            },
+          ],
+        },
+        Boxplot: {
+          chart: { type: "boxplot", height: 380 },
+          title: { text: "Distributions" },
+          xAxis: { categories: ["A", "B", "C", "D"] },
+          series: [
+            {
+              name: "obs",
+              boxColors: { lower: "#74c0fc", upper: "#f08c4b" },
+              data: [
+                { min: 2, q1: 4, median: 5, q3: 6.5, max: 8 },
+                { min: 1, q1: 4.5, median: 6, q3: 8, max: 12 },
+                { min: 3, q1: 5.5, median: 6, q3: 7.5, max: 10 },
+                { min: 0, q1: 3, median: 6, q3: 9, max: 14 },
+              ],
+            },
+          ],
+        },
+        Dumbbell: {
+          chart: { type: "dumbbell", height: 380 },
+          title: { text: "Change by category" },
+          xAxis: { categories: ["A", "B", "C", "D", "E"] },
+          yAxis: { title: { text: "Value" } },
+          series: [
+            {
+              name: "Change",
+              lowColor: "#adb5bd",
+              highColor: "#2caffe",
+              data: [
+                ["A", 20, 45],
+                ["B", 35, 30],
+                ["C", 10, 55],
+                ["D", 40, 60],
+                ["E", 25, 35],
+              ],
+            },
+          ],
+        },
+        "Dumbbell (inverted)": {
+          chart: { type: "dumbbell", height: 380, inverted: true },
+          title: { text: "Change by category" },
+          xAxis: { categories: ["A", "B", "C", "D", "E"] },
+          yAxis: { title: { text: "Value" } },
+          series: [
+            {
+              name: "Change",
+              lowColor: "#adb5bd",
+              highColor: "#2caffe",
+              data: [
+                ["A", 45, 20],
+                ["B", 30, 35],
+                ["C", 55, 10],
+                ["D", 60, 40],
+                ["E", 35, 25],
+              ],
+            },
+          ],
+        },
+        Lollipop: {
+          chart: { type: "lollipop", height: 380 },
+          title: { text: "Monthly change" },
+          xAxis: { categories: months },
+          yAxis: { title: { text: "Units" } },
+          series: [
+            {
+              name: "Sales",
+              dataLabels: { enabled: true },
+              data: [5, -3, 8, 6, -2, 4],
+            },
+          ],
+        },
+        Slope: {
+          chart: { type: "slope", height: 380 },
+          title: { text: "Share of segment: 2020 vs 2024" },
+          xAxis: { categories: ["2020", "2024"] },
+          yAxis: { title: { text: "Share %" } },
+          series: [
+            {
+              name: "Product A",
+              dataLabels: { enabled: true },
+              data: [30, 45],
+            },
+            {
+              name: "Product B",
+              dataLabels: { enabled: true },
+              data: [50, 32],
+            },
+            {
+              name: "Product C",
+              dataLabels: { enabled: true },
+              data: [20, 38],
+            },
+          ],
+        },
+        Sparkline: {
+          chart: { type: "sparkline", height: 380 },
+          series: [
+            {
+              name: "Trend",
+              sparkline: { min: true, max: true },
+              data: [5, 8, 6, 9, 12, 10, 14, 13, 16],
+            },
+          ],
+        },
+        "Column range — rounded": {
+          chart: { type: "columnrange", height: 380 },
+          title: { text: "Temp range" },
+          xAxis: { categories: months },
+          yAxis: { title: { text: "°C" } },
+          series: [
+            {
+              name: "Range",
+              color: "#fe6a35",
+              data: [
+                ["Jan", -2, 7],
+                ["Feb", -1, 9],
+                ["Mar", 2, 12],
+                ["Apr", 5, 16],
+                ["May", 9, 20],
+                ["Jun", 13, 24],
+              ],
+            },
+          ],
+        },
+        "Radial bar": {
+          chart: { type: "radialbar", height: 380 },
+          title: { text: "Activity" },
+          series: [
+            {
+              name: "Goals",
+              data: [
+                { name: "Move", y: 80 },
+                { name: "Exercise", y: 55 },
+                { name: "Stand", y: 95 },
+              ],
+            },
+          ],
+        },
+        Funnel: {
+          chart: { type: "funnel", height: 400 },
+          title: { text: "Conversion" },
+          legend: { enabled: false },
+          series: [
+            {
+              name: "Users",
+              data: [
+                { name: "Visits", y: 1500 },
+                { name: "Signups", y: 900 },
+                { name: "Trials", y: 500 },
+                { name: "Paid", y: 220 },
+              ],
+            },
+          ],
+        },
+        Bullet: {
+          chart: { type: "bullet", height: 360 },
+          title: { text: "KPIs vs target" },
+          series: [
+            {
+              name: "KPI",
+              data: [
+                {
+                  name: "Revenue",
+                  y: 275,
+                  target: 250,
+                  ranges: [150, 225, 300],
+                },
+                { name: "Profit", y: 22, target: 26, ranges: [20, 25, 30] },
+                {
+                  name: "Orders",
+                  y: 1650,
+                  target: 2000,
+                  ranges: [1400, 2000, 2500],
+                },
+              ],
+            },
+          ],
+        },
+        Treegraph: {
+          chart: { type: "treegraph", height: 380 },
+          title: { text: "Org chart" },
+          series: [
+            {
+              name: "Org",
+              data: [
+                { id: "ceo", name: "CEO" },
+                { id: "cto", parent: "ceo", name: "CTO" },
+                { id: "cfo", parent: "ceo", name: "CFO" },
+                { id: "eng", parent: "cto", name: "Eng" },
+                { id: "qa", parent: "cto", name: "QA" },
+                { id: "fin", parent: "cfo", name: "Finance" },
+              ],
+            },
+          ],
+        },
+        Timeline: {
+          chart: { type: "timeline", height: 340 },
+          title: { text: "Roadmap" },
+          series: [
+            {
+              name: "Milestones",
+              data: [
+                { x: "2023", name: "Kickoff" },
+                { x: "2024", name: "Beta" },
+                { x: "2025", name: "GA" },
+                { x: "2026", name: "v2" },
+              ],
+            },
+          ],
+        },
+        "Nested x-axis": {
+          chart: { type: "column", height: 400 },
+          title: { text: "Sales by Region ▸ Category" },
+          xAxis: {
+            dimensions: ["Region", "Category"],
+            aggregate: "sum",
+            opposite: true,
+          },
+          yAxis: { title: { text: "Sum of Sales" } },
+          series: [
+            {
+              name: "Sales",
+              data: [
+                { Region: "East", Category: "Tech", y: 25 },
+                { Region: "East", Category: "Furniture", y: 14 },
+                { Region: "East", Category: "Office", y: 27 },
+                { Region: "West", Category: "Tech", y: 25 },
+                { Region: "West", Category: "Furniture", y: 30 },
+                { Region: "West", Category: "Office", y: 27 },
+                { Region: "Central", Category: "Tech", y: 17 },
+                { Region: "Central", Category: "Furniture", y: 22 },
+                { Region: "Central", Category: "Office", y: 22 },
+              ],
+            },
+          ],
+        },
+        "Nested x-axis (per-group order)": {
+          chart: { type: "column", height: 400 },
+          title: { text: "Sales by Region ▸ Category" },
+          xAxis: { dimensions: ["Region", "Category"], aggregate: "sum" },
+          yAxis: { title: { text: "Sum of Sales" } },
+          series: [
+            {
+              name: "Sales",
+              data: [
+                { Region: "East", Category: "Tech", y: 25 },
+                { Region: "East", Category: "Furniture", y: 14 },
+                { Region: "East", Category: "Office", y: 27 },
+                { Region: "West", Category: "Office", y: 27 },
+                { Region: "West", Category: "Tech", y: 25 },
+                { Region: "West", Category: "Furniture", y: 30 },
+                { Region: "Central", Category: "Furniture", y: 22 },
+                { Region: "Central", Category: "Office", y: 22 },
+                { Region: "Central", Category: "Tech", y: 17 },
+              ],
+            },
+          ],
+        },
+        "Nested x-axis (horizontal bar)": {
+          chart: { type: "bar", height: 400 },
+          title: { text: "Sales by Region ▸ Category" },
+          xAxis: { dimensions: ["Region", "Category"], aggregate: "sum" },
+          yAxis: { title: { text: "Sum of Sales" } },
+          series: [
+            {
+              name: "Sales",
+              data: [
+                { Region: "East", Category: "Tech", y: 25 },
+                { Region: "East", Category: "Furniture", y: 14 },
+                { Region: "East", Category: "Office", y: 27 },
+                { Region: "West", Category: "Tech", y: 25 },
+                { Region: "West", Category: "Furniture", y: 30 },
+                { Region: "West", Category: "Office", y: 27 },
+                { Region: "Central", Category: "Tech", y: 17 },
+                { Region: "Central", Category: "Furniture", y: 22 },
+                { Region: "Central", Category: "Office", y: 22 },
+              ],
+            },
+          ],
+        },
+        "Nested x-axis + line": {
+          chart: { type: "column", height: 400 },
+          title: { text: "Sales by Region ▸ Category" },
+          xAxis: {
+            dimensions: ["Region", "Category"],
+            aggregate: "sum",
+            opposite: true,
+          },
+          yAxis: { title: { text: "Sum of Sales" } },
+          series: [
+            {
+              name: "Sales",
+              data: [
+                { Region: "East", Category: "Tech", y: 25 },
+                { Region: "East", Category: "Furniture", y: 14 },
+                { Region: "East", Category: "Office", y: 27 },
+                { Region: "West", Category: "Tech", y: 25 },
+                { Region: "West", Category: "Furniture", y: 30 },
+                { Region: "West", Category: "Office", y: 27 },
+                { Region: "Central", Category: "Tech", y: 17 },
+                { Region: "Central", Category: "Furniture", y: 22 },
+                { Region: "Central", Category: "Office", y: 22 },
+              ],
+            },
+            {
+              name: "Trend",
+              type: "line",
+              marker: { enabled: true },
+              data: [
+                { Region: "East", Category: "Tech", y: 25 },
+                { Region: "East", Category: "Furniture", y: 14 },
+                { Region: "East", Category: "Office", y: 27 },
+                { Region: "West", Category: "Tech", y: 25 },
+                { Region: "West", Category: "Furniture", y: 30 },
+                { Region: "West", Category: "Office", y: 27 },
+                { Region: "Central", Category: "Tech", y: 17 },
+                { Region: "Central", Category: "Furniture", y: 22 },
+                { Region: "Central", Category: "Office", y: 22 },
+              ],
+            },
+          ],
+        },
+        "Boost — 30k scatter (canvas)": {
+          chart: { type: "scatter", height: 400 },
+          title: { text: "30,000 points on one canvas" },
+          xAxis: { title: { text: "x" } },
+          yAxis: { title: { text: "y" } },
+          series: [
+            {
+              name: "Cloud",
+              color: "#2caffe",
+              data: Array.from({ length: 30000 }, () => {
+                const a = Math.random() * 6.28,
+                  r = Math.random() * 50;
+                return [
+                  50 + r * Math.cos(a) + (Math.random() - 0.5) * 20,
+                  50 + r * Math.sin(a),
+                ];
+              }),
+            },
+          ],
+        },
+        Bubble: {
+          chart: { type: "bubble", height: 380 },
+          title: { text: "Bubble (x, y, z→size)" },
+          xAxis: { title: { text: "GDP/capita" } },
+          yAxis: { title: { text: "Life expectancy" } },
+          series: [
+            {
+              name: "Countries",
+              data: [
+                { x: 12, y: 72, z: 80 },
+                { x: 45, y: 81, z: 320 },
+                { x: 28, y: 76, z: 140 },
+                { x: 60, y: 83, z: 60 },
+                { x: 8, y: 65, z: 210 },
+                { x: 35, y: 79, z: 25 },
+              ],
+            },
+          ],
+        },
+        Radar: {
+          chart: { type: "radar", height: 400 },
+          title: { text: "Skills" },
+          xAxis: {
+            categories: [
+              "Speed",
+              "Power",
+              "Range",
+              "Control",
+              "Stamina",
+              "Agility",
+            ],
+          },
+          series: [
+            { name: "Alpha", data: [8, 6, 7, 9, 5, 8] },
+            { name: "Bravo", type: "area", data: [6, 8, 5, 6, 9, 6] },
+          ],
+        },
+        Sunburst: {
+          chart: { type: "sunburst", height: 400 },
+          title: { text: "Org" },
+          series: [
+            {
+              name: "Org",
+              data: [
+                { id: "eng", name: "Eng" },
+                { id: "fe", parent: "eng", name: "FE", value: 8 },
+                { id: "be", parent: "eng", name: "BE", value: 12 },
+                { id: "sales", name: "Sales" },
+                { id: "in", parent: "sales", name: "In", value: 6 },
+                { id: "out", parent: "sales", name: "Out", value: 5 },
+                { id: "ops", name: "Ops", value: 4 },
+              ],
+            },
+          ],
+        },
+        Sankey: {
+          chart: { type: "sankey", height: 380 },
+          title: { text: "Energy flow" },
+          legend: { enabled: false },
+          series: [
+            {
+              name: "Flow",
+              data: [
+                { from: "Coal", to: "Grid", weight: 40 },
+                { from: "Solar", to: "Grid", weight: 25 },
+                { from: "Wind", to: "Grid", weight: 20 },
+                { from: "Grid", to: "Homes", weight: 45 },
+                { from: "Grid", to: "Industry", weight: 40 },
+              ],
+            },
+          ],
+        },
+        Gantt: {
+          chart: { type: "gantt", height: 300 },
+          title: { text: "Project plan" },
+          legend: { enabled: false },
+          series: [
+            {
+              name: "Tasks",
+              data: [
+                {
+                  name: "Research",
+                  start: Date.UTC(2026, 0, 1),
+                  end: Date.UTC(2026, 0, 10),
+                },
+                {
+                  name: "Design",
+                  start: Date.UTC(2026, 0, 8),
+                  end: Date.UTC(2026, 0, 20),
+                },
+                {
+                  name: "Build",
+                  start: Date.UTC(2026, 0, 18),
+                  end: Date.UTC(2026, 1, 10),
+                },
+                {
+                  name: "Launch",
+                  start: Date.UTC(2026, 1, 8),
+                  end: Date.UTC(2026, 1, 14),
+                },
+              ],
+            },
+          ],
+        },
+        Marimekko: {
+          chart: { type: "marimekko", height: 380 },
+          title: { text: "Share by segment" },
+          xAxis: { categories: ["Enterprise", "SMB", "Consumer"] },
+          series: [
+            { name: "Product A", data: [40, 20, 10] },
+            { name: "Product B", data: [25, 30, 25] },
+            { name: "Product C", data: [15, 25, 45] },
+          ],
+        },
+        "Trellis table": {
+          chart: { type: "column", height: 380 },
+          title: { text: "Sales small multiples" },
+          xAxis: { title: { text: "Month" } },
+          yAxis: { title: { text: "Sales" } },
+          trellis: { columns: "cat", rows: "region" },
+          series: [
+            {
+              name: "Sales",
+              data: trellisData(() => Math.round(2 + Math.random() * 8)),
+            },
+          ],
+        },
+        "Trellis table (dual axis)": {
+          chart: { type: "column", height: 380 },
+          title: { text: "Sales vs Margin % small multiples" },
+          xAxis: { title: { text: "Month" } },
+          yAxis: [
+            { title: { text: "Sales" } },
+            { title: { text: "Margin %" } },
+          ],
+          trellis: { columns: "cat", rows: "region" },
+          series: [
+            {
+              name: "Sales",
+              data: trellisData(() => Math.round(2 + Math.random() * 8)),
+            },
+            {
+              type: "line",
+              name: "Margin %",
+              yAxis: 1,
+              color: "#e8590c",
+              marker: { enabled: true },
+              data: trellisData(() => Math.round(40 + Math.random() * 20)),
+            },
+          ],
+        },
+        "Trellis table (stacked column)": {
+          chart: { type: "column", height: 380 },
+          title: { text: "Sales by team, small multiples" },
+          xAxis: { title: { text: "Month" } },
+          yAxis: { title: { text: "Sales" } },
+          trellis: { columns: "cat", rows: "region" },
+          series: [
+            {
+              name: "North",
+              stacking: "normal",
+              data: trellisData(() => Math.round(2 + Math.random() * 8)),
+            },
+            {
+              name: "South",
+              stacking: "normal",
+              data: trellisData(() => Math.round(2 + Math.random() * 8)),
+            },
+          ],
+        },
+        "Trellis table (bar)": {
+          chart: { type: "bar", height: 380 },
+          title: { text: "Sales small multiples (horizontal)" },
+          xAxis: { title: { text: "Month" } },
+          yAxis: { title: { text: "Sales" } },
+          trellis: { columns: "cat", rows: "region" },
+          series: [
+            {
+              name: "Sales",
+              data: trellisData(() => Math.round(2 + Math.random() * 8)),
+            },
+          ],
+        },
+        "Trellis table (boxplot)": {
+          chart: { type: "boxplot", height: 380 },
+          title: { text: "Distributions, small multiples" },
+          yAxis: { title: { text: "Value" } },
+          trellis: { columns: "cat", rows: "region" },
+          series: [{ name: "Distribution", data: trellisBoxData() }],
+        },
+        "Datetime + zoom + crosshair": {
+          chart: { type: "line", height: 380, zoom: "x" },
+          title: { text: "Drag to zoom" },
+          xAxis: { type: "datetime", crosshair: true },
+          yAxis: { title: { text: "Value" } },
+          tooltip: { shared: true, format: "{x:%b %d}<br/><b>{y}</b>" },
+          series: [
+            {
+              name: "Signal",
+              marker: { enabled: true },
+              data: [
+                [Date.UTC(2026, 0, 1), 52],
+                [Date.UTC(2026, 0, 5), 61],
+                [Date.UTC(2026, 0, 9), 74],
+                [Date.UTC(2026, 0, 13), 68],
+                [Date.UTC(2026, 0, 17), 80],
+                [Date.UTC(2026, 0, 21), 72],
+                [Date.UTC(2026, 0, 25), 88],
+                [Date.UTC(2026, 0, 29), 79],
+              ],
+            },
+          ],
+        },
+        "Drill-down": {
+          chart: { type: "column", height: 380 },
+          title: { text: "Fruit → varieties" },
+          legend: { enabled: false },
+          xAxis: { categories: ["Apples", "Pears", "Bananas"] },
+          series: [
+            {
+              name: "Fruit",
+              data: [
+                { y: 12, name: "Apples", drilldown: "apples" },
+                { y: 8, name: "Pears", drilldown: "pears" },
+                { y: 15, name: "Bananas" },
+              ],
+            },
+          ],
+          drilldown: {
+            series: [
+              {
+                id: "apples",
+                name: "Apple varieties",
+                data: [
+                  { x: "Gala", y: 5 },
+                  { x: "Fuji", y: 4 },
+                  { x: "Granny", y: 3 },
+                ],
+              },
+              {
+                id: "pears",
+                name: "Pear varieties",
+                data: [
+                  { x: "Bartlett", y: 5 },
+                  { x: "Bosc", y: 3 },
+                ],
+              },
+            ],
+          },
+        },
+        "Dark theme": {
+          chart: { type: "column", height: 380 },
+          theme: "dark",
+          title: { text: "Monthly sales" },
+          xAxis: { categories: months },
+          yAxis: { title: { text: "Units" } },
+          series: [
+            { name: "North", data: [5, 3, 4, 7, 2, 6] },
+            { name: "South", data: [2, 4, 6, 3, 5, 4] },
+          ],
+        },
+      };
 
-    // -- Wiring ----------------------------------------------------------------
-    const editor = document.getElementById('editor');
-    const preview = document.getElementById('preview');
-    const errorEl = document.getElementById('error');
-    const statusEl = document.getElementById('status');
-    const presetSel = document.getElementById('preset');
-    const previewSizeEl = document.getElementById('previewSize');
-    const resetSizeBtn = document.getElementById('resetSize');
+      // -- Wiring ----------------------------------------------------------------
+      const editor = document.getElementById("editor");
+      const preview = document.getElementById("preview");
+      const errorEl = document.getElementById("error");
+      const statusEl = document.getElementById("status");
+      const presetSel = document.getElementById("preset");
+      const previewSizeEl = document.getElementById("previewSize");
+      const resetSizeBtn = document.getElementById("resetSize");
 
-    // Drag the preview's bottom-right corner (native CSS `resize`) to check
-    // how the chart behaves as its container shrinks or grows — FacetViz's
-    // own ResizeObserver (chart.reflow, on by default) picks up the change
-    // and re-renders automatically. This readout just mirrors the size back.
-    const sizeObserver = new ResizeObserver((entries) => {
-      const { width, height } = entries[0].contentRect;
-      previewSizeEl.textContent = `${Math.round(width)} × ${Math.round(height)}`;
-    });
-    sizeObserver.observe(preview);
-    resetSizeBtn.addEventListener('click', () => {
-      preview.style.width = '';
-      preview.style.height = '';
-    });
+      // Drag the preview's bottom-right corner (native CSS `resize`) to check
+      // how the chart behaves as its container shrinks or grows — FacetViz's
+      // own ResizeObserver (chart.reflow, on by default) picks up the change
+      // and re-renders automatically. This readout just mirrors the size back.
+      const sizeObserver = new ResizeObserver((entries) => {
+        const { width, height } = entries[0].contentRect;
+        previewSizeEl.textContent = `${Math.round(width)} × ${Math.round(height)}`;
+      });
+      sizeObserver.observe(preview);
+      resetSizeBtn.addEventListener("click", () => {
+        preview.style.width = "";
+        preview.style.height = "";
+      });
 
-    for (const name of Object.keys(PRESETS)) {
-      const opt = document.createElement('option');
-      opt.value = name; opt.textContent = name;
-      presetSel.appendChild(opt);
-    }
-
-    function setStatus(ok, msg) {
-      statusEl.textContent = msg;
-      statusEl.className = 'status ' + (ok ? 'ok' : 'err');
-    }
-
-    function render() {
-      let config;
-      try {
-        config = JSON.parse(editor.value);
-      } catch (e) {
-        errorEl.textContent = 'JSON parse error: ' + e.message;
-        errorEl.classList.add('show');
-        setStatus(false, 'invalid JSON');
-        return;
+      for (const name of Object.keys(PRESETS)) {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        presetSel.appendChild(opt);
       }
-      try {
-        preview.innerHTML = '';
-        new FacetViz(preview, config);
-        errorEl.classList.remove('show');
-        setStatus(true, 'rendered ✓');
-      } catch (e) {
-        errorEl.textContent = 'Render error: ' + (e && e.message ? e.message : e);
-        errorEl.classList.add('show');
-        setStatus(false, 'render error');
-        console.error(e);
+
+      function setStatus(ok, msg) {
+        statusEl.textContent = msg;
+        statusEl.className = "status " + (ok ? "ok" : "err");
       }
-    }
 
-    function loadPreset(name) {
-      editor.value = JSON.stringify(PRESETS[name], null, 2);
-      render();
-    }
+      function render() {
+        let config;
+        try {
+          config = JSON.parse(editor.value);
+        } catch (e) {
+          errorEl.textContent = "JSON parse error: " + e.message;
+          errorEl.classList.add("show");
+          setStatus(false, "invalid JSON");
+          return;
+        }
+        try {
+          preview.innerHTML = "";
+          new FacetViz(preview, config);
+          errorEl.classList.remove("show");
+          setStatus(true, "rendered ✓");
+        } catch (e) {
+          errorEl.textContent =
+            "Render error: " + (e && e.message ? e.message : e);
+          errorEl.classList.add("show");
+          setStatus(false, "render error");
+          console.error(e);
+        }
+      }
 
-    // Debounced live update.
-    let timer;
-    editor.addEventListener('input', () => {
-      clearTimeout(timer);
-      setStatus(true, 'editing…');
-      timer = setTimeout(render, 400);
-    });
-
-    // Tab inserts two spaces instead of moving focus.
-    editor.addEventListener('keydown', (e) => {
-      if (e.key === 'Tab') {
-        e.preventDefault();
-        const s = editor.selectionStart, en = editor.selectionEnd;
-        editor.value = editor.value.slice(0, s) + '  ' + editor.value.slice(en);
-        editor.selectionStart = editor.selectionEnd = s + 2;
-      } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-        e.preventDefault();
+      function loadPreset(name) {
+        editor.value = JSON.stringify(PRESETS[name], null, 2);
         render();
       }
-    });
 
-    document.getElementById('run').addEventListener('click', render);
-    document.getElementById('format').addEventListener('click', () => {
-      try { editor.value = JSON.stringify(JSON.parse(editor.value), null, 2); render(); }
-      catch (e) { setStatus(false, 'invalid JSON'); }
-    });
-    presetSel.addEventListener('change', () => loadPreset(presetSel.value));
+      // Debounced live update.
+      let timer;
+      editor.addEventListener("input", () => {
+        clearTimeout(timer);
+        setStatus(true, "editing…");
+        timer = setTimeout(render, 400);
+      });
 
-    // Re-fit chart on resize.
-    let rs;
-    window.addEventListener('resize', () => { clearTimeout(rs); rs = setTimeout(render, 200); });
+      // Tab inserts two spaces instead of moving focus.
+      editor.addEventListener("keydown", (e) => {
+        if (e.key === "Tab") {
+          e.preventDefault();
+          const s = editor.selectionStart,
+            en = editor.selectionEnd;
+          editor.value =
+            editor.value.slice(0, s) + "  " + editor.value.slice(en);
+          editor.selectionStart = editor.selectionEnd = s + 2;
+        } else if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+          e.preventDefault();
+          render();
+        }
+      });
 
-    // Initial load: a config handed over from the Examples page, else preset #1.
-    function loadHandoff() {
-      try {
-        const raw = sessionStorage.getItem('facetviz:playground');
-        if (!raw) return false;
-        sessionStorage.removeItem('facetviz:playground');
-        const { title, cfg } = JSON.parse(raw);
-        editor.value = JSON.stringify(cfg, null, 2);
-        // Reflect it in the dropdown if it matches a preset name.
-        if (title && [...presetSel.options].some((o) => o.value === title)) presetSel.value = title;
-        else presetSel.selectedIndex = -1;
-        render();
-        return true;
-      } catch (e) { return false; }
-    }
-    if (!loadHandoff()) loadPreset(Object.keys(PRESETS)[0]);
-  </script>
-</body>
+      document.getElementById("run").addEventListener("click", render);
+      document.getElementById("format").addEventListener("click", () => {
+        try {
+          editor.value = JSON.stringify(JSON.parse(editor.value), null, 2);
+          render();
+        } catch (e) {
+          setStatus(false, "invalid JSON");
+        }
+      });
+      presetSel.addEventListener("change", () => loadPreset(presetSel.value));
+
+      // Re-fit chart on resize.
+      let rs;
+      window.addEventListener("resize", () => {
+        clearTimeout(rs);
+        rs = setTimeout(render, 200);
+      });
+
+      // Initial load: a config handed over from the Examples page, else preset #1.
+      function loadHandoff() {
+        try {
+          const raw = sessionStorage.getItem("facetviz:playground");
+          if (!raw) return false;
+          sessionStorage.removeItem("facetviz:playground");
+          const { title, cfg } = JSON.parse(raw);
+          editor.value = JSON.stringify(cfg, null, 2);
+          // Reflect it in the dropdown if it matches a preset name.
+          if (title && [...presetSel.options].some((o) => o.value === title))
+            presetSel.value = title;
+          else presetSel.selectedIndex = -1;
+          render();
+          return true;
+        } catch (e) {
+          return false;
+        }
+      }
+      if (!loadHandoff()) loadPreset(Object.keys(PRESETS)[0]);
+    </script>
+  </body>
 </html>

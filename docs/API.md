@@ -196,6 +196,7 @@ One object per series in the `series` array.
 | `states` | `{ hover?: `[`HoverStateOptions`](#hoverstateoptions)` }` | – | Interaction states. |
 | `tooltip` | [`SeriesTooltipOptions`](#tooltipoptions) | – | Per-series tooltip overrides. |
 | `boxColors` | [see below](#boxplot-options) | – | Boxplot colours. |
+| `outlierMarker` | [`MarkerOptions`](#markeroptions) | hollow circle | Boxplot outlier marker styling — see point-level `outliers`. |
 | `lowColor` | `string` | series colour | Dumbbell low-end marker colour. |
 | `highColor` | `string` | series colour | Dumbbell high-end marker colour (also the legend swatch). |
 | `connectorColor` | `string` | `'#b0b0b0'` | Dumbbell connector line colour. |
@@ -232,6 +233,24 @@ split-colour box, or leave unset for two shades of the series colour.
 
 Boxplots render **horizontally** when `chart.inverted` is set, and multiple
 boxplot series **group** side-by-side within each category.
+
+**Outliers.** Give a point `outliers: number[]` for values that fall outside
+the whiskers; each renders as a small hollow marker positioned above/below
+that point's own box — not the shared category centre — so grouped boxplots
+keep every series' outliers over their own box:
+
+```ts
+series: [{
+  type: 'boxplot',
+  data: [
+    { min: 2, q1: 4, median: 5, q3: 6.5, max: 8, outliers: [10.5, 11, -2] },
+  ],
+}]
+```
+
+Outlier values also extend the value axis domain, and are listed in the
+default tooltip. Style them via `SeriesOptions.outlierMarker` (`radius`,
+`symbol`, `fillColor`, `lineColor`, `lineWidth`).
 
 ### MarkerOptions
 
@@ -605,6 +624,7 @@ Each entry in `series.data` (`PointInput`) may be:
 | `y` | `number` | most |
 | `low` / `high` | `number` | range, dumbbell |
 | `min`/`q1`/`median`/`q3`/`max` | `number` | boxplot |
+| `outliers` | `number[]` | boxplot (values beyond the whiskers) |
 | `name` | `string` | pie / categorical |
 | `color` | `string` | per-point colour (any series) |
 | *(custom)* | `any` | surfaced in tooltips & events |

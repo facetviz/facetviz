@@ -105,11 +105,10 @@ export class Tooltip {
     if (ctx.box) {
       const b = ctx.box;
       const row = (k: string, v: number) => `${k}: <b>${fmt(v)}</b>`;
-      return (
-        `${head}<br/>${bullet} <b>${ctx.series}</b><br/>` +
-        [row('Maximum', b.max), row('Upper quartile', b.q3), row('Median', b.median),
-         row('Lower quartile', b.q1), row('Minimum', b.min)].join('<br/>')
-      );
+      const rows = [row('Maximum', b.max), row('Upper quartile', b.q3), row('Median', b.median),
+         row('Lower quartile', b.q1), row('Minimum', b.min)];
+      if (b.outliers?.length) rows.push(`Outliers: <b>${b.outliers.map(fmt).join(', ')}</b>`);
+      return `${head}<br/>${bullet} <b>${ctx.series}</b><br/>` + rows.join('<br/>');
     }
 
     // Range (low/high).

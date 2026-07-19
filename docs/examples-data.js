@@ -597,6 +597,32 @@ export const EXAMPLES = [
   },
   {
     cat: "Points",
+    title: "Dumbbell (inverted)",
+    desc: "Two connected points per category.",
+    types: ["dumbbell"],
+    cfg: {
+      chart: { type: "dumbbell", height: 300, inverted: true },
+      xAxis: { categories: ["A", "B", "C", "D", "E"] },
+      yAxis: { title: { text: "Value" } },
+      series: [
+        {
+          name: "Change",
+          lowColor: "#adb5bd",
+          highColor: "#2caffe",
+          dataLabels: { enabled: true },
+          data: [
+            ["A", 45, 20],
+            ["B", 30, 35],
+            ["C", 55, 10],
+            ["D", 60, 40],
+            ["E", 35, 25],
+          ],
+        },
+      ],
+    },
+  },
+  {
+    cat: "Points",
     title: "Lollipop",
     desc: "Zero-anchored stem + marker per category, a lighter column.",
     types: ["lollipop"],

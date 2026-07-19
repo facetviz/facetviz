@@ -1328,13 +1328,15 @@ var Tooltip = class {
     if (ctx.box) {
       const b = ctx.box;
       const row = (k, v) => `${k}: <b>${fmt(v)}</b>`;
-      return `${head}<br/>${bullet} <b>${ctx.series}</b><br/>` + [
+      const rows = [
         row("Maximum", b.max),
         row("Upper quartile", b.q3),
         row("Median", b.median),
         row("Lower quartile", b.q1),
         row("Minimum", b.min)
-      ].join("<br/>");
+      ];
+      if (b.outliers?.length) rows.push(`Outliers: <b>${b.outliers.map(fmt).join(", ")}</b>`);
+      return `${head}<br/>${bullet} <b>${ctx.series}</b><br/>` + rows.join("<br/>");
     }
     if (ctx.low !== void 0 && ctx.high !== void 0) {
       return `${head}<br/>${bullet} ${ctx.series}: <b>${fmt(ctx.low)}</b> \u2013 <b>${fmt(ctx.high)}</b>`;
@@ -1588,7 +1590,8 @@ function normalizePoint(raw, index, categories) {
       q1: opts.q1,
       median: opts.median,
       q3: opts.q3,
-      max: opts.max
+      max: opts.max,
+      outliers: opts.outliers?.length ? opts.outliers : void 0
     };
   }
   return point;
@@ -1805,7 +1808,7 @@ var ColumnSeries = class extends BaseSeries {
         "rect",
         {
           ...rect,
-          rx: 0,
+          rx: 1,
           fill: p.color ?? this.color,
           class: "facet-point"
         },
@@ -1904,20 +1907,49 @@ function stepPath(pts) {
 // src/series/marker.ts
 function drawMarker(renderer, parent, cx, cy, spec) {
   const { symbol, radius: r, fill, stroke, strokeWidth } = spec;
-  const common = { fill, stroke, "stroke-width": strokeWidth, class: "facet-point" };
+  const common = {
+    fill,
+    stroke,
+    "stroke-width": strokeWidth,
+    class: "facet-point"
+  };
   switch (symbol) {
     case "square":
-      return renderer.create("rect", { x: cx - r, y: cy - r, width: r * 2, height: r * 2, ...common }, parent);
+      return renderer.create(
+        "rect",
+        { x: cx - r, y: cy - r, width: r * 2, height: r * 2, ...common },
+        parent
+      );
     case "diamond":
-      return renderer.create("polygon", {
-        points: `${cx},${cy - r} ${cx + r},${cy} ${cx},${cy + r} ${cx - r},${cy}`,
-        ...common
-      }, parent);
+      return renderer.create(
+        "polygon",
+        {
+          points: `${cx},${cy - r} ${cx + r},${cy} ${cx},${cy + r} ${cx - r},${cy}`,
+          ...common
+        },
+        parent
+      );
     case "triangle":
-      return renderer.create("polygon", {
-        points: `${cx},${cy - r} ${cx + r},${cy + r} ${cx - r},${cy + r}`,
-        ...common
-      }, parent);
+      return renderer.create(
+        "polygon",
+        {
+          points: `${cx},${cy - r} ${cx + r},${cy + r} ${cx - r},${cy + r}`,
+          ...common
+        },
+        parent
+      );
+    case "rectangle":
+      return renderer.create(
+        "rect",
+        {
+          x: cx - (spec.width ?? r * 2) / 2,
+          y: cy - (spec.height ?? r * 2) / 2,
+          width: spec.width ?? r * 2,
+          height: spec.height ?? r * 2,
+          ...common
+        },
+        parent
+      );
     case "circle":
     default:
       return renderer.create("circle", { cx, cy, r, ...common }, parent);
@@ -2397,7 +2429,8 @@ var BoxplotSeries = class extends BaseSeries {
     return { grouped: true, cartesian: true, stackable: false };
   }
   pointValues(p) {
-    return p.box ? [p.box.min, p.box.max] : [p.low, p.high];
+    if (!p.box) return [p.low, p.high];
+    return [p.box.min, p.box.max, ...p.box.outliers ?? []];
   }
   render(ctx) {
     const { renderer, groupCount, groupIndex, inverted } = ctx;
@@ -2436,6 +2469,19 @@ var BoxplotSeries = class extends BaseSeries {
       renderer.create("rect", { ...boxRect(box.median, box.q3), fill: upperFill, stroke, "stroke-width": 1 }, g);
       renderer.create("rect", { ...boxRect(box.q1, box.median), fill: lowerFill, stroke, "stroke-width": 1 }, g);
       renderer.create("line", { ...medLine(), stroke: medianColor, "stroke-width": 2 }, g);
+      const om = this.options.outlierMarker ?? {};
+      const outlierR = om.radius ?? Math.min(4, half * 0.5);
+      for (const val of box.outliers ?? []) {
+        const pos = v(val);
+        const oc = inverted ? { x: pos, y: c } : { x: c, y: pos };
+        drawMarker(renderer, g, oc.x, oc.y, {
+          symbol: om.symbol ?? "circle",
+          radius: outlierR,
+          fill: om.fillColor ?? THEME.backgroundColor,
+          stroke: om.lineColor ?? stroke,
+          strokeWidth: om.lineWidth ?? 1.5
+        });
+      }
       ctx.registerHover(g, p);
       g.addEventListener("click", (e) => ctx.onPointEvent("click", p, e));
       g.addEventListener("mouseover", (e) => ctx.onPointEvent("mouseOver", p, e));
@@ -2466,27 +2512,49 @@ var DumbbellSeries = class extends BaseSeries {
     const { renderer, groupCount, groupIndex, inverted } = ctx;
     const catScale = inverted ? ctx.yScale : ctx.xScale;
     const valScale = inverted ? ctx.xScale : ctx.yScale;
-    const g = renderer.group({ class: `facet-series facet-dumbbell ${this.name}` }, renderer.root);
+    const g = renderer.group(
+      { class: `facet-series facet-dumbbell ${this.name}` },
+      renderer.root
+    );
     const band = catScale.bandwidth ? catScale.bandwidth() : 0;
     const subWidth = band / groupCount;
     const radius = this.options.marker?.radius ?? 5;
+    const rectWidth = this.options.marker?.width ?? 5;
+    const rectHeight = this.options.marker?.height ?? 5;
     const lowColor = this.options.lowColor ?? this.color;
     const highColor = this.options.highColor ?? this.color;
     const connColor = this.options.connectorColor ?? THEME.neutralColor;
-    const connWidth = this.options.connectorWidth ?? 3;
+    const connWidth = this.options.connectorWidth ?? 7;
+    const isRect = this.options.marker?.symbol === "rectangle";
     for (const p of this.points) {
       if (p.low === void 0 || p.high === void 0) continue;
       const cat = catScale.scale(p.x) - band / 2 + (groupIndex + 0.5) * subWidth;
       const vLow = valScale.scale(p.low);
       const vHigh = valScale.scale(p.high);
-      const conn = inverted ? { x1: vLow, y1: cat, x2: vHigh, y2: cat } : { x1: cat, y1: vLow, x2: cat, y2: vHigh };
-      renderer.create("line", {
-        ...conn,
-        stroke: connColor,
-        "stroke-width": connWidth,
-        "stroke-linecap": "round"
-      }, g);
-      for (const [v, color] of [[vLow, lowColor], [vHigh, highColor]]) {
+      const conn = isRect ? inverted ? {
+        x1: vLow < vHigh ? vLow + radius : vLow - radius,
+        y1: cat,
+        x2: vLow < vHigh ? vHigh - radius : vHigh + radius,
+        y2: cat
+      } : {
+        x1: cat,
+        y1: vLow < vHigh ? vLow + radius : vLow - radius,
+        x2: cat,
+        y2: vLow < vHigh ? vHigh - radius : vHigh + radius
+      } : inverted ? { x1: vLow, y1: cat, x2: vHigh, y2: cat } : { x1: cat, y1: vLow, x2: cat, y2: vHigh };
+      renderer.create(
+        "line",
+        {
+          ...conn,
+          stroke: connColor,
+          "stroke-width": connWidth
+        },
+        g
+      );
+      for (const [v, color] of [
+        [vLow, lowColor],
+        [vHigh, highColor]
+      ]) {
         const cx = inverted ? v : cat;
         const cy = inverted ? cat : v;
         const el = drawMarker(renderer, g, cx, cy, {
@@ -2494,12 +2562,23 @@ var DumbbellSeries = class extends BaseSeries {
           radius,
           fill: color,
           stroke: "#fff",
-          strokeWidth: 1.5
+          strokeWidth: 1.5,
+          width: rectWidth,
+          height: rectHeight
         });
         ctx.registerHover(el, p);
-        el.addEventListener("click", (e) => ctx.onPointEvent("click", p, e));
-        el.addEventListener("mouseover", (e) => ctx.onPointEvent("mouseOver", p, e));
-        el.addEventListener("mouseout", (e) => ctx.onPointEvent("mouseOut", p, e));
+        el.addEventListener(
+          "click",
+          (e) => ctx.onPointEvent("click", p, e)
+        );
+        el.addEventListener(
+          "mouseover",
+          (e) => ctx.onPointEvent("mouseOver", p, e)
+        );
+        el.addEventListener(
+          "mouseout",
+          (e) => ctx.onPointEvent("mouseOut", p, e)
+        );
       }
       this.drawEndLabels(ctx, p, cat, valScale, inverted, radius);
     }
@@ -2509,8 +2588,8 @@ var DumbbellSeries = class extends BaseSeries {
     const dl = this.options.dataLabels;
     if (!dl?.enabled) return;
     const ends = [
-      { val: p.low, isHigh: false },
-      { val: p.high, isHigh: true }
+      { val: p.low, isHigh: p.low > p.high },
+      { val: p.high, isHigh: p.low < p.high }
     ];
     for (const end of ends) {
       const v = valScale.scale(end.val);
@@ -4466,16 +4545,17 @@ var FacetViz = class _FacetViz {
       { class: "facet-axes" },
       this.renderer.root
     );
+    const isSlope = visible.length > 0 && visible.every((s) => s.type === "slope");
     const catAxis = new Axis({
       renderer: this.renderer,
       scale: catScale,
       position: catSide,
       plot: axisPlot,
-      options: catOpts,
+      options: isSlope ? { ...catOpts, lineWidth: 0, ticks: false, gridLineWidth: catOpts.gridLineWidth ?? 1 } : catOpts,
       // Off by default (matching the usual column/bar look), but honour an
       // explicit `gridLineWidth` — currently the only way to opt in, since
       // a category scale never gets "nice" numeric ticks to derive one from.
-      grid: !!catOpts.gridLineWidth
+      grid: isSlope ? true : !!catOpts.gridLineWidth
     });
     catAxis.render(axisLayer);
     const valAxis = new Axis({
@@ -4483,8 +4563,8 @@ var FacetViz = class _FacetViz {
       scale: valScale,
       position: valSide,
       plot: axisPlot,
-      options: valOpts,
-      grid: true
+      options: isSlope ? { ...valOpts, lineWidth: 0 } : valOpts,
+      grid: !isSlope
     });
     valAxis.render(axisLayer);
     let valAxis2;
@@ -5096,6 +5176,7 @@ var FacetViz = class _FacetViz {
     const hasSecondary = !inverted && secondary.length > 0;
     const xOpts = firstAxis(this.options.xAxis) ?? {};
     const split = !!xOpts.opposite;
+    const catVisible = xOpts.visible !== false;
     const rowH = 18;
     const rotExtra = !inverted ? nestedInnerRotationExtent(leaves, xOpts.labels?.rotation ?? 0) : 0;
     let plot;
@@ -5114,8 +5195,8 @@ var FacetViz = class _FacetViz {
         yOpts0
       ) + (yOpts0.title?.text ? 18 : 0);
       const rightReserve = hasSecondary ? LAYOUT.tickLength + 8 + this.valueLabelWidth(secondary, yOpts1) + (yOpts1.title?.text ? 18 : 0) : 8;
-      const bottomReserve = LAYOUT.tickLength + (split ? 1 : dims.length) * rowH + 12 + rotExtra;
-      const topReserve = split ? LAYOUT.tickLength + (dims.length - 1) * rowH + 8 : 6;
+      const bottomReserve = catVisible ? LAYOUT.tickLength + (split ? 1 : dims.length) * rowH + 12 + rotExtra : 6;
+      const topReserve = catVisible && split ? LAYOUT.tickLength + (dims.length - 1) * rowH + 8 : 6;
       plot = {
         x: outer.x + leftReserve,
         y: outer.y + topReserve,
@@ -5158,24 +5239,26 @@ var FacetViz = class _FacetViz {
         });
         valAxis1.render(axisLayer);
       }
-      new NestedAxis({
-        renderer: this.renderer,
-        scale: catScale,
-        plot,
-        leaves,
-        keys,
-        position: split ? "split" : "bottom",
-        labels: xOpts.labels,
-        lineWidth: xOpts.lineWidth,
-        gridLineWidth: xOpts.gridLineWidth
-      }).render(axisLayer);
+      if (catVisible) {
+        new NestedAxis({
+          renderer: this.renderer,
+          scale: catScale,
+          plot,
+          leaves,
+          keys,
+          position: split ? "split" : "bottom",
+          labels: xOpts.labels,
+          lineWidth: xOpts.lineWidth,
+          gridLineWidth: xOpts.gridLineWidth
+        }).render(axisLayer);
+      }
     } else {
       const colWidths = nestedLevelWidths(leaves);
       const innerW = colWidths[colWidths.length - 1] ?? 0;
       const outerW = colWidths.slice(0, -1).reduce((a, b) => a + b, 0);
       const totalW = colWidths.reduce((a, b) => a + b, 0);
-      const leftReserve = LAYOUT.tickLength + 8 + (split ? innerW : totalW);
-      const rightReserve = split ? LAYOUT.tickLength + 8 + outerW : 8;
+      const leftReserve = catVisible ? LAYOUT.tickLength + 8 + (split ? innerW : totalW) : 6;
+      const rightReserve = catVisible && split ? LAYOUT.tickLength + 8 + outerW : 8;
       const bottomReserve = LAYOUT.defaultBottomAxisHeight + (yOpts0.title?.text ? 32 : 0);
       const topReserve = 6;
       plot = {
@@ -5202,18 +5285,20 @@ var FacetViz = class _FacetViz {
         grid: true
       });
       valAxis0.render(axisLayer);
-      new NestedAxis({
-        renderer: this.renderer,
-        scale: catScale,
-        plot,
-        leaves,
-        keys,
-        position: split ? "split" : "bottom",
-        vertical: true,
-        labels: xOpts.labels,
-        lineWidth: xOpts.lineWidth,
-        gridLineWidth: xOpts.gridLineWidth
-      }).render(axisLayer);
+      if (catVisible) {
+        new NestedAxis({
+          renderer: this.renderer,
+          scale: catScale,
+          plot,
+          leaves,
+          keys,
+          position: split ? "split" : "bottom",
+          vertical: true,
+          labels: xOpts.labels,
+          lineWidth: xOpts.lineWidth,
+          gridLineWidth: xOpts.gridLineWidth
+        }).render(axisLayer);
+      }
     }
     const group = this.groupInfo(aggSeries);
     const lineFamily = /* @__PURE__ */ new Set([

@@ -136,7 +136,7 @@ Points:
 
 Statistical — all **padded off baseline** (headroom added automatically, don't fight it with `yAxis.min:0`):
 
-- `boxplot` — `data:[{min,q1,median,q3,max}]` (five-number summary), or compute it from raw values with `computeBoxStats(values)` (exported from `facetviz`).
+- `boxplot` — `data:[{min,q1,median,q3,max}]` (five-number summary), or compute it from raw values with `computeBoxStats(values)` (exported from `facetviz`). Optional per-point `outliers:number[]` draws small hollow markers above/below that point's own box (not the shared category centre — grouped boxplots keep each series' outliers over its own box); style via `series.outlierMarker`.
 - `candlestick` — `data:[{x,open,high,low,close}]`.
 
 Grid & hierarchy:

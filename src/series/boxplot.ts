@@ -15,6 +15,8 @@
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
 import { CategoryScale, Scale } from '../core/scale.js';
 import { shade } from '../core/colors.js';
+import { THEME } from '../core/theme.js';
+import { drawMarker } from './marker.js';
 import type { Point } from '../core/point.js';
 
 export class BoxplotSeries extends BaseSeries {
@@ -23,7 +25,10 @@ export class BoxplotSeries extends BaseSeries {
   }
 
   protected override pointValues(p: Point): Array<number | undefined> {
-    return p.box ? [p.box.min, p.box.max] : [p.low, p.high];
+    if (!p.box) return [p.low, p.high];
+    // Outliers can sit well beyond the whiskers — include them so the value
+    // axis auto-scales to fit every marker, not just the five-number summary.
+    return [p.box.min, p.box.max, ...(p.box.outliers ?? [])];
   }
 
   override render(ctx: SeriesRenderContext): void {
@@ -86,6 +91,24 @@ export class BoxplotSeries extends BaseSeries {
 
       // Median line.
       renderer.create('line', { ...medLine(), stroke: medianColor, 'stroke-width': 2 }, g);
+
+      // Outliers — drawn at this box's own centre `c` (already offset for
+      // groupIndex within the category band), so a grouped boxplot keeps
+      // each series' outliers stacked above/below its own box instead of
+      // drifting to the shared category centre.
+      const om = this.options.outlierMarker ?? {};
+      const outlierR = om.radius ?? Math.min(4, half * 0.5);
+      for (const val of box.outliers ?? []) {
+        const pos = v(val);
+        const oc = inverted ? { x: pos, y: c } : { x: c, y: pos };
+        drawMarker(renderer, g, oc.x, oc.y, {
+          symbol: om.symbol ?? 'circle',
+          radius: outlierR,
+          fill: om.fillColor ?? THEME.backgroundColor,
+          stroke: om.lineColor ?? stroke,
+          strokeWidth: om.lineWidth ?? 1.5,
+        });
+      }
 
       ctx.registerHover(g, p);
       g.addEventListener('click', (e: Event) => ctx.onPointEvent('click', p, e));

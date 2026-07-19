@@ -937,16 +937,23 @@ export class FacetViz {
       { class: "facet-axes" },
       this.renderer.root,
     );
+    // Slope charts read as a set of vertical category "rails" with the
+    // slope lines strung across them, Tufte-style — no axis baseline and no
+    // horizontal value gridlines, just a vertical line at each x-category
+    // (drawn via the category axis's own gridline mechanism, forced on).
+    const isSlope = visible.length > 0 && visible.every((s) => s.type === "slope");
     const catAxis = new Axis({
       renderer: this.renderer,
       scale: catScale,
       position: catSide,
       plot: axisPlot,
-      options: catOpts,
+      options: isSlope
+        ? { ...catOpts, lineWidth: 0, ticks: false, gridLineWidth: catOpts.gridLineWidth ?? 1 }
+        : catOpts,
       // Off by default (matching the usual column/bar look), but honour an
       // explicit `gridLineWidth` — currently the only way to opt in, since
       // a category scale never gets "nice" numeric ticks to derive one from.
-      grid: !!catOpts.gridLineWidth,
+      grid: isSlope ? true : !!catOpts.gridLineWidth,
     });
     catAxis.render(axisLayer);
     const valAxis = new Axis({
@@ -954,8 +961,8 @@ export class FacetViz {
       scale: valScale,
       position: valSide,
       plot: axisPlot,
-      options: valOpts,
-      grid: true,
+      options: isSlope ? { ...valOpts, lineWidth: 0 } : valOpts,
+      grid: !isSlope,
     });
     valAxis.render(axisLayer);
     let valAxis2: Axis | undefined;
@@ -1792,6 +1799,10 @@ export class FacetViz {
     // the far side.
     const xOpts = firstAxis(this.options.xAxis) ?? {};
     const split = !!xOpts.opposite;
+    // Mirrors `axisReserve`'s `visible === false` short-circuit for the
+    // plain (non-nested) panel: no line/ticks/labels/dividers drawn, and no
+    // space reserved beyond the same minimal 6px sliver.
+    const catVisible = xOpts.visible !== false;
     const rowH = 18;
     const rotExtra = !inverted
       ? nestedInnerRotationExtent(leaves, xOpts.labels?.rotation ?? 0)
@@ -1823,11 +1834,13 @@ export class FacetViz {
           this.valueLabelWidth(secondary, yOpts1) +
           (yOpts1.title?.text ? 18 : 0)
         : 8;
-      const bottomReserve =
-        LAYOUT.tickLength + (split ? 1 : dims.length) * rowH + 12 + rotExtra;
-      const topReserve = split
-        ? LAYOUT.tickLength + (dims.length - 1) * rowH + 8
+      const bottomReserve = catVisible
+        ? LAYOUT.tickLength + (split ? 1 : dims.length) * rowH + 12 + rotExtra
         : 6;
+      const topReserve =
+        catVisible && split
+          ? LAYOUT.tickLength + (dims.length - 1) * rowH + 8
+          : 6;
       plot = {
         x: outer.x + leftReserve,
         y: outer.y + topReserve,
@@ -1872,17 +1885,19 @@ export class FacetViz {
         });
         valAxis1.render(axisLayer);
       }
-      new NestedAxis({
-        renderer: this.renderer,
-        scale: catScale,
-        plot,
-        leaves,
-        keys,
-        position: split ? "split" : "bottom",
-        labels: xOpts.labels,
-        lineWidth: xOpts.lineWidth,
-        gridLineWidth: xOpts.gridLineWidth,
-      }).render(axisLayer);
+      if (catVisible) {
+        new NestedAxis({
+          renderer: this.renderer,
+          scale: catScale,
+          plot,
+          leaves,
+          keys,
+          position: split ? "split" : "bottom",
+          labels: xOpts.labels,
+          lineWidth: xOpts.lineWidth,
+          gridLineWidth: xOpts.gridLineWidth,
+        }).render(axisLayer);
+      }
     } else {
       // Vertical nested axis: left reserve fits the tier(s) nearest the plot
       // (all tiers stacked when not split, just the innermost when split);
@@ -1891,9 +1906,10 @@ export class FacetViz {
       const innerW = colWidths[colWidths.length - 1] ?? 0;
       const outerW = colWidths.slice(0, -1).reduce((a, b) => a + b, 0);
       const totalW = colWidths.reduce((a, b) => a + b, 0);
-      const leftReserve =
-        LAYOUT.tickLength + 8 + (split ? innerW : totalW);
-      const rightReserve = split ? LAYOUT.tickLength + 8 + outerW : 8;
+      const leftReserve = catVisible
+        ? LAYOUT.tickLength + 8 + (split ? innerW : totalW)
+        : 6;
+      const rightReserve = catVisible && split ? LAYOUT.tickLength + 8 + outerW : 8;
       const bottomReserve =
         LAYOUT.defaultBottomAxisHeight + (yOpts0.title?.text ? 32 : 0);
       const topReserve = 6;
@@ -1923,18 +1939,20 @@ export class FacetViz {
         grid: true,
       });
       valAxis0.render(axisLayer);
-      new NestedAxis({
-        renderer: this.renderer,
-        scale: catScale,
-        plot,
-        leaves,
-        keys,
-        position: split ? "split" : "bottom",
-        vertical: true,
-        labels: xOpts.labels,
-        lineWidth: xOpts.lineWidth,
-        gridLineWidth: xOpts.gridLineWidth,
-      }).render(axisLayer);
+      if (catVisible) {
+        new NestedAxis({
+          renderer: this.renderer,
+          scale: catScale,
+          plot,
+          leaves,
+          keys,
+          position: split ? "split" : "bottom",
+          vertical: true,
+          labels: xOpts.labels,
+          lineWidth: xOpts.lineWidth,
+          gridLineWidth: xOpts.gridLineWidth,
+        }).render(axisLayer);
+      }
     }
 
     const group = this.groupInfo(aggSeries);

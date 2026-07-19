@@ -16,50 +16,50 @@
  * sensible defaults live in `defaults.ts`.
  */
 
-import type { ThemeInput } from './theme.js';
+import type { ThemeInput } from "./theme.js";
 
 /** Every built-in series/chart type. */
 export type ChartType =
-  | 'bar' // horizontal bars
-  | 'column' // vertical bars
-  | 'arearange' // filled band between a low and high value
-  | 'areasplinerange' // smoothed range band
-  | 'line'
-  | 'spline' // smoothed line
-  | 'step' // step line
-  | 'area'
-  | 'areaspline'
-  | 'pie'
-  | 'donut' // pie with an inner radius
-  | 'scatter'
-  | 'jitter' // scatter with categorical x + random spread
-  | 'boxplot'
-  | 'dumbbell' // two connected points per category (low → high)
-  | 'lollipop' // zero-anchored stem + marker per category, a lighter column
-  | 'slope' // one line per series across x-categories (before/after comparison)
-  | 'butterfly' // two series mirrored back-to-back around a central axis
-  | 'columnrange' // rounded-capsule range bar (vertical; horizontal when inverted)
-  | 'radialbar' // bars drawn around a polar centre
-  | 'heatmap' // coloured grid of category × category cells
-  | 'bullet' // measure bar with qualitative bands and a target marker
-  | 'candlestick' // OHLC financial candles
-  | 'gauge' // radial dial for a single value
-  | 'waterfall' // running cumulative increases / decreases
-  | 'histogram' // binned distribution of raw values
-  | 'timeline' // events placed along a line
-  | 'funnel' // narrowing stacked stages
-  | 'treegraph' // hierarchical node-link tree
-  | 'bubble' // scatter with a third value (z) driving marker size
-  | 'radar' // line/area over categories arranged around a polar centre
-  | 'sunburst' // multi-level radial hierarchy
-  | 'sankey' // weighted flows between nodes
-  | 'calendar' // day-grid heatmap by date
-  | 'gantt' // duration bars per row
-  | 'marimekko' // variable-width 100% stacked columns
-  | 'errorbar' // low/high whiskers, usually overlaid
-  | 'sparkline'; // tiny axis-less trend line, one per table cell/row
+  | "bar" // horizontal bars
+  | "column" // vertical bars
+  | "arearange" // filled band between a low and high value
+  | "areasplinerange" // smoothed range band
+  | "line"
+  | "spline" // smoothed line
+  | "step" // step line
+  | "area"
+  | "areaspline"
+  | "pie"
+  | "donut" // pie with an inner radius
+  | "scatter"
+  | "jitter" // scatter with categorical x + random spread
+  | "boxplot"
+  | "dumbbell" // two connected points per category (low → high)
+  | "lollipop" // zero-anchored stem + marker per category, a lighter column
+  | "slope" // one line per series across x-categories (before/after comparison)
+  | "butterfly" // two series mirrored back-to-back around a central axis
+  | "columnrange" // rounded-capsule range bar (vertical; horizontal when inverted)
+  | "radialbar" // bars drawn around a polar centre
+  | "heatmap" // coloured grid of category × category cells
+  | "bullet" // measure bar with qualitative bands and a target marker
+  | "candlestick" // OHLC financial candles
+  | "gauge" // radial dial for a single value
+  | "waterfall" // running cumulative increases / decreases
+  | "histogram" // binned distribution of raw values
+  | "timeline" // events placed along a line
+  | "funnel" // narrowing stacked stages
+  | "treegraph" // hierarchical node-link tree
+  | "bubble" // scatter with a third value (z) driving marker size
+  | "radar" // line/area over categories arranged around a polar centre
+  | "sunburst" // multi-level radial hierarchy
+  | "sankey" // weighted flows between nodes
+  | "calendar" // day-grid heatmap by date
+  | "gantt" // duration bars per row
+  | "marimekko" // variable-width 100% stacked columns
+  | "errorbar" // low/high whiskers, usually overlaid
+  | "sparkline"; // tiny axis-less trend line, one per table cell/row
 
-export type StackingMode = 'normal' | 'percent';
+export type StackingMode = "normal" | "percent";
 
 /** A single datum. Many shapes are accepted for author convenience. */
 export type PointInput =
@@ -81,6 +81,11 @@ export interface PointOptions {
   median?: number;
   q3?: number;
   max?: number;
+  /** Boxplot outlier values, drawn as markers beyond the whiskers instead of
+   *  folded into `min`/`max`. Positioned at this box's own centre, so a
+   *  grouped boxplot keeps each series' outliers over its own box rather
+   *  than the shared category centre. */
+  outliers?: number[];
   /** Pie / categorical slices. */
   name?: string;
   /** Third value: variable-radius pie slice weight, or bubble marker size. */
@@ -153,6 +158,10 @@ export interface SeriesOptions {
     whisker?: string;
     border?: string;
   };
+  /** Boxplot outlier marker styling — see point-level `outliers`. Defaults to
+   *  a small hollow circle (background-coloured fill, `boxColors.border`
+   *  stroke). */
+  outlierMarker?: MarkerOptions;
   /** Dumbbell endpoint / connector colours. */
   lowColor?: string;
   highColor?: string;
@@ -184,10 +193,12 @@ export interface SparklineOptions {
 export interface MarkerOptions {
   enabled?: boolean;
   radius?: number;
-  symbol?: 'circle' | 'square' | 'diamond' | 'triangle';
+  symbol?: "circle" | "square" | "diamond" | "triangle" | "rectangle";
   fillColor?: string;
   lineColor?: string;
   lineWidth?: number;
+  height?: number; // for rectangle symbol only
+  width?: number; // for rectangle symbol only
 }
 
 export interface DataLabelOptions {
@@ -204,7 +215,15 @@ export interface DataLabelOptions {
    *  - line / area / scatter: `top` (default), `bottom`, `center`, `left`, `right`.
    *  - pie / donut: `outside` (default) or `inside`.
    */
-  position?: 'outside' | 'inside' | 'center' | 'base' | 'top' | 'bottom' | 'left' | 'right';
+  position?:
+    | "outside"
+    | "inside"
+    | "center"
+    | "base"
+    | "top"
+    | "bottom"
+    | "left"
+    | "right";
   /** Extra pixel offset applied in the label's natural direction. */
   distance?: number;
   /** Rotate the label text (degrees). */
@@ -234,7 +253,7 @@ export interface LabelContext {
 
 export interface TitleOptions {
   text?: string;
-  align?: 'left' | 'center' | 'right';
+  align?: "left" | "center" | "right";
   style?: Partial<CSSStyleDeclaration> | Record<string, string>;
 }
 
@@ -246,7 +265,7 @@ export interface AxisOptions {
   opposite?: boolean;
   /** Category labels for a categorical axis. */
   categories?: string[];
-  type?: 'linear' | 'log' | 'category' | 'datetime';
+  type?: "linear" | "log" | "category" | "datetime";
   /** Draw a vertical/horizontal guide line at the hovered position. */
   crosshair?: boolean;
   title?: { text?: string; style?: Record<string, string> };
@@ -288,7 +307,7 @@ export interface AxisOptions {
    */
   dimensions?: string[];
   /** Aggregation used when collapsing points into nested-axis leaves. */
-  aggregate?: 'sum' | 'avg' | 'count' | 'min' | 'max';
+  aggregate?: "sum" | "avg" | "count" | "min" | "max";
 }
 
 export interface PlotLineOptions {
@@ -299,7 +318,7 @@ export interface PlotLineOptions {
   /** Dash pattern, e.g. '4 3'. */
   dashStyle?: string;
   /** Stacking order relative to the series (default drawn above grid, below series). */
-  zIndex?: 'above' | 'below';
+  zIndex?: "above" | "below";
   label?: {
     text: string;
     /**
@@ -309,14 +328,14 @@ export interface PlotLineOptions {
      * (`'center'` places it directly on the line). Defaults to an
      * automatic side pick that avoids running off the plot edge.
      */
-    align?: 'left' | 'center' | 'right';
+    align?: "left" | "center" | "right";
     /**
      * Vertical position relative to the line. `'above'`/`'below'` hug the
      * line itself for a y-axis (horizontal) line; for an x-axis (vertical)
      * line — which has no "above/below the line" — this instead places the
      * label near the top or bottom of the plot. Defaults to `'above'`.
      */
-    verticalAlign?: 'above' | 'below';
+    verticalAlign?: "above" | "below";
     color?: string;
   };
 }
@@ -327,7 +346,7 @@ export interface PlotBandOptions {
   /** Band end value. */
   to: number | string;
   color?: string;
-  label?: { text: string; align?: 'left' | 'center' | 'right'; color?: string };
+  label?: { text: string; align?: "left" | "center" | "right"; color?: string };
 }
 
 export interface HoverStateOptions {
@@ -355,7 +374,7 @@ export interface TooltipOptions {
 
 export type SeriesTooltipOptions = Pick<
   TooltipOptions,
-  'format' | 'formatter' | 'valueSuffix' | 'valuePrefix' | 'valueDecimals'
+  "format" | "formatter" | "valueSuffix" | "valuePrefix" | "valueDecimals"
 >;
 
 export interface TooltipContext {
@@ -376,7 +395,14 @@ export interface TooltipContext {
   low?: number;
   high?: number;
   /** Boxplot five-number summary. */
-  box?: { min: number; q1: number; median: number; q3: number; max: number };
+  box?: {
+    min: number;
+    q1: number;
+    median: number;
+    q3: number;
+    max: number;
+    outliers?: number[];
+  };
   /** All points sharing this x, when `shared` is enabled. */
   points?: TooltipContext[];
 }
@@ -384,14 +410,14 @@ export interface TooltipContext {
 export interface LegendOptions {
   enabled?: boolean;
   /** Horizontal alignment (top/bottom legends) or which side (vertical legends). */
-  align?: 'left' | 'center' | 'right';
+  align?: "left" | "center" | "right";
   /** Vertical placement for a horizontal legend. */
-  verticalAlign?: 'top' | 'bottom';
+  verticalAlign?: "top" | "bottom";
   /**
    * Item flow. `horizontal` (default) → a strip at top/bottom; `vertical` →
    * a stacked column placed on the left or right (per `align`).
    */
-  layout?: 'horizontal' | 'vertical';
+  layout?: "horizontal" | "vertical";
   itemStyle?: Record<string, string>;
 }
 
@@ -460,7 +486,7 @@ export interface AnimationOptions {
 /** Drag-to-zoom / pan configuration. */
 export interface ZoomOptions {
   /** Axis to zoom by drag-select. `false` disables. */
-  type?: 'x' | 'y' | 'xy' | false;
+  type?: "x" | "y" | "xy" | false;
 }
 
 /** High-volume canvas "boost" rendering. */
@@ -500,7 +526,7 @@ export interface ChartOptions {
     /** Enter animation (default enabled). Pass `false` to disable. */
     animation?: boolean | AnimationOptions;
     /** Drag-to-zoom. Pass `'x'` / `'xy'` or a {@link ZoomOptions} object. */
-    zoom?: 'x' | 'y' | 'xy' | false | ZoomOptions;
+    zoom?: "x" | "y" | "xy" | false | ZoomOptions;
     /** Auto re-render when the container resizes (default true). */
     reflow?: boolean;
     /**

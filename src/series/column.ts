@@ -65,7 +65,7 @@ export class ColumnSeries extends BaseSeries {
         "rect",
         {
           ...rect,
-          rx: 0,
+          rx: 1,
           fill: p.color ?? this.color,
           class: "facet-point",
         },
@@ -117,7 +117,8 @@ export class ColumnSeries extends BaseSeries {
     // segment — for any earlier segment it sits inside the segment stacked
     // above it. Default a stacked point to 'center' instead, unless the
     // caller picked a position explicitly.
-    const pos = dl.position ?? (p.stackHigh !== undefined ? "center" : "outside");
+    const pos =
+      dl.position ?? (p.stackHigh !== undefined ? "center" : "outside");
     let place: LabelPlacement;
 
     if (this.type === "bar" || ctx.inverted) {

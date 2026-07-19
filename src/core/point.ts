@@ -17,7 +17,7 @@ export interface Point {
   low?: number;
   high?: number;
   /** Boxplot five-number summary. */
-  box?: { min: number; q1: number; median: number; q3: number; max: number };
+  box?: { min: number; q1: number; median: number; q3: number; max: number; outliers?: number[] };
   name?: string;
   color?: string;
   /** Original user options, surfaced back through tooltips and events. */
@@ -96,6 +96,7 @@ function normalizePoint(
       median: opts.median,
       q3: opts.q3,
       max: opts.max,
+      outliers: opts.outliers?.length ? opts.outliers : undefined,
     };
   }
   return point;
