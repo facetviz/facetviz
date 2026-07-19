@@ -11,6 +11,13 @@ import type { Point } from '../core/point.js';
 
 interface PieCenter { cx: number; cy: number; radius: number; margin: number; outside: boolean; }
 
+/**
+ * Tracks the last drawn outside label's y position on each side of the pie,
+ * so a shrunk chart with cramped slices thins its own labels out — skipping
+ * whichever would collide — instead of the chart forcing every label off.
+ */
+interface LabelLayout { lastY: { left?: number; right?: number } }
+
 export class PieSeries extends BaseSeries {
   override capabilities(): SeriesCapabilities {
     return { grouped: false, cartesian: false, stackable: false, pointLegend: true };
@@ -63,6 +70,7 @@ export class PieSeries extends BaseSeries {
 
     if (this.dims()) { this.renderMultiLevel(ctx, g, c); return; }
 
+    const layout: LabelLayout = { lastY: {} };
     const innerR = c.radius * this.innerRatio();
     // Only draw visible slices; total is over visible points so hiding a slice
     // via the legend redistributes the remaining ones.
@@ -100,7 +108,7 @@ export class PieSeries extends BaseSeries {
       el.addEventListener('mouseout', (e: Event) => ctx.onPointEvent('mouseOut', p, e));
 
       const label = this.labelText(p, p.name ?? p.x, value, total);
-      this.drawLabel(ctx, g, c, rr, (angle + end) / 2, label, color);
+      this.drawLabel(ctx, g, c, rr, angle, end, label, color, layout);
       angle = end;
     });
   }
@@ -124,6 +132,7 @@ export class PieSeries extends BaseSeries {
     const total = sum([...buckets.values()].map(groupTotal));
     if (total <= 0) return;
 
+    const layout: LabelLayout = { lastY: {} };
     let angle = -Math.PI / 2;
     order.forEach((g0, gi) => {
       const ps = buckets.get(g0) ?? [];
@@ -166,7 +175,7 @@ export class PieSeries extends BaseSeries {
 
         const name = String(p.options[dims[1]] ?? p.name ?? p.x);
         const label = this.labelText(p, name, value, total);
-        this.drawLabel(ctx, g, c, c.radius, (a2 + e2) / 2, label, color);
+        this.drawLabel(ctx, g, c, c.radius, a2, e2, label, color, layout);
         a2 = e2;
       });
       angle = end;
@@ -227,14 +236,35 @@ export class PieSeries extends BaseSeries {
    * Draw a slice label. Inside labels sit on the ring; outside labels are placed
    * beyond the rim and joined to the slice with a leader line (elbow + stub) so
    * it is unambiguous which label belongs to which slice.
+   *
+   * A shrunk pie packs slices (and their labels) closer together — rather than
+   * the chart forcing every label off past some size threshold, a label that
+   * doesn't fit its own slice (inside) or would collide with the previous one
+   * on its side (outside) is simply skipped, leaving the rest legible.
    */
-  private drawLabel(ctx: SeriesRenderContext, g: SVGGElement, c: PieCenter, rimR: number, mid: number, text: string, sliceColor: string): void {
+  private drawLabel(
+    ctx: SeriesRenderContext,
+    g: SVGGElement,
+    c: PieCenter,
+    rimR: number,
+    a0: number,
+    a1: number,
+    text: string,
+    sliceColor: string,
+    layout: LabelLayout,
+  ): void {
     const dl = this.options.dataLabels;
     if (!dl?.enabled || !text) return;
     const { renderer } = ctx;
+    const mid = (a0 + a1) / 2;
+    const fontPx = parseFloat(dl.fontSize ?? FONTS.dataLabel['font-size'] ?? '11') || 11;
 
     if (!c.outside) {
       const lr = rimR * 0.72;
+      // Skip a label whose slice is too thin to fit it — a 5% sliver reading
+      // "Other: 0.8%" just smears text across its neighbours otherwise.
+      const chord = 2 * lr * Math.sin(Math.min(Math.PI, a1 - a0) / 2);
+      if (text.length * fontPx * 0.62 > chord) return;
       renderer.text(text, c.cx + lr * Math.cos(mid), c.cy + lr * Math.sin(mid), {
         'text-anchor': 'middle', 'dominant-baseline': 'middle', ...FONTS.dataLabel,
         fill: dl.color ?? '#ffffff', ...(dl.fontSize ? { 'font-size': dl.fontSize } : {}),
@@ -244,12 +274,20 @@ export class PieSeries extends BaseSeries {
 
     // Leader line: rim point → elbow just outside the rim → short horizontal stub.
     const dir = Math.cos(mid) >= 0 ? 1 : -1;
+    const side = dir > 0 ? 'right' : 'left';
     const rimX = c.cx + rimR * Math.cos(mid);
     const rimY = c.cy + rimR * Math.sin(mid);
     const elbowR = rimR + 10 + (dl.distance ?? 0);
     const elbowX = c.cx + elbowR * Math.cos(mid);
     const elbowY = c.cy + elbowR * Math.sin(mid);
     const stubX = elbowX + dir * 16;
+
+    // Points are walked in angle order and stay on one side for a full half
+    // revolution, so comparing against only the last label drawn on this side
+    // is enough to keep every remaining one legibly spaced.
+    const lastY = layout.lastY[side];
+    if (lastY !== undefined && Math.abs(elbowY - lastY) < fontPx + 3) return;
+    layout.lastY[side] = elbowY;
 
     renderer.create('polyline', {
       points: `${rimX},${rimY} ${elbowX},${elbowY} ${stubX},${elbowY}`,

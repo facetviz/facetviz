@@ -183,8 +183,21 @@ export class FacetViz {
   private applyResponsiveOverrides(): () => void {
     if (this.options.chart?.responsive === false) return () => {};
     const shortSide = Math.min(this.width, this.height);
-    const hideLabels = shortSide < 260;
-    const hideLegend = shortSide < 220;
+    // Circular charts (pie/donut/funnel/sunburst/radialbar/gauge) have no axes
+    // eating into their space, and their data labels are the only way to read
+    // a value — unlike a cartesian chart's optional label overlay, so they're
+    // exempt from the generic size-based label hide. A shrunk pie instead
+    // thins its own labels out (see PieSeries) rather than losing them all.
+    const circular = this.series.length > 0 && this.series.every((s) => !s.capabilities().cartesian);
+    const hideLabels = !circular && shortSide < 260;
+    // The legend still gets cramped once a pie has more than a handful of
+    // slices (each with its own swatch), so it's only exempted below that
+    // count — a 3-slice pie keeps its legend at any height, an 8-slice one
+    // sheds it once the chart shrinks, same as a cartesian chart's legend.
+    const maxSlices = circular
+      ? this.series.reduce((m, s) => Math.max(m, s.points.length), 0)
+      : 0;
+    const hideLegend = circular ? maxSlices > 5 && shortSide < 220 : shortSide < 220;
     const hideAxisTitles = shortSide < 190;
     const hideAxisLabels = shortSide < 150;
     const hideAxisLines = shortSide < 110;

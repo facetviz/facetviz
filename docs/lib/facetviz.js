@@ -2218,6 +2218,7 @@ var PieSeries = class extends BaseSeries {
       this.renderMultiLevel(ctx, g, c);
       return;
     }
+    const layout = { lastY: {} };
     const innerR = c.radius * this.innerRatio();
     const points = this.visiblePoints();
     const total = sum(points.map((p) => p.y ?? 0));
@@ -2247,7 +2248,7 @@ var PieSeries = class extends BaseSeries {
       el.addEventListener("mouseover", (e) => ctx.onPointEvent("mouseOver", p, e));
       el.addEventListener("mouseout", (e) => ctx.onPointEvent("mouseOut", p, e));
       const label = this.labelText(p, p.name ?? p.x, value, total);
-      this.drawLabel(ctx, g, c, rr, (angle + end) / 2, label, color);
+      this.drawLabel(ctx, g, c, rr, angle, end, label, color, layout);
       angle = end;
     });
   }
@@ -2267,6 +2268,7 @@ var PieSeries = class extends BaseSeries {
     const groupTotal = (ps) => sum(ps.map((p) => p.y ?? 0));
     const total = sum([...buckets.values()].map(groupTotal));
     if (total <= 0) return;
+    const layout = { lastY: {} };
     let angle = -Math.PI / 2;
     order.forEach((g0, gi) => {
       const ps = buckets.get(g0) ?? [];
@@ -2306,7 +2308,7 @@ var PieSeries = class extends BaseSeries {
         el.addEventListener("mouseout", (e) => ctx.onPointEvent("mouseOut", p, e));
         const name = String(p.options[dims[1]] ?? p.name ?? p.x);
         const label = this.labelText(p, name, value, total);
-        this.drawLabel(ctx, g, c, c.radius, (a2 + e2) / 2, label, color);
+        this.drawLabel(ctx, g, c, c.radius, a2, e2, label, color, layout);
         a2 = e2;
       });
       angle = end;
@@ -2369,13 +2371,22 @@ var PieSeries = class extends BaseSeries {
    * Draw a slice label. Inside labels sit on the ring; outside labels are placed
    * beyond the rim and joined to the slice with a leader line (elbow + stub) so
    * it is unambiguous which label belongs to which slice.
+   *
+   * A shrunk pie packs slices (and their labels) closer together — rather than
+   * the chart forcing every label off past some size threshold, a label that
+   * doesn't fit its own slice (inside) or would collide with the previous one
+   * on its side (outside) is simply skipped, leaving the rest legible.
    */
-  drawLabel(ctx, g, c, rimR, mid, text, sliceColor) {
+  drawLabel(ctx, g, c, rimR, a0, a1, text, sliceColor, layout) {
     const dl = this.options.dataLabels;
     if (!dl?.enabled || !text) return;
     const { renderer } = ctx;
+    const mid = (a0 + a1) / 2;
+    const fontPx = parseFloat(dl.fontSize ?? FONTS.dataLabel["font-size"] ?? "11") || 11;
     if (!c.outside) {
       const lr = rimR * 0.72;
+      const chord = 2 * lr * Math.sin(Math.min(Math.PI, a1 - a0) / 2);
+      if (text.length * fontPx * 0.62 > chord) return;
       renderer.text(text, c.cx + lr * Math.cos(mid), c.cy + lr * Math.sin(mid), {
         "text-anchor": "middle",
         "dominant-baseline": "middle",
@@ -2386,12 +2397,16 @@ var PieSeries = class extends BaseSeries {
       return;
     }
     const dir = Math.cos(mid) >= 0 ? 1 : -1;
+    const side = dir > 0 ? "right" : "left";
     const rimX = c.cx + rimR * Math.cos(mid);
     const rimY = c.cy + rimR * Math.sin(mid);
     const elbowR = rimR + 10 + (dl.distance ?? 0);
     const elbowX = c.cx + elbowR * Math.cos(mid);
     const elbowY = c.cy + elbowR * Math.sin(mid);
     const stubX = elbowX + dir * 16;
+    const lastY = layout.lastY[side];
+    if (lastY !== void 0 && Math.abs(elbowY - lastY) < fontPx + 3) return;
+    layout.lastY[side] = elbowY;
     renderer.create("polyline", {
       points: `${rimX},${rimY} ${elbowX},${elbowY} ${stubX},${elbowY}`,
       fill: "none",
@@ -3957,8 +3972,10 @@ var FacetViz = class _FacetViz {
     if (this.options.chart?.responsive === false) return () => {
     };
     const shortSide = Math.min(this.width, this.height);
-    const hideLabels = shortSide < 260;
-    const hideLegend = shortSide < 220;
+    const circular = this.series.length > 0 && this.series.every((s) => !s.capabilities().cartesian);
+    const hideLabels = !circular && shortSide < 260;
+    const maxSlices = circular ? this.series.reduce((m, s) => Math.max(m, s.points.length), 0) : 0;
+    const hideLegend = circular ? maxSlices > 5 && shortSide < 220 : shortSide < 220;
     const hideAxisTitles = shortSide < 190;
     const hideAxisLabels = shortSide < 150;
     const hideAxisLines = shortSide < 110;
