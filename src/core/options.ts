@@ -165,9 +165,10 @@ export interface SeriesOptions
    * Generic shape-size override, interpreted per series type: rect
    * width/height for bar/column-family series (`columnWidth` wins if also
    * set), stroke width for line-family series -- line/spline/step/area/
-   * slope/lollipop (`lineWidth` wins if also set). Lets a caller reach for
-   * one property without knowing which specific option name a given chart
-   * type uses.
+   * slope/lollipop (`lineWidth` wins if also set) -- or marker radius for
+   * scatter/jitter series (`radius` wins if also set). Lets a caller reach
+   * for one property without knowing which specific option name a given
+   * chart type uses.
    */
   size?: number;
   /** Marker configuration for point-based series. */

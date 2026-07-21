@@ -5,11 +5,20 @@
  */
 
 import type { TooltipOptions, TooltipContext, SeriesTooltipOptions } from './options.js';
-import { formatString, formatNumber } from './utils.js';
+import { escapeHTML, formatHTMLString, formatNumber } from './utils.js';
+
+interface ContainerAnchorState {
+  count: number;
+  changed: boolean;
+  originalPosition: string;
+}
+
+const containerAnchors = new WeakMap<HTMLElement, ContainerAnchorState>();
 
 export class Tooltip {
   private el: HTMLDivElement;
   private options: TooltipOptions;
+  private anchorState: ContainerAnchorState;
 
   constructor(private container: HTMLElement, options: TooltipOptions) {
     this.options = options;
@@ -30,9 +39,23 @@ export class Tooltip {
       opacity: '0',
       zIndex: '10',
     } as CSSStyleDeclaration);
-    // Ensure the container can anchor an absolute child.
-    if (getComputedStyle(container).position === 'static') {
-      container.style.position = 'relative';
+    // Ensure the container can anchor absolute children. Reference counting
+    // keeps multiple charts/tooltips in one container from restoring too soon.
+    const existingAnchor = containerAnchors.get(container);
+    if (existingAnchor) {
+      existingAnchor.count++;
+      this.anchorState = existingAnchor;
+    } else {
+      const changed = getComputedStyle(container).position === 'static';
+      this.anchorState = {
+        count: 1,
+        changed,
+        originalPosition: container.style.position,
+      };
+      containerAnchors.set(container, this.anchorState);
+      if (changed) {
+        container.style.position = 'relative';
+      }
     }
     container.appendChild(this.el);
   }
@@ -71,10 +94,18 @@ export class Tooltip {
 
   destroy(): void {
     this.el.remove();
+    this.anchorState.count--;
+    if (this.anchorState.count === 0) {
+      if (this.anchorState.changed)
+        this.container.style.position = this.anchorState.originalPosition;
+      containerAnchors.delete(this.container);
+    }
   }
 
   private content(ctx: TooltipContext, tip?: SeriesTooltipOptions): string {
     const opts = { ...this.options, ...tip };
+    // A formatter is an explicitly trusted HTML escape hatch. All built-in
+    // rendering and format-string substitutions below escape user data.
     if (opts.formatter) return opts.formatter(ctx);
     const fmt = (v: number | undefined) =>
       formatNumber(v, { decimals: opts.valueDecimals, prefix: opts.valuePrefix, suffix: opts.valueSuffix });
@@ -83,15 +114,15 @@ export class Tooltip {
     // Shared tooltip: one header (the x) then a row per series.
     if (ctx.points && ctx.points.length) {
       const rows = ctx.points.map((r) =>
-        `<span style="color:${r.color}">●</span> ${r.series}: <b>${fmt(r.y)}</b>`,
+        `<span style="color:${escapeHTML(r.color)}">●</span> ${escapeHTML(r.series)}: <b>${escapeHTML(fmt(r.y))}</b>`,
       );
-      return `<b>${ctx.x}</b><br/>${rows.join('<br/>')}`;
+      return `<b>${escapeHTML(ctx.x)}</b><br/>${rows.join('<br/>')}`;
     }
 
     if (opts.format) {
       // Provide raw numbers so format specs (`{y:,.1f}`) work, plus `{yFormatted}`
       // for the value with the tooltip's prefix/suffix/decimals already applied.
-      return formatString(opts.format, {
+      return formatHTMLString(opts.format, {
         series: ctx.series,
         x: ctx.x,
         name: ctx.name ?? ctx.point?.name ?? ctx.x,
@@ -109,24 +140,26 @@ export class Tooltip {
 
     // Axis label as the header, series name + value(s) in the bullet row
     // below it — the same convention the shared tooltip above uses.
-    const head = `<b>${ctx.x}</b>`;
-    const bullet = `<span style="color:${ctx.color}">●</span>`;
+    const head = `<b>${escapeHTML(ctx.x)}</b>`;
+    const bullet = `<span style="color:${escapeHTML(ctx.color)}">●</span>`;
+    const series = escapeHTML(ctx.series);
 
     // Boxplot five-number summary.
     if (ctx.box) {
       const b = ctx.box;
-      const row = (k: string, v: number) => `${k}: <b>${fmt(v)}</b>`;
+      const row = (k: string, v: number) => `${k}: <b>${escapeHTML(fmt(v))}</b>`;
       const rows = [row('Maximum', b.max), row('Upper quartile', b.q3), row('Median', b.median),
          row('Lower quartile', b.q1), row('Minimum', b.min)];
-      if (b.outliers?.length) rows.push(`Outliers: <b>${b.outliers.map(fmt).join(', ')}</b>`);
-      return `${head}<br/>${bullet} <b>${ctx.series}</b><br/>` + rows.join('<br/>');
+      if (b.outliers?.length)
+        rows.push(`Outliers: <b>${b.outliers.map((v) => escapeHTML(fmt(v))).join(', ')}</b>`);
+      return `${head}<br/>${bullet} <b>${series}</b><br/>` + rows.join('<br/>');
     }
 
     // Range (low/high).
     if (ctx.low !== undefined && ctx.high !== undefined) {
-      return `${head}<br/>${bullet} ${ctx.series}: <b>${fmt(ctx.low)}</b> – <b>${fmt(ctx.high)}</b>`;
+      return `${head}<br/>${bullet} ${series}: <b>${escapeHTML(fmt(ctx.low))}</b> – <b>${escapeHTML(fmt(ctx.high))}</b>`;
     }
 
-    return `${head}<br/>${bullet} ${ctx.series}: <b>${valueStr}</b>`;
+    return `${head}<br/>${bullet} ${series}: <b>${escapeHTML(valueStr)}</b>`;
   }
 }

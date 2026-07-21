@@ -130,6 +130,21 @@ function formatString(template, ctx) {
     return String(value);
   });
 }
+function escapeHTML(value) {
+  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function formatHTMLString(template, ctx) {
+  return template.replace(/\{([^{}:]+)(?::([^{}]*))?\}/g, (_, path, spec) => {
+    const value = resolvePath(ctx, path.trim());
+    if (value === void 0 || value === null) return "";
+    let formatted = value;
+    if (spec !== void 0 && spec !== "") {
+      if (/%[a-zA-Z]/.test(spec)) formatted = formatDate(value, spec);
+      else if (typeof value === "number") formatted = formatValue(value, spec);
+    }
+    return escapeHTML(formatted);
+  });
+}
 function resolvePath(obj, path) {
   return path.split(".").reduce((acc, key) => {
     if (acc && typeof acc === "object") return acc[key];
@@ -314,9 +329,13 @@ var LinearScale = class {
     [this.r0, this.r1] = cfg.reversed ? [cfg.range[1], cfg.range[0]] : cfg.range;
     this.format = cfg.format;
     this.tickValues = cfg.ticks ?? niceTicks(this.d0, this.d1, cfg.tickCount ?? 6);
-    if (this.tickValues.length) {
+    if (cfg.nice !== false && this.tickValues.length) {
       this.d0 = Math.min(this.d0, this.tickValues[0]);
       this.d1 = Math.max(this.d1, this.tickValues[this.tickValues.length - 1]);
+    } else if (cfg.nice === false) {
+      this.tickValues = this.tickValues.filter((v) => v >= this.d0 && v <= this.d1);
+      if (!this.tickValues.includes(this.d0)) this.tickValues.unshift(this.d0);
+      if (!this.tickValues.includes(this.d1)) this.tickValues.push(this.d1);
     }
   }
   scale(value) {
@@ -359,12 +378,16 @@ var LogScale = class {
     const t = (Math.log10(v) - this.l0) / (this.l1 - this.l0);
     return this.r0 + t * (this.r1 - this.r0);
   }
+  invert(pixel) {
+    const t = this.r1 === this.r0 ? 0 : (pixel - this.r0) / (this.r1 - this.r0);
+    return Math.pow(10, this.l0 + t * (this.l1 - this.l0));
+  }
   ticks() {
     const ticks = [];
-    for (let e = Math.floor(this.l0); e <= Math.ceil(this.l1); e++) {
+    for (let e = Math.ceil(this.l0); e <= Math.floor(this.l1); e++) {
       ticks.push(Math.pow(10, e));
     }
-    return ticks;
+    return ticks.length ? ticks : [Math.pow(10, this.l0), Math.pow(10, this.l1)];
   }
   tickLabel(value) {
     const v = typeof value === "number" ? value : parseFloat(value);
@@ -1250,6 +1273,7 @@ var NestedAxis = class {
 };
 
 // src/core/tooltip.ts
+var containerAnchors = /* @__PURE__ */ new WeakMap();
 var Tooltip = class {
   constructor(container, options) {
     this.container = container;
@@ -1271,8 +1295,21 @@ var Tooltip = class {
       opacity: "0",
       zIndex: "10"
     });
-    if (getComputedStyle(container).position === "static") {
-      container.style.position = "relative";
+    const existingAnchor = containerAnchors.get(container);
+    if (existingAnchor) {
+      existingAnchor.count++;
+      this.anchorState = existingAnchor;
+    } else {
+      const changed = getComputedStyle(container).position === "static";
+      this.anchorState = {
+        count: 1,
+        changed,
+        originalPosition: container.style.position
+      };
+      containerAnchors.set(container, this.anchorState);
+      if (changed) {
+        container.style.position = "relative";
+      }
     }
     container.appendChild(this.el);
   }
@@ -1300,6 +1337,12 @@ var Tooltip = class {
   }
   destroy() {
     this.el.remove();
+    this.anchorState.count--;
+    if (this.anchorState.count === 0) {
+      if (this.anchorState.changed)
+        this.container.style.position = this.anchorState.originalPosition;
+      containerAnchors.delete(this.container);
+    }
   }
   content(ctx, tip) {
     const opts = { ...this.options, ...tip };
@@ -1308,12 +1351,12 @@ var Tooltip = class {
     const valueStr = fmt(ctx.y);
     if (ctx.points && ctx.points.length) {
       const rows = ctx.points.map(
-        (r) => `<span style="color:${r.color}">\u25CF</span> ${r.series}: <b>${fmt(r.y)}</b>`
+        (r) => `<span style="color:${escapeHTML(r.color)}">\u25CF</span> ${escapeHTML(r.series)}: <b>${escapeHTML(fmt(r.y))}</b>`
       );
-      return `<b>${ctx.x}</b><br/>${rows.join("<br/>")}`;
+      return `<b>${escapeHTML(ctx.x)}</b><br/>${rows.join("<br/>")}`;
     }
     if (opts.format) {
-      return formatString(opts.format, {
+      return formatHTMLString(opts.format, {
         series: ctx.series,
         x: ctx.x,
         name: ctx.name ?? ctx.point?.name ?? ctx.x,
@@ -1328,11 +1371,12 @@ var Tooltip = class {
         color: ctx.color
       });
     }
-    const head = `<b>${ctx.x}</b>`;
-    const bullet = `<span style="color:${ctx.color}">\u25CF</span>`;
+    const head = `<b>${escapeHTML(ctx.x)}</b>`;
+    const bullet = `<span style="color:${escapeHTML(ctx.color)}">\u25CF</span>`;
+    const series = escapeHTML(ctx.series);
     if (ctx.box) {
       const b = ctx.box;
-      const row = (k, v) => `${k}: <b>${fmt(v)}</b>`;
+      const row = (k, v) => `${k}: <b>${escapeHTML(fmt(v))}</b>`;
       const rows = [
         row("Maximum", b.max),
         row("Upper quartile", b.q3),
@@ -1340,13 +1384,14 @@ var Tooltip = class {
         row("Lower quartile", b.q1),
         row("Minimum", b.min)
       ];
-      if (b.outliers?.length) rows.push(`Outliers: <b>${b.outliers.map(fmt).join(", ")}</b>`);
-      return `${head}<br/>${bullet} <b>${ctx.series}</b><br/>` + rows.join("<br/>");
+      if (b.outliers?.length)
+        rows.push(`Outliers: <b>${b.outliers.map((v) => escapeHTML(fmt(v))).join(", ")}</b>`);
+      return `${head}<br/>${bullet} <b>${series}</b><br/>` + rows.join("<br/>");
     }
     if (ctx.low !== void 0 && ctx.high !== void 0) {
-      return `${head}<br/>${bullet} ${ctx.series}: <b>${fmt(ctx.low)}</b> \u2013 <b>${fmt(ctx.high)}</b>`;
+      return `${head}<br/>${bullet} ${series}: <b>${escapeHTML(fmt(ctx.low))}</b> \u2013 <b>${escapeHTML(fmt(ctx.high))}</b>`;
     }
-    return `${head}<br/>${bullet} ${ctx.series}: <b>${valueStr}</b>`;
+    return `${head}<br/>${bullet} ${series}: <b>${escapeHTML(valueStr)}</b>`;
   }
 };
 
@@ -1519,6 +1564,29 @@ function rawX(datum) {
 // src/core/chart-export.ts
 function serializeSVG(renderer, width, height) {
   const clone = renderer.root.cloneNode(true);
+  const originals = renderer.root.querySelectorAll(
+    "foreignObject.facet-boost"
+  );
+  const copies = clone.querySelectorAll(
+    "foreignObject.facet-boost"
+  );
+  originals.forEach((source, i) => {
+    const canvas = source.querySelector("canvas");
+    const copy = copies[i];
+    if (!canvas || !copy) return;
+    try {
+      const image = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "image"
+      );
+      for (const attr of ["x", "y", "width", "height", "class", "clip-path"])
+        if (copy.hasAttribute(attr))
+          image.setAttribute(attr, copy.getAttribute(attr));
+      image.setAttribute("href", canvas.toDataURL("image/png"));
+      copy.replaceWith(image);
+    } catch {
+    }
+  });
   clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
   clone.setAttribute("width", String(width));
   clone.setAttribute("height", String(height));
@@ -1550,6 +1618,79 @@ function downloadBlob(blob, filename) {
   anchor.download = filename;
   anchor.click();
   setTimeout(() => URL.revokeObjectURL(url), 1e3);
+}
+
+// src/core/stacking.ts
+var pointKey = (p) => `${typeof p.x}:${String(p.x)}`;
+function computeStacks(visible) {
+  for (const s of visible) {
+    for (const p of s.points) {
+      p.stackLow = void 0;
+      p.stackHigh = void 0;
+    }
+  }
+  const groups = /* @__PURE__ */ new Map();
+  for (const s of visible) {
+    if (!s.options.stacking || !s.capabilities().stackable) continue;
+    const key = `${s.options.yAxis ?? 0}:${s.options.stack ?? "default"}`;
+    const group = groups.get(key) ?? [];
+    group.push(s);
+    groups.set(key, group);
+  }
+  for (const group of groups.values()) {
+    const mode = group[0].options.stacking;
+    const keys = /* @__PURE__ */ new Set();
+    const pointsBySeries = /* @__PURE__ */ new Map();
+    for (const s of group) {
+      const byKey = /* @__PURE__ */ new Map();
+      for (const p of s.points) {
+        const key = pointKey(p);
+        keys.add(key);
+        byKey.set(key, p);
+      }
+      pointsBySeries.set(s, byKey);
+    }
+    for (const key of keys) {
+      let positiveBase = 0;
+      let negativeBase = 0;
+      let total = 0;
+      if (mode === "percent") {
+        for (const s of group)
+          total += Math.abs(pointsBySeries.get(s)?.get(key)?.y ?? 0);
+      }
+      for (const s of group) {
+        const point = pointsBySeries.get(s)?.get(key);
+        if (!point || point.y === void 0) continue;
+        let value = point.y;
+        if (mode === "percent" && total > 0) value = value / total * 100;
+        if (value >= 0) {
+          point.stackLow = positiveBase;
+          point.stackHigh = positiveBase + value;
+          positiveBase += value;
+        } else {
+          point.stackHigh = negativeBase;
+          point.stackLow = negativeBase + value;
+          negativeBase += value;
+        }
+      }
+    }
+  }
+}
+
+// src/core/series-state.ts
+function captureSeriesState(series) {
+  return series.map((s) => ({
+    visible: s.visible,
+    hiddenPoints: new Set(s.hiddenPoints)
+  }));
+}
+function restoreSeriesState(series, state) {
+  series.forEach((s, i) => {
+    const previous = state[i];
+    if (!previous) return;
+    s.visible = previous.visible;
+    s.hiddenPoints = previous.hiddenPoints;
+  });
 }
 
 // src/core/point.ts
@@ -1615,7 +1756,7 @@ var BaseSeries = class {
     this.hiddenPoints = /* @__PURE__ */ new Set();
     this.options = options;
     this.type = options.type ?? "line";
-    this.name = options.name ?? `Series ${""}`;
+    this.name = options.name ?? "Series";
     this.visible = options.visible !== false;
     this.points = normalizePoints(options.data, categories);
   }
@@ -2026,14 +2167,24 @@ var LineSeries = class extends BaseSeries {
   capabilities() {
     return { grouped: false, cartesian: true, stackable: true };
   }
-  pixelPoints(ctx) {
-    const out = [];
+  /** Preserve null values as path breaks instead of joining across them. */
+  pixelSegments(ctx) {
+    const segments = [];
+    let current = [];
     for (const p of this.points) {
       const y = p.stackHigh !== void 0 ? p.stackHigh : p.y;
-      if (y === void 0) continue;
-      out.push({ pt: { x: ctx.xScale.scale(p.x), y: ctx.yScale.scale(y) }, p });
+      if (y === void 0) {
+        if (current.length) segments.push(current);
+        current = [];
+        continue;
+      }
+      current.push({ pt: { x: ctx.xScale.scale(p.x), y: ctx.yScale.scale(y) }, p });
     }
-    return out;
+    if (current.length) segments.push(current);
+    return segments;
+  }
+  pixelPoints(ctx) {
+    return this.pixelSegments(ctx).flat();
   }
   buildPath(pts) {
     switch (this.type) {
@@ -2048,16 +2199,18 @@ var LineSeries = class extends BaseSeries {
   render(ctx) {
     const { renderer } = ctx;
     const g = renderer.group({ class: `facet-series facet-line ${this.name}` }, renderer.root);
-    const data = this.pixelPoints(ctx);
-    const pts = data.map((d) => d.pt);
-    renderer.create("path", {
-      d: this.buildPath(pts),
-      fill: "none",
-      stroke: this.color,
-      "stroke-width": this.options.lineWidth ?? this.options.size ?? 2,
-      "stroke-linejoin": "round",
-      "stroke-linecap": "round"
-    }, g);
+    const segments = this.pixelSegments(ctx);
+    const data = segments.flat();
+    for (const segment of segments) {
+      renderer.create("path", {
+        d: this.buildPath(segment.map((d) => d.pt)),
+        fill: "none",
+        stroke: this.color,
+        "stroke-width": this.options.lineWidth ?? this.options.size ?? 2,
+        "stroke-linejoin": "round",
+        "stroke-linecap": "round"
+      }, g);
+    }
     this.renderMarkers(ctx, g, data);
     drawPointLabels(ctx.renderer, g, this.options.dataLabels, this.name, data, this.color);
   }
@@ -2103,23 +2256,14 @@ var AreaSeries = class extends LineSeries {
   render(ctx) {
     const { renderer } = ctx;
     const g = renderer.group({ class: `facet-series facet-area ${this.name}` }, renderer.root);
-    const top = [];
-    const bottom = [];
+    let top = [];
+    let bottom = [];
     const hover = [];
-    for (const p of this.points) {
-      const hi = p.stackHigh !== void 0 ? p.stackHigh : p.y;
-      if (hi === void 0) continue;
-      const lo = p.stackLow !== void 0 ? p.stackLow : 0;
-      const topPt = { x: ctx.xScale.scale(p.x), y: ctx.yScale.scale(hi) };
-      top.push(topPt);
-      bottom.push({ x: ctx.xScale.scale(p.x), y: ctx.yScale.scale(lo) });
-      hover.push({ pt: topPt, p });
-    }
-    if (top.length) {
+    const drawSegment = () => {
+      if (!top.length) return;
       const line = this.smooth() ? splinePath : linePath;
       const topD = line(top);
-      const bottomReversed = [...bottom].reverse();
-      const bottomD = line(bottomReversed).replace(/^M/, "L");
+      const bottomD = line([...bottom].reverse()).replace(/^M/, "L");
       renderer.create("path", {
         d: `${topD} ${bottomD} Z`,
         fill: alpha(this.color, 0.35),
@@ -2132,7 +2276,22 @@ var AreaSeries = class extends LineSeries {
         "stroke-width": this.options.lineWidth ?? this.options.size ?? 2,
         "stroke-linejoin": "round"
       }, g);
+      top = [];
+      bottom = [];
+    };
+    for (const p of this.points) {
+      const hi = p.stackHigh !== void 0 ? p.stackHigh : p.y;
+      if (hi === void 0) {
+        drawSegment();
+        continue;
+      }
+      const lo = p.stackLow !== void 0 ? p.stackLow : 0;
+      const topPt = { x: ctx.xScale.scale(p.x), y: ctx.yScale.scale(hi) };
+      top.push(topPt);
+      bottom.push({ x: ctx.xScale.scale(p.x), y: ctx.yScale.scale(lo) });
+      hover.push({ pt: topPt, p });
     }
+    drawSegment();
     this.renderMarkers(ctx, g, hover);
     drawPointLabels(ctx.renderer, g, this.options.dataLabels, this.name, hover, this.color);
   }
@@ -3119,6 +3278,9 @@ var HistogramSeries = class extends BaseSeries {
     const min = Math.min(...values);
     const max = Math.max(...values);
     const count = this.options.bins ?? Math.max(1, Math.ceil(Math.sqrt(values.length)));
+    if (!Number.isSafeInteger(count) || count <= 0) {
+      throw new RangeError("FacetViz: histogram bins must be a positive integer");
+    }
     const width = (max - min) / count || 1;
     const bins = Array.from({ length: count }, (_, i) => ({ x0: min + i * width, x1: min + (i + 1) * width, count: 0 }));
     for (const v of values) {
@@ -3306,7 +3468,7 @@ var BubbleSeries = class extends BaseSeries {
     const { renderer, xScale, yScale } = ctx;
     const g = renderer.group({ class: `facet-series facet-bubble ${this.name}` }, renderer.root);
     const zs = this.points.map((p) => p.options.z ?? 1);
-    const zMin = Math.min(...zs), zMax = Math.max(...zs);
+    const [zMin, zMax] = extent(zs);
     const [rMin, rMax] = this.options.sizeRange ?? [6, 34];
     const radiusFor = (z) => {
       const t = zMax === zMin ? 1 : (z - zMin) / (zMax - zMin);
@@ -3463,7 +3625,7 @@ var SankeySeries = class extends BaseSeries {
   render(ctx) {
     const { renderer, plot, colors } = ctx;
     const g = renderer.group({ class: `facet-series facet-sankey ${this.name}` }, renderer.root);
-    const links = this.points.map((p) => ({ from: String(p.options.from ?? ""), to: String(p.options.to ?? ""), weight: p.options.weight ?? p.y ?? 1, point: p })).filter((l) => l.from && l.to);
+    const links = this.points.map((p) => ({ from: String(p.options.from ?? ""), to: String(p.options.to ?? ""), weight: p.options.weight ?? p.y ?? 1, point: p })).filter((l) => l.from && l.to && Number.isFinite(l.weight) && l.weight > 0);
     if (!links.length) return;
     const nodes = /* @__PURE__ */ new Map();
     const node = (id) => nodes.get(id) ?? nodes.set(id, { id, depth: 0, inflow: 0, outflow: 0, x: 0, y: 0, h: 0, color: "" }).get(id);
@@ -3471,17 +3633,31 @@ var SankeySeries = class extends BaseSeries {
       node(l.from).outflow += l.weight;
       node(l.to).inflow += l.weight;
     }
-    for (let pass = 0; pass < nodes.size; pass++) {
-      let changed = false;
-      for (const l of links) {
-        const s = node(l.from), t = node(l.to);
-        if (t.depth < s.depth + 1) {
-          t.depth = s.depth + 1;
-          changed = true;
-        }
-      }
-      if (!changed) break;
+    const incoming = /* @__PURE__ */ new Map();
+    const outgoing = /* @__PURE__ */ new Map();
+    for (const id of nodes.keys()) incoming.set(id, 0);
+    for (const l of links) {
+      incoming.set(l.to, (incoming.get(l.to) ?? 0) + 1);
+      const list = outgoing.get(l.from) ?? [];
+      list.push(l);
+      outgoing.set(l.from, list);
     }
+    const queue = [...nodes.keys()].filter((id) => incoming.get(id) === 0);
+    let visited = 0;
+    for (let qi = 0; qi < queue.length; qi++) {
+      const id = queue[qi];
+      visited++;
+      const source = node(id);
+      for (const l of outgoing.get(id) ?? []) {
+        const target = node(l.to);
+        target.depth = Math.max(target.depth, source.depth + 1);
+        const next = (incoming.get(l.to) ?? 1) - 1;
+        incoming.set(l.to, next);
+        if (next === 0) queue.push(l.to);
+      }
+    }
+    if (visited !== nodes.size)
+      throw new Error("FacetViz: sankey links must form an acyclic graph");
     const maxDepth = Math.max(...[...nodes.values()].map((n) => n.depth));
     const nodeW = 14;
     const vGap = 8;
@@ -3555,7 +3731,9 @@ var CalendarSeries = class extends BaseSeries {
     const first = days[0].date;
     const start = new Date(first);
     start.setDate(start.getDate() - start.getDay());
-    const weekIndex = (d) => Math.floor((d.getTime() - start.getTime()) / (7 * DAY));
+    const dayOrdinal = (d) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / DAY;
+    const startDay = dayOrdinal(start);
+    const weekIndex = (d) => Math.floor((dayOrdinal(d) - startDay) / 7);
     const topPad = 16, leftPad = 26;
     const weeks = weekIndex(days[days.length - 1].date) + 1;
     const cell = Math.min((plot.width - leftPad) / weeks, (plot.height - topPad) / 7) - 2;
@@ -3946,6 +4124,8 @@ var FacetViz = class _FacetViz {
   constructor(container, options) {
     this.events = new EventEmitter();
     this.series = [];
+    this.destroyed = false;
+    this.boostHoverCleanups = [];
     /** Play the enter animation on the next render (first render + data updates). */
     this.animateNext = true;
     this.clipSeq = 0;
@@ -3954,7 +4134,8 @@ var FacetViz = class _FacetViz {
     const el = typeof container === "string" ? document.querySelector(container) : container;
     if (!el) throw new Error("FacetViz: container element not found");
     this.container = el;
-    this.options = resolveChartOptions(options);
+    this.userOptions = merge({}, options);
+    this.options = resolveChartOptions(this.userOptions);
     this.theme = resolveTheme(this.options.theme);
     this.colors = this.options.chart?.colors ?? this.options.colors ?? this.theme.colors;
     this.width = this.options.chart?.width ?? (this.container.clientWidth || 640);
@@ -3963,7 +4144,10 @@ var FacetViz = class _FacetViz {
     this.render();
     this.setupReflow();
     if (typeof requestAnimationFrame !== "undefined") {
-      requestAnimationFrame(() => this.reflow());
+      this.initialReflowFrame = requestAnimationFrame(() => {
+        this.initialReflowFrame = void 0;
+        this.reflow();
+      });
     }
   }
   /**
@@ -3974,6 +4158,7 @@ var FacetViz = class _FacetViz {
    * A dimension pinned via `chart.width`/`chart.height` is left untouched.
    */
   reflow() {
+    if (this.destroyed) return;
     const w = this.options.chart?.width ?? this.container.clientWidth;
     const h = this.options.chart?.height ?? this.container.clientHeight;
     const changed = w && Math.abs(w - this.width) > 1 || h && Math.abs(h - this.height) > 1;
@@ -3985,12 +4170,20 @@ var FacetViz = class _FacetViz {
   }
   /** Re-render when the container resizes (unless reflow/that dimension is disabled). */
   setupReflow() {
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = void 0;
+    if (this.resizeFrame !== void 0) {
+      cancelAnimationFrame(this.resizeFrame);
+      this.resizeFrame = void 0;
+    }
     if (this.options.chart?.reflow === false || typeof ResizeObserver === "undefined" || this.options.chart?.width && this.options.chart?.height)
       return;
-    let raf = 0;
     this.resizeObserver = new ResizeObserver(() => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => this.reflow());
+      if (this.resizeFrame !== void 0) cancelAnimationFrame(this.resizeFrame);
+      this.resizeFrame = requestAnimationFrame(() => {
+        this.resizeFrame = void 0;
+        this.reflow();
+      });
     });
     this.resizeObserver.observe(this.container);
   }
@@ -4006,6 +4199,22 @@ var FacetViz = class _FacetViz {
       s.color = opts.color ?? opts.highColor ?? paletteColor(this.colors, i);
       return s;
     });
+  }
+  /** Re-resolve all defaults and rebuild the model after an API update. */
+  resolveUpdatedOptions(preserveSeriesState) {
+    const state = preserveSeriesState ? captureSeriesState(this.series) : [];
+    const resolved = resolveChartOptions(this.userOptions);
+    const target = this.options;
+    for (const key of Object.keys(target)) delete target[key];
+    Object.assign(this.options, resolved);
+    this.theme = resolveTheme(this.options.theme);
+    this.colors = this.options.chart?.colors ?? this.options.colors ?? this.theme.colors;
+    if (this.options.chart?.width !== void 0)
+      this.width = this.options.chart.width;
+    if (this.options.chart?.height !== void 0)
+      this.height = this.options.chart.height;
+    this.build();
+    if (preserveSeriesState) restoreSeriesState(this.series, state);
   }
   // -- Rendering ---------------------------------------------------------
   /**
@@ -4036,114 +4245,120 @@ var FacetViz = class _FacetViz {
     };
   }
   render() {
+    if (this.destroyed) return;
     const restoreResponsive = this.applyResponsiveOverrides();
-    if (!this.renderer) {
-      this.renderer = new Renderer(this.width, this.height);
-      this.renderer.mount(this.container);
-    } else {
-      this.renderer.clear();
-      this.renderer.setSize(this.width, this.height);
-    }
-    applyTheme(this.theme);
-    this.renderer.create(
-      "rect",
-      {
-        x: 0,
-        y: 0,
-        width: this.width,
-        height: this.height,
-        fill: this.options.chart?.backgroundColor ?? this.theme.backgroundColor
-      },
-      this.renderer.root
-    );
-    if (this.tooltip) this.tooltip.destroy();
-    if (this.options.tooltip?.enabled !== false) {
-      this.tooltip = new Tooltip(this.container, {
-        backgroundColor: this.theme.tooltip.backgroundColor,
-        borderColor: this.theme.tooltip.borderColor,
-        color: this.theme.tooltip.color,
-        ...this.options.tooltip
-      });
-    }
-    const spacing = this.options.chart?.spacing ?? [5, 5, 5, 5];
-    let top = spacing[0];
-    top += this.renderTitles(top);
-    const legendItems = this.buildLegendItems();
-    const showLegend = this.options.legend?.enabled !== false && legendItems.length > 1;
-    const legendPlace = this.legendPlacement();
-    const legendVertical = legendPlace === "left" || legendPlace === "right";
-    let legendReserveH = 0;
-    let legendReserveW = 0;
-    if (showLegend) {
-      if (legendVertical) legendReserveW = Legend.verticalWidth(legendItems);
-      else legendReserveH = LAYOUT.legendHeight;
-    }
-    const outer = {
-      x: spacing[3] + (legendPlace === "left" ? legendReserveW : 0),
-      y: top + (legendPlace === "top" ? legendReserveH : 0),
-      width: this.width - spacing[1] - spacing[3] - legendReserveW,
-      height: this.height - top - spacing[2] - legendReserveH
-    };
-    const nestedDims = firstAxis(this.options.xAxis)?.dimensions;
-    const t = this.options.trellis;
-    const chartType = this.options.chart?.type;
-    const vis = () => this.series.filter((s) => s.visible && s.points.length);
-    if (chartType === "butterfly") {
-      this.renderButterflyPanel(outer, vis());
-    } else if (chartType === "radar") {
-      this.renderRadarPanel(outer, vis());
-    } else if (chartType === "marimekko") {
-      this.renderMarimekkoPanel(outer, vis());
-    } else if (nestedDims && nestedDims.length >= 1) {
-      this.renderNestedPanel(
-        outer,
-        this.series.filter((s) => s.visible && s.points.length),
-        nestedDims
-      );
-    } else if (t && (t.columns || t.rows) && t.table !== false) {
-      this.renderTrellisTable(outer, t);
-    } else {
-      const panels = this.computePanels(outer);
-      for (const panel of panels) this.renderPanel(panel);
-    }
-    if (showLegend) {
-      let lx = outer.x;
-      let ly = outer.y + outer.height + 14;
-      let lw = outer.width;
-      let lh = LAYOUT.legendHeight;
-      if (legendPlace === "top") {
-        ly = top + 12;
-      } else if (legendPlace === "left") {
-        lx = spacing[3];
-        ly = outer.y;
-        lw = legendReserveW;
-        lh = outer.height;
-      } else if (legendPlace === "right") {
-        lx = outer.x + outer.width + 8;
-        ly = outer.y;
-        lw = legendReserveW;
-        lh = outer.height;
+    try {
+      this.boostHoverCleanups.forEach((cleanup) => cleanup());
+      this.boostHoverCleanups = [];
+      if (!this.renderer) {
+        this.renderer = new Renderer(this.width, this.height);
+        this.renderer.mount(this.container);
+      } else {
+        this.renderer.clear();
+        this.renderer.setSize(this.width, this.height);
       }
-      new Legend({
-        renderer: this.renderer,
-        items: legendItems,
-        options: this.options.legend ?? {},
-        x: lx,
-        y: ly,
-        width: lw,
-        height: lh,
-        layout: legendVertical ? "vertical" : "horizontal",
-        onToggle: (i) => this.toggleSeries(i)
-      }).render(this.renderer.group({}, this.renderer.root));
+      applyTheme(this.theme);
+      this.renderer.create(
+        "rect",
+        {
+          x: 0,
+          y: 0,
+          width: this.width,
+          height: this.height,
+          fill: this.options.chart?.backgroundColor ?? this.theme.backgroundColor
+        },
+        this.renderer.root
+      );
+      if (this.tooltip) this.tooltip.destroy();
+      if (this.options.tooltip?.enabled !== false) {
+        this.tooltip = new Tooltip(this.container, {
+          backgroundColor: this.theme.tooltip.backgroundColor,
+          borderColor: this.theme.tooltip.borderColor,
+          color: this.theme.tooltip.color,
+          ...this.options.tooltip
+        });
+      }
+      const spacing = this.options.chart?.spacing ?? [5, 5, 5, 5];
+      let top = spacing[0];
+      top += this.renderTitles(top);
+      const legendItems = this.buildLegendItems();
+      const showLegend = this.options.legend?.enabled !== false && legendItems.length > 1;
+      const legendPlace = this.legendPlacement();
+      const legendVertical = legendPlace === "left" || legendPlace === "right";
+      let legendReserveH = 0;
+      let legendReserveW = 0;
+      if (showLegend) {
+        if (legendVertical) legendReserveW = Legend.verticalWidth(legendItems);
+        else legendReserveH = LAYOUT.legendHeight;
+      }
+      const outer = {
+        x: spacing[3] + (legendPlace === "left" ? legendReserveW : 0),
+        y: top + (legendPlace === "top" ? legendReserveH : 0),
+        width: this.width - spacing[1] - spacing[3] - legendReserveW,
+        height: this.height - top - spacing[2] - legendReserveH
+      };
+      const nestedDims = firstAxis(this.options.xAxis)?.dimensions;
+      const t = this.options.trellis;
+      const chartType = this.options.chart?.type;
+      const vis = () => this.series.filter((s) => s.visible && s.points.length);
+      if (chartType === "butterfly") {
+        this.renderButterflyPanel(outer, vis());
+      } else if (chartType === "radar") {
+        this.renderRadarPanel(outer, vis());
+      } else if (chartType === "marimekko") {
+        this.renderMarimekkoPanel(outer, vis());
+      } else if (nestedDims && nestedDims.length >= 1) {
+        this.renderNestedPanel(
+          outer,
+          this.series.filter((s) => s.visible && s.points.length),
+          nestedDims
+        );
+      } else if (t && (t.columns || t.rows) && t.table !== false) {
+        this.renderTrellisTable(outer, t);
+      } else {
+        const panels = this.computePanels(outer);
+        for (const panel of panels) this.renderPanel(panel);
+      }
+      if (showLegend) {
+        let lx = outer.x;
+        let ly = outer.y + outer.height + 14;
+        let lw = outer.width;
+        let lh = LAYOUT.legendHeight;
+        if (legendPlace === "top") {
+          ly = top + 12;
+        } else if (legendPlace === "left") {
+          lx = spacing[3];
+          ly = outer.y;
+          lw = legendReserveW;
+          lh = outer.height;
+        } else if (legendPlace === "right") {
+          lx = outer.x + outer.width + 8;
+          ly = outer.y;
+          lw = legendReserveW;
+          lh = outer.height;
+        }
+        new Legend({
+          renderer: this.renderer,
+          items: legendItems,
+          options: this.options.legend ?? {},
+          x: lx,
+          y: ly,
+          width: lw,
+          height: lh,
+          layout: legendVertical ? "vertical" : "horizontal",
+          onToggle: (i) => this.toggleSeries(i)
+        }).render(this.renderer.group({}, this.renderer.root));
+      }
+      this.applyAccessibility();
+      this.installZoom(outer);
+      this.drawDrillUp(outer);
+      if (this.animateNext) this.animateEnter();
+      this.animateNext = false;
+      this.events.emit("render", this);
+      this.options.chart?.events?.render?.(this);
+    } finally {
+      restoreResponsive();
     }
-    this.applyAccessibility();
-    this.installZoom(outer);
-    this.drawDrillUp(outer);
-    if (this.animateNext) this.animateEnter();
-    this.animateNext = false;
-    this.events.emit("render", this);
-    this.options.chart?.events?.render?.(this);
-    restoreResponsive();
   }
   /**
    * Set root ARIA role + label for screen readers. Deliberately not using an
@@ -4563,7 +4778,7 @@ var FacetViz = class _FacetViz {
       width: plot.width - pad.left - pad.right,
       height: plot.height - pad.top - pad.bottom
     };
-    this.computeStacks(visible);
+    computeStacks(visible);
     const { xScale, yScale, yScale2 } = this.buildScales(
       visible,
       axisPlot,
@@ -4689,7 +4904,7 @@ var FacetViz = class _FacetViz {
     ]);
   }
   isBoostable(s) {
-    return _FacetViz.BOOSTABLE.has(s.type);
+    return !s.options.stacking && _FacetViz.BOOSTABLE.has(s.type);
   }
   boostEnabled(visible) {
     const b = this.options.chart?.boost;
@@ -4737,36 +4952,56 @@ var FacetViz = class _FacetViz {
   drawBoostSeries(s, c, xScale, yScale, hits) {
     const color = s.color;
     if (["line", "spline", "step", "area", "areaspline"].includes(s.type)) {
-      const raw = s.points.filter((p) => p.y !== void 0).map((p) => ({
-        x: xScale.scale(p.x),
-        y: yScale.scale(p.y),
-        point: p
-      }));
-      const pts = decimateLine(raw);
-      c.beginPath();
-      pts.forEach((p, i) => i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y));
-      c.strokeStyle = color;
-      c.lineWidth = s.options.lineWidth ?? 2;
-      c.lineJoin = "round";
-      c.stroke();
-      if (s.type.startsWith("area")) {
-        const zeroY = yScale.scale(0);
-        c.lineTo(pts[pts.length - 1].x, zeroY);
-        c.lineTo(pts[0].x, zeroY);
-        c.closePath();
-        c.fillStyle = alpha(color, 0.25);
-        c.fill();
+      let raw = [];
+      const drawSegment = () => {
+        if (!raw.length) return;
+        const pts = decimateLine(raw);
+        c.beginPath();
+        pts.forEach(
+          (p, i) => i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)
+        );
+        if (s.type.startsWith("area")) {
+          const zeroY = yScale.scale(0);
+          c.lineTo(pts[pts.length - 1].x, zeroY);
+          c.lineTo(pts[0].x, zeroY);
+          c.closePath();
+          c.fillStyle = alpha(color, 0.25);
+          c.fill();
+        }
+        c.strokeStyle = color;
+        c.lineWidth = s.options.lineWidth ?? 2;
+        c.lineJoin = "round";
+        c.stroke();
+        for (const p of raw)
+          hits.push({ x: p.x, y: p.y, point: p.point, series: s });
+        raw = [];
+      };
+      for (const point of s.points) {
+        if (point.y === void 0) {
+          drawSegment();
+          continue;
+        }
+        raw.push({
+          x: xScale.scale(point.x),
+          y: yScale.scale(point.y),
+          point
+        });
       }
-      for (const p of raw)
-        hits.push({ x: p.x, y: p.y, point: p.point, series: s });
+      drawSegment();
     } else {
       const zs = s.type === "bubble" ? s.points.map((p) => p.options.z ?? 1) : [];
-      const zMin = zs.length ? Math.min(...zs) : 0, zMax = zs.length ? Math.max(...zs) : 1;
+      const [zMin, zMax] = extent(zs);
       const [rMin, rMax] = s.options.sizeRange ?? [3, 22];
+      const rng = seededRandom(s.index * 7919 + s.points.length + 1);
+      const jitterBand = xScale instanceof CategoryScale ? xScale.bandwidth() : 0;
+      const jitterSpread = (s.options.jitter ?? 0.5) * jitterBand;
       c.fillStyle = alpha(color, 0.6);
       for (const p of s.points) {
         if (p.y === void 0) continue;
-        const px = xScale.scale(p.x), py = yScale.scale(p.y);
+        let px = xScale.scale(p.x);
+        const py = yScale.scale(p.y);
+        if (s.type === "jitter" && jitterBand > 0)
+          px += (rng() - 0.5) * jitterSpread;
         let r = s.options.marker?.radius ?? 3;
         if (s.type === "bubble") {
           const t = zMax === zMin ? 1 : ((p.options.z ?? 1) - zMin) / (zMax - zMin);
@@ -4783,11 +5018,20 @@ var FacetViz = class _FacetViz {
   installBoostHover(plot, hits) {
     if (!this.tooltip || !hits.length) return;
     let marker;
+    let active = null;
     const root = this.renderer.root;
     const onMove = (e) => {
       const mx = this.localX(e.clientX), my = this.localY(e.clientY);
-      if (mx < plot.x || mx > plot.x + plot.width || my < plot.y || my > plot.y + plot.height)
+      if (mx < plot.x || mx > plot.x + plot.width || my < plot.y || my > plot.y + plot.height) {
+        marker?.remove();
+        marker = void 0;
+        if (active) {
+          this.handlePointEvent("mouseOut", active.series, active.point, e);
+          this.tooltip.hide();
+        }
+        active = null;
         return;
+      }
       let best = null, bd = 400;
       for (const h of hits) {
         const dx = h.x - mx, dy = h.y - my, d = dx * dx + dy * dy;
@@ -4799,8 +5043,17 @@ var FacetViz = class _FacetViz {
       marker?.remove();
       marker = void 0;
       if (!best) {
+        if (active)
+          this.handlePointEvent("mouseOut", active.series, active.point, e);
+        active = null;
         this.tooltip.hide();
         return;
+      }
+      if (active !== best) {
+        if (active)
+          this.handlePointEvent("mouseOut", active.series, active.point, e);
+        this.handlePointEvent("mouseOver", best.series, best.point, e);
+        active = best;
       }
       marker = this.renderer.create(
         "circle",
@@ -4829,11 +5082,25 @@ var FacetViz = class _FacetViz {
       );
       this.tooltip.move(e.clientX, e.clientY);
     };
-    root.addEventListener("mousemove", onMove);
-    root.addEventListener("mouseleave", () => {
+    const onLeave = (e) => {
       marker?.remove();
       marker = void 0;
+      if (active)
+        this.handlePointEvent("mouseOut", active.series, active.point, e);
+      active = null;
       this.tooltip.hide();
+    };
+    const onClick = (e) => {
+      if (active) this.handlePointEvent("click", active.series, active.point, e);
+    };
+    root.addEventListener("mousemove", onMove);
+    root.addEventListener("mouseleave", onLeave);
+    root.addEventListener("click", onClick);
+    this.boostHoverCleanups.push(() => {
+      marker?.remove();
+      root.removeEventListener("mousemove", onMove);
+      root.removeEventListener("mouseleave", onLeave);
+      root.removeEventListener("click", onClick);
     });
   }
   /**
@@ -4866,7 +5133,7 @@ var FacetViz = class _FacetViz {
     };
     for (const rv of rowVals) {
       for (const cv of colVals) {
-        this.computeStacks(cellSeriesFor(cv, rv));
+        computeStacks(cellSeriesFor(cv, rv));
       }
     }
     let [vMin, vMax] = this.valueDomain(
@@ -5154,7 +5421,7 @@ var FacetViz = class _FacetViz {
           rightAxis.render(axisLayer);
         }
         if (cellSeries.length) {
-          this.computeStacks(cellSeries);
+          computeStacks(cellSeries);
           const group = this.groupInfo(cellSeries);
           for (const s of cellSeries) {
             const sy = yScale2 && onSecondary(s) ? yScale2 : yScale;
@@ -5830,7 +6097,8 @@ var FacetViz = class _FacetViz {
         s.type
       )
     );
-    if (includeZero) {
+    const primaryValueAxis = inverted ? xAxisOpts : yAxisOpts;
+    if (includeZero && primaryValueAxis.type !== "log") {
       vMin = Math.min(vMin, 0);
       vMax = Math.max(vMax, 0);
     }
@@ -5883,13 +6151,15 @@ var FacetViz = class _FacetViz {
           range,
           reversed,
           ticks,
-          format: (v) => formatDate(v, format)
+          format: (v) => formatDate(v, format),
+          nice: xAxisOpts.min === void 0 && xAxisOpts.max === void 0
         });
       }
       return new LinearScale({
         domain: [min, max],
         range,
-        ...reversed ? { reversed } : {}
+        ...reversed ? { reversed } : {},
+        nice: xAxisOpts.min === void 0 && xAxisOpts.max === void 0
       });
     };
     const catScale = (range, reversed) => categories ? new CategoryScale({ categories, range, reversed }) : xNumeric(range, reversed);
@@ -5928,7 +6198,7 @@ var FacetViz = class _FacetViz {
           "lollipop"
         ].includes(s.type)
       );
-      if (includeZero2) {
+      if (includeZero2 && axisAt(this.options.yAxis, 1).type !== "log") {
         vMin2 = Math.min(vMin2, 0);
         vMax2 = Math.max(vMax2, 0);
       }
@@ -5949,7 +6219,8 @@ var FacetViz = class _FacetViz {
     return new LinearScale({
       domain: [min, max],
       range,
-      tickCount
+      tickCount,
+      nice: opts.min === void 0 && opts.max === void 0
     });
   }
   valueDomain(visible) {
@@ -6010,50 +6281,6 @@ var FacetViz = class _FacetViz {
     return cats;
   }
   // -- Stacking & grouping ----------------------------------------------
-  computeStacks(visible) {
-    for (const s of visible)
-      for (const p of s.points) {
-        p.stackLow = void 0;
-        p.stackHigh = void 0;
-      }
-    const groups = /* @__PURE__ */ new Map();
-    for (const s of visible) {
-      if (!s.options.stacking || !s.capabilities().stackable) continue;
-      const key = `${s.options.yAxis ?? 0}:${s.options.stack ?? "default"}`;
-      (groups.get(key) ?? groups.set(key, []).get(key)).push(s);
-    }
-    for (const [, group] of groups) {
-      const mode = group[0].options.stacking;
-      const indices = /* @__PURE__ */ new Set();
-      for (const s of group) for (const p of s.points) indices.add(p.index);
-      for (const idx of indices) {
-        let posBase = 0;
-        let negBase = 0;
-        let total = 0;
-        if (mode === "percent") {
-          for (const s of group) {
-            const p = s.points.find((pp) => pp.index === idx);
-            total += Math.abs(p?.y ?? 0);
-          }
-        }
-        for (const s of group) {
-          const p = s.points.find((pp) => pp.index === idx);
-          if (!p || p.y === void 0) continue;
-          let y = p.y;
-          if (mode === "percent" && total > 0) y = y / total * 100;
-          if (y >= 0) {
-            p.stackLow = posBase;
-            p.stackHigh = posBase + y;
-            posBase += y;
-          } else {
-            p.stackHigh = negBase;
-            p.stackLow = negBase + y;
-            negBase += y;
-          }
-        }
-      }
-    }
-  }
   groupInfo(visible) {
     const columnKeys = [];
     const index = /* @__PURE__ */ new Map();
@@ -6135,7 +6362,7 @@ var FacetViz = class _FacetViz {
         y1: ctx.plot.y,
         x2: x,
         y2: ctx.plot.y + ctx.plot.height,
-        stroke: THEME.axis.labelColor,
+        stroke: this.theme.axis.labelColor,
         "stroke-width": 1,
         "stroke-dasharray": "3 3",
         "pointer-events": "none",
@@ -6174,7 +6401,7 @@ var FacetViz = class _FacetViz {
   applyHover(el, s) {
     const hover = s.options.states?.hover;
     if (hover?.enabled === false) return;
-    const scale = hover?.scale ?? 1.03;
+    const scale = hover?.scale ?? 0;
     const brightness = hover?.brightness ?? 0.08;
     const style = el.style;
     style.transition = "filter 0.12s ease";
@@ -6357,35 +6584,40 @@ var FacetViz = class _FacetViz {
    * in the constructor, so `update({ theme })` silently had no effect.
    */
   update(options) {
-    Object.assign(this.options, merge(this.options, options));
-    if (options.series) this.build();
-    if (options.theme !== void 0) {
-      this.theme = resolveTheme(this.options.theme);
-      this.colors = this.options.chart?.colors ?? this.options.colors ?? this.theme.colors;
-    }
+    if (this.destroyed) return;
+    this.userOptions = merge(this.userOptions, options);
+    this.resolveUpdatedOptions(options.series === void 0);
+    this.setupReflow();
     this.animateNext = true;
     this.render();
   }
   /** Replace one series' data in place and re-render (incremental update). */
   setData(seriesIndex, data) {
-    const opts = this.options.series[seriesIndex];
+    if (this.destroyed) return;
+    const opts = this.userOptions.series[seriesIndex];
     if (!opts) return;
     opts.data = data;
-    this.build();
+    this.resolveUpdatedOptions(true);
     this.animateNext = true;
     this.render();
   }
   /** Append a point to a series and re-render. */
   addPoint(seriesIndex, point) {
-    const opts = this.options.series[seriesIndex];
+    if (this.destroyed) return;
+    const opts = this.userOptions.series[seriesIndex];
     if (!opts) return;
     opts.data = [...opts.data, point];
-    this.build();
+    this.resolveUpdatedOptions(true);
+    this.animateNext = true;
     this.render();
   }
   setSize(width, height) {
+    if (this.destroyed) return;
+    this.userOptions.chart = { ...this.userOptions.chart ?? {}, width, height };
+    this.options.chart = { ...this.options.chart ?? {}, width, height };
     this.width = width;
     this.height = height;
+    this.setupReflow();
     this.render();
   }
   /**
@@ -6428,6 +6660,15 @@ var FacetViz = class _FacetViz {
     );
   }
   destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    if (this.initialReflowFrame !== void 0)
+      cancelAnimationFrame(this.initialReflowFrame);
+    if (this.resizeFrame !== void 0) cancelAnimationFrame(this.resizeFrame);
+    this.initialReflowFrame = void 0;
+    this.resizeFrame = void 0;
+    this.boostHoverCleanups.forEach((cleanup) => cleanup());
+    this.boostHoverCleanups = [];
     this.tooltip?.destroy();
     this.resizeObserver?.disconnect();
     this.events.clear();

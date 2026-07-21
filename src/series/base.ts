@@ -72,7 +72,7 @@ export abstract class BaseSeries {
   constructor(options: SeriesOptions, categories?: string[]) {
     this.options = options;
     this.type = options.type ?? 'line';
-    this.name = options.name ?? `Series ${''}`;
+    this.name = options.name ?? 'Series';
     this.visible = options.visible !== false;
     this.points = normalizePoints(options.data, categories);
   }

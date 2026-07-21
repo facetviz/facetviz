@@ -103,6 +103,33 @@ export function formatString(template: string, ctx: Record<string, unknown>): st
   });
 }
 
+/** Escape text before interpolating it into an HTML fragment. */
+export function escapeHTML(value: unknown): string {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * HTML-safe counterpart to {@link formatString}. The template itself may
+ * contain trusted markup, but every substituted value is escaped.
+ */
+export function formatHTMLString(template: string, ctx: Record<string, unknown>): string {
+  return template.replace(/\{([^{}:]+)(?::([^{}]*))?\}/g, (_, path: string, spec?: string) => {
+    const value = resolvePath(ctx, path.trim());
+    if (value === undefined || value === null) return '';
+    let formatted: unknown = value;
+    if (spec !== undefined && spec !== '') {
+      if (/%[a-zA-Z]/.test(spec)) formatted = formatDate(value as string | number | Date, spec);
+      else if (typeof value === 'number') formatted = formatValue(value, spec);
+    }
+    return escapeHTML(formatted);
+  });
+}
+
 function resolvePath(obj: Record<string, unknown>, path: string): unknown {
   return path.split('.').reduce<unknown>((acc, key) => {
     if (acc && typeof acc === 'object') return (acc as Record<string, unknown>)[key];

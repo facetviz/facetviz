@@ -33,29 +33,42 @@ export class ScatterSeries extends BaseSeries {
   }
 
   override render(ctx: SeriesRenderContext): void {
-    const { renderer, xScale } = ctx;
+    const { renderer } = ctx;
     const g = renderer.group(
       { class: `facet-series facet-scatter ${this.name}` },
       renderer.root,
     );
 
+    // `chart.inverted` swaps which scale carries the category vs. the
+    // value axis (same convention as ColumnSeries.render / LineSeries) --
+    // jitter's spread is a category-band offset, so it moves with catScale
+    // too instead of always landing on the x pixel.
+    const catScale = ctx.inverted ? ctx.yScale : ctx.xScale;
+    const valScale = ctx.inverted ? ctx.xScale : ctx.yScale;
     const marker = this.options.marker ?? {};
     const rng = seededRandom(this.index * 7919 + this.points.length + 1);
-    const band = xScale instanceof CategoryScale ? xScale.bandwidth() : 0;
+    const band = catScale instanceof CategoryScale ? catScale.bandwidth() : 0;
     const spread = (this.options.jitter ?? 0.5) * band;
     const labelData: Array<{ pt: Pt; p: Point }> = [];
 
     for (const p of this.points) {
       if (p.y === undefined) continue;
-      let x = xScale.scale(p.x);
+      let catPx = catScale.scale(p.x);
       if (this.isJitter && band > 0) {
-        x += (rng() - 0.5) * spread;
+        catPx += (rng() - 0.5) * spread;
       }
-      const y = ctx.yScale.scale(p.y);
+      const valPx = valScale.scale(p.y);
+      const x = ctx.inverted ? valPx : catPx;
+      const y = ctx.inverted ? catPx : valPx;
       labelData.push({ pt: { x, y }, p });
       const el = drawMarker(renderer, g, x, y, {
         symbol: marker.symbol ?? "circle",
-        radius: p.options.radius ?? this.options.radius ?? marker.radius ?? 5,
+        radius:
+          p.options.radius ??
+          this.options.radius ??
+          this.options.size ??
+          marker.radius ??
+          5,
         fill: p.color ?? marker.fillColor ?? this.color,
         stroke: marker.lineColor ?? "#ffffff",
         strokeWidth: marker.lineWidth ?? 1,

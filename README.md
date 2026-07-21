@@ -161,8 +161,8 @@ new FacetViz('#c', {
   `drilldown.series`; clicking expands it, with an automatic **← Back** control.
 - **Export** — `chart.getSVG()`, `chart.downloadSVG()`, `chart.downloadPNG()`, `chart.toPNGBlob()`.
 - **Live updates** — `chart.setData(i, data)`, `chart.addPoint(i, point)`, `chart.update(options)`.
-- **Accessibility** — the root SVG gets `role="img"`, an `aria-label`, and a `<title>` (from the chart
-  title or `accessibility.description`).
+- **Accessibility** — the root SVG gets `role="img"` and an `aria-label` from the chart title or
+  `accessibility.description`.
 
 ### High-volume data (boost)
 
@@ -179,8 +179,8 @@ chart: { boost: false }                // always use SVG
 
 In practice this takes **100,000 scatter points from “freezes the tab” to ~100 ms and ~40 DOM
 nodes** (vs. thousands of nodes + seconds in plain SVG). Axes, gridlines and the legend stay SVG.
-Note: boosted marks are canvas, so they aren't captured by `getSVG()` (use `downloadPNG()` to
-rasterise a boosted chart).
+During export, boosted canvas pixels are embedded as an SVG image so `getSVG()`, SVG downloads,
+and PNG downloads retain the high-volume series.
 
 ## Hover highlight
 

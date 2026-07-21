@@ -31,22 +31,40 @@ export class SankeySeries extends BaseSeries {
 
     const links: Link[] = this.points
       .map((p) => ({ from: String(p.options.from ?? ''), to: String(p.options.to ?? ''), weight: p.options.weight ?? p.y ?? 1, point: p }))
-      .filter((l) => l.from && l.to);
+      .filter((l) => l.from && l.to && Number.isFinite(l.weight) && l.weight > 0);
     if (!links.length) return;
 
     const nodes = new Map<string, Node>();
     const node = (id: string) => nodes.get(id) ?? (nodes.set(id, { id, depth: 0, inflow: 0, outflow: 0, x: 0, y: 0, h: 0, color: '' }).get(id)!);
     for (const l of links) { node(l.from).outflow += l.weight; node(l.to).inflow += l.weight; }
 
-    // Longest-path depth (guard against cycles with a bounded pass count).
-    for (let pass = 0; pass < nodes.size; pass++) {
-      let changed = false;
-      for (const l of links) {
-        const s = node(l.from), t = node(l.to);
-        if (t.depth < s.depth + 1) { t.depth = s.depth + 1; changed = true; }
-      }
-      if (!changed) break;
+    // Longest-path depth in topological order. Cyclic flow has no valid
+    // left-to-right Sankey layout, so reject it instead of inventing depths.
+    const incoming = new Map<string, number>();
+    const outgoing = new Map<string, Link[]>();
+    for (const id of nodes.keys()) incoming.set(id, 0);
+    for (const l of links) {
+      incoming.set(l.to, (incoming.get(l.to) ?? 0) + 1);
+      const list = outgoing.get(l.from) ?? [];
+      list.push(l);
+      outgoing.set(l.from, list);
     }
+    const queue = [...nodes.keys()].filter((id) => incoming.get(id) === 0);
+    let visited = 0;
+    for (let qi = 0; qi < queue.length; qi++) {
+      const id = queue[qi];
+      visited++;
+      const source = node(id);
+      for (const l of outgoing.get(id) ?? []) {
+        const target = node(l.to);
+        target.depth = Math.max(target.depth, source.depth + 1);
+        const next = (incoming.get(l.to) ?? 1) - 1;
+        incoming.set(l.to, next);
+        if (next === 0) queue.push(l.to);
+      }
+    }
+    if (visited !== nodes.size)
+      throw new Error("FacetViz: sankey links must form an acyclic graph");
     const maxDepth = Math.max(...[...nodes.values()].map((n) => n.depth));
 
     const nodeW = 14;

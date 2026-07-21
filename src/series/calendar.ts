@@ -38,7 +38,12 @@ export class CalendarSeries extends BaseSeries {
     const first = days[0].date;
     const start = new Date(first);
     start.setDate(start.getDate() - start.getDay()); // back to Sunday
-    const weekIndex = (d: Date) => Math.floor((d.getTime() - start.getTime()) / (7 * DAY));
+    // Compare local calendar dates through UTC day ordinals. This preserves
+    // local weekdays without treating a daylight-saving week as 167/169h.
+    const dayOrdinal = (d: Date) =>
+      Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / DAY;
+    const startDay = dayOrdinal(start);
+    const weekIndex = (d: Date) => Math.floor((dayOrdinal(d) - startDay) / 7);
 
     const topPad = 16, leftPad = 26;
     const weeks = weekIndex(days[days.length - 1].date) + 1;

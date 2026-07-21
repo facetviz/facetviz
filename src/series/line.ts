@@ -11,14 +11,37 @@ export class LineSeries extends BaseSeries {
     return { grouped: false, cartesian: true, stackable: true };
   }
 
-  protected pixelPoints(ctx: SeriesRenderContext): Array<{ pt: Pt; p: Point }> {
-    const out: Array<{ pt: Pt; p: Point }> = [];
+  /** Preserve null values as path breaks instead of joining across them. */
+  protected pixelSegments(ctx: SeriesRenderContext): Array<Array<{ pt: Pt; p: Point }>> {
+    const segments: Array<Array<{ pt: Pt; p: Point }>> = [];
+    let current: Array<{ pt: Pt; p: Point }> = [];
+    // `chart.inverted` swaps which scale carries the category vs. the
+    // value axis (same convention as ColumnSeries.render) -- ctx.xScale/
+    // yScale are already the pre-swapped pair the chart builds for this
+    // case, so picking by role here (not by x/y) keeps this correct under
+    // both orientations.
+    const catScale = ctx.inverted ? ctx.yScale : ctx.xScale;
+    const valScale = ctx.inverted ? ctx.xScale : ctx.yScale;
     for (const p of this.points) {
       const y = p.stackHigh !== undefined ? p.stackHigh : p.y;
-      if (y === undefined) continue; // gap in the line
-      out.push({ pt: { x: ctx.xScale.scale(p.x), y: ctx.yScale.scale(y) }, p });
+      if (y === undefined) {
+        if (current.length) segments.push(current);
+        current = [];
+        continue;
+      }
+      const catPx = catScale.scale(p.x);
+      const valPx = valScale.scale(y);
+      current.push({
+        pt: ctx.inverted ? { x: valPx, y: catPx } : { x: catPx, y: valPx },
+        p,
+      });
     }
-    return out;
+    if (current.length) segments.push(current);
+    return segments;
+  }
+
+  protected pixelPoints(ctx: SeriesRenderContext): Array<{ pt: Pt; p: Point }> {
+    return this.pixelSegments(ctx).flat();
   }
 
   protected buildPath(pts: Pt[]): string {
@@ -35,17 +58,18 @@ export class LineSeries extends BaseSeries {
   override render(ctx: SeriesRenderContext): void {
     const { renderer } = ctx;
     const g = renderer.group({ class: `facet-series facet-line ${this.name}` }, renderer.root);
-    const data = this.pixelPoints(ctx);
-    const pts = data.map((d) => d.pt);
-
-    renderer.create('path', {
-      d: this.buildPath(pts),
-      fill: 'none',
-      stroke: this.color,
-      'stroke-width': this.options.lineWidth ?? this.options.size ?? 2,
-      'stroke-linejoin': 'round',
-      'stroke-linecap': 'round',
-    }, g);
+    const segments = this.pixelSegments(ctx);
+    const data = segments.flat();
+    for (const segment of segments) {
+      renderer.create('path', {
+        d: this.buildPath(segment.map((d) => d.pt)),
+        fill: 'none',
+        stroke: this.color,
+        'stroke-width': this.options.lineWidth ?? this.options.size ?? 2,
+        'stroke-linejoin': 'round',
+        'stroke-linecap': 'round',
+      }, g);
+    }
 
     this.renderMarkers(ctx, g, data);
     drawPointLabels(ctx.renderer, g, this.options.dataLabels, this.name, data, this.color);

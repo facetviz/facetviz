@@ -13,6 +13,13 @@ describe('LinearScale', () => {
     expect(s.scale(0)).toBe(100);
     expect(s.scale(10)).toBe(0);
   });
+  it('keeps an explicit non-nice domain exact', () => {
+    const s = new LinearScale({ domain: [1, 9], range: [0, 80], nice: false });
+    expect(s.domain).toEqual([1, 9]);
+    expect(s.scale(1)).toBe(0);
+    expect(s.scale(9)).toBe(80);
+    expect(s.ticks().every((tick) => tick >= 1 && tick <= 9)).toBe(true);
+  });
 });
 
 describe('CategoryScale', () => {
@@ -30,6 +37,14 @@ describe('LogScale', () => {
     const s = new LogScale({ domain: [1, 1000], range: [0, 300] });
     expect(s.scale(1)).toBeLessThan(s.scale(10));
     expect(s.scale(10)).toBeLessThan(s.scale(1000));
+  });
+  it('inverts pixel positions', () => {
+    const s = new LogScale({ domain: [1, 1000], range: [0, 300] });
+    expect(s.invert(200)).toBeCloseTo(100);
+  });
+  it('does not emit powers outside the domain', () => {
+    const s = new LogScale({ domain: [2, 20], range: [0, 100] });
+    expect(s.ticks()).toEqual([10]);
   });
 });
 

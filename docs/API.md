@@ -778,7 +778,7 @@ automatically. Mix `type`s across series for combination charts.
 | `animation` | `boolean \| { duration?, easing?, enabled? }` | on      | Enter animation: bars grow, lines draw in, others fade.                                                                                                                                                                |
 | `zoom`      | `'x' \| 'y' \| 'xy' \| false \| { type }`     | off     | Drag-select on a numeric/datetime axis to zoom — `'x'`, `'y'`, or both with `'xy'`; a **Reset zoom** control restores the full range.                                                                                  |
 | `reflow`    | `boolean`                                     | `true`  | Auto re-render when the container's width **or** height resizes. Set `false` to disable and call `chart.reflow()` yourself.                                                                                            |
-| `boost`     | `boolean \| { enabled?, threshold? }`         | auto    | Draw high-volume point/line series to a canvas overlay (lines min/max-decimated). Auto-enables past `threshold` points (default 1500). Handles 100k+ points; boosted marks aren't in `getSVG()` (use `downloadPNG()`). |
+| `boost`     | `boolean \| { enabled?, threshold? }`         | auto    | Draw high-volume point/line series to a canvas overlay (lines min/max-decimated). Auto-enables past `threshold` points (default 1500). Handles 100k+ points; exports embed the canvas pixels as an SVG image. |
 
 Axes add `type: 'datetime'` (nice date ticks) and `crosshair: true` (hover guide
 line). Points add `drilldown: '<id>'`; top-level `drilldown.series` lists the

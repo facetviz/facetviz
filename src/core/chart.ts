@@ -39,6 +39,7 @@ import {
   formatDate,
   decimateLine,
   sanitizeStyle,
+  seededRandom,
 } from "./utils.js";
 import {
   axisAt,
@@ -47,6 +48,8 @@ import {
   resolveChartOptions,
 } from "./chart-options.js";
 import { downloadBlob, rasterizePNG, serializeSVG } from "./chart-export.js";
+import { computeStacks } from "./stacking.js";
+import { captureSeriesState, restoreSeriesState } from "./series-state.js";
 import { paletteColor, alpha, shade } from "./colors.js";
 import { Theme, resolveTheme, applyTheme, THEME } from "./theme.js";
 import { BaseSeries, SeriesRenderContext } from "../series/base.js";
@@ -57,6 +60,8 @@ import type { Point } from "./point.js";
 export class FacetViz {
   readonly container: HTMLElement;
   readonly options: ChartOptions;
+  /** Caller-owned configuration, kept separate from resolved series defaults. */
+  private userOptions: ChartOptions;
   private renderer!: Renderer;
   private tooltip?: Tooltip;
   readonly events = new EventEmitter();
@@ -66,6 +71,10 @@ export class FacetViz {
   private width: number;
   private height: number;
   private resizeObserver?: ResizeObserver;
+  private initialReflowFrame?: number;
+  private resizeFrame?: number;
+  private destroyed = false;
+  private boostHoverCleanups: Array<() => void> = [];
   /** Play the enter animation on the next render (first render + data updates). */
   private animateNext = true;
   /** Scales + plot captured for drag-zoom. */
@@ -93,7 +102,8 @@ export class FacetViz {
         : container;
     if (!el) throw new Error("FacetViz: container element not found");
     this.container = el as HTMLElement;
-    this.options = resolveChartOptions(options);
+    this.userOptions = merge({} as ChartOptions, options);
+    this.options = resolveChartOptions(this.userOptions);
     this.theme = resolveTheme(this.options.theme);
     // Explicit colours win; otherwise fall back to the theme palette.
     this.colors =
@@ -116,7 +126,10 @@ export class FacetViz {
     // differs; this also covers containers whose height only becomes known
     // after this first frame.
     if (typeof requestAnimationFrame !== "undefined") {
-      requestAnimationFrame(() => this.reflow());
+      this.initialReflowFrame = requestAnimationFrame(() => {
+        this.initialReflowFrame = undefined;
+        this.reflow();
+      });
     }
   }
 
@@ -128,6 +141,7 @@ export class FacetViz {
    * A dimension pinned via `chart.width`/`chart.height` is left untouched.
    */
   reflow(): void {
+    if (this.destroyed) return;
     const w = this.options.chart?.width ?? this.container.clientWidth;
     const h = this.options.chart?.height ?? this.container.clientHeight;
     const changed =
@@ -142,16 +156,24 @@ export class FacetViz {
 
   /** Re-render when the container resizes (unless reflow/that dimension is disabled). */
   private setupReflow(): void {
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = undefined;
+    if (this.resizeFrame !== undefined) {
+      cancelAnimationFrame(this.resizeFrame);
+      this.resizeFrame = undefined;
+    }
     if (
       this.options.chart?.reflow === false ||
       typeof ResizeObserver === "undefined" ||
       (this.options.chart?.width && this.options.chart?.height)
     )
       return;
-    let raf = 0;
     this.resizeObserver = new ResizeObserver(() => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => this.reflow());
+      if (this.resizeFrame !== undefined) cancelAnimationFrame(this.resizeFrame);
+      this.resizeFrame = requestAnimationFrame(() => {
+        this.resizeFrame = undefined;
+        this.reflow();
+      });
     });
     this.resizeObserver.observe(this.container);
   }
@@ -170,6 +192,26 @@ export class FacetViz {
       s.color = opts.color ?? opts.highColor ?? paletteColor(this.colors, i);
       return s;
     });
+  }
+
+  /** Re-resolve all defaults and rebuild the model after an API update. */
+  private resolveUpdatedOptions(preserveSeriesState: boolean): void {
+    const state = preserveSeriesState ? captureSeriesState(this.series) : [];
+    const resolved = resolveChartOptions(this.userOptions);
+    const target = this.options as unknown as Record<string, unknown>;
+    for (const key of Object.keys(target)) delete target[key];
+    Object.assign(this.options, resolved);
+
+    this.theme = resolveTheme(this.options.theme);
+    this.colors =
+      this.options.chart?.colors ?? this.options.colors ?? this.theme.colors;
+    if (this.options.chart?.width !== undefined)
+      this.width = this.options.chart.width;
+    if (this.options.chart?.height !== undefined)
+      this.height = this.options.chart.height;
+
+    this.build();
+    if (preserveSeriesState) restoreSeriesState(this.series, state);
   }
 
   // -- Rendering ---------------------------------------------------------
@@ -207,7 +249,11 @@ export class FacetViz {
   }
 
   render(): void {
+    if (this.destroyed) return;
     const restoreResponsive = this.applyResponsiveOverrides();
+    try {
+    this.boostHoverCleanups.forEach((cleanup) => cleanup());
+    this.boostHoverCleanups = [];
     if (!this.renderer) {
       this.renderer = new Renderer(this.width, this.height);
       this.renderer.mount(this.container);
@@ -338,7 +384,9 @@ export class FacetViz {
 
     this.events.emit("render", this);
     this.options.chart?.events?.render?.(this);
-    restoreResponsive();
+    } finally {
+      restoreResponsive();
+    }
   }
 
   /**
@@ -879,7 +927,7 @@ export class FacetViz {
       height: plot.height - pad.top - pad.bottom,
     };
 
-    this.computeStacks(visible);
+    computeStacks(visible);
     const { xScale, yScale, yScale2 } = this.buildScales(
       visible,
       axisPlot,
@@ -1031,7 +1079,9 @@ export class FacetViz {
   ]);
 
   private isBoostable(s: BaseSeries): boolean {
-    return FacetViz.BOOSTABLE.has(s.type);
+    // Stacked series need a per-point baseline that the canvas fast path does
+    // not model; keep those on the SVG renderer for correctness.
+    return !s.options.stacking && FacetViz.BOOSTABLE.has(s.type);
   }
 
   private boostEnabled(visible: BaseSeries[]): boolean {
@@ -1088,44 +1138,61 @@ export class FacetViz {
   ): void {
     const color = s.color;
     if (["line", "spline", "step", "area", "areaspline"].includes(s.type)) {
-      const raw = s.points
-        .filter((p) => p.y !== undefined)
-        .map((p) => ({
-          x: xScale.scale(p.x),
-          y: yScale.scale(p.y as number),
-          point: p,
-        }));
-      const pts = decimateLine(raw);
-      c.beginPath();
-      pts.forEach((p, i) => (i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)));
-      c.strokeStyle = color;
-      c.lineWidth = s.options.lineWidth ?? 2;
-      c.lineJoin = "round";
-      c.stroke();
-      if (s.type.startsWith("area")) {
-        const zeroY = yScale.scale(0);
-        c.lineTo(pts[pts.length - 1].x, zeroY);
-        c.lineTo(pts[0].x, zeroY);
-        c.closePath();
-        c.fillStyle = alpha(color, 0.25);
-        c.fill();
+      let raw: Array<{ x: number; y: number; point: Point }> = [];
+      const drawSegment = () => {
+        if (!raw.length) return;
+        const pts = decimateLine(raw);
+        c.beginPath();
+        pts.forEach((p, i) =>
+          i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y),
+        );
+        if (s.type.startsWith("area")) {
+          const zeroY = yScale.scale(0);
+          c.lineTo(pts[pts.length - 1].x, zeroY);
+          c.lineTo(pts[0].x, zeroY);
+          c.closePath();
+          c.fillStyle = alpha(color, 0.25);
+          c.fill();
+        }
+        c.strokeStyle = color;
+        c.lineWidth = s.options.lineWidth ?? 2;
+        c.lineJoin = "round";
+        c.stroke();
+        for (const p of raw)
+          hits.push({ x: p.x, y: p.y, point: p.point, series: s });
+        raw = [];
+      };
+      for (const point of s.points) {
+        if (point.y === undefined) {
+          drawSegment();
+          continue;
+        }
+        raw.push({
+          x: xScale.scale(point.x),
+          y: yScale.scale(point.y),
+          point,
+        });
       }
-      for (const p of raw)
-        hits.push({ x: p.x, y: p.y, point: p.point, series: s });
+      drawSegment();
     } else {
       // scatter / jitter / bubble
       const zs =
         s.type === "bubble"
           ? s.points.map((p) => (p.options.z as number) ?? 1)
           : [];
-      const zMin = zs.length ? Math.min(...zs) : 0,
-        zMax = zs.length ? Math.max(...zs) : 1;
+      const [zMin, zMax] = extent(zs);
       const [rMin, rMax] = s.options.sizeRange ?? [3, 22];
+      const rng = seededRandom(s.index * 7919 + s.points.length + 1);
+      const jitterBand =
+        xScale instanceof CategoryScale ? xScale.bandwidth() : 0;
+      const jitterSpread = (s.options.jitter ?? 0.5) * jitterBand;
       c.fillStyle = alpha(color, 0.6);
       for (const p of s.points) {
         if (p.y === undefined) continue;
-        const px = xScale.scale(p.x),
-          py = yScale.scale(p.y);
+        let px = xScale.scale(p.x);
+        const py = yScale.scale(p.y);
+        if (s.type === "jitter" && jitterBand > 0)
+          px += (rng() - 0.5) * jitterSpread;
         let r = s.options.marker?.radius ?? 3;
         if (s.type === "bubble") {
           const t =
@@ -1146,6 +1213,7 @@ export class FacetViz {
   private installBoostHover(plot: Rect, hits: BoostHit[]): void {
     if (!this.tooltip || !hits.length) return;
     let marker: SVGElement | undefined;
+    let active: BoostHit | null = null;
     const root = this.renderer.root;
     const onMove = (e: MouseEvent) => {
       const mx = this.localX(e.clientX),
@@ -1155,8 +1223,16 @@ export class FacetViz {
         mx > plot.x + plot.width ||
         my < plot.y ||
         my > plot.y + plot.height
-      )
+      ) {
+        marker?.remove();
+        marker = undefined;
+        if (active) {
+          this.handlePointEvent("mouseOut", active.series, active.point, e);
+          this.tooltip!.hide();
+        }
+        active = null;
         return;
+      }
       let best: BoostHit | null = null,
         bd = 400; // 20px radius²
       for (const h of hits) {
@@ -1171,8 +1247,17 @@ export class FacetViz {
       marker?.remove();
       marker = undefined;
       if (!best) {
+        if (active)
+          this.handlePointEvent("mouseOut", active.series, active.point, e);
+        active = null;
         this.tooltip!.hide();
         return;
+      }
+      if (active !== best) {
+        if (active)
+          this.handlePointEvent("mouseOut", active.series, active.point, e);
+        this.handlePointEvent("mouseOver", best.series, best.point, e);
+        active = best;
       }
       marker = this.renderer.create(
         "circle",
@@ -1202,11 +1287,25 @@ export class FacetViz {
       );
       this.tooltip!.move(e.clientX, e.clientY);
     };
-    root.addEventListener("mousemove", onMove);
-    root.addEventListener("mouseleave", () => {
+    const onLeave = (e: MouseEvent) => {
       marker?.remove();
       marker = undefined;
+      if (active)
+        this.handlePointEvent("mouseOut", active.series, active.point, e);
+      active = null;
       this.tooltip!.hide();
+    };
+    const onClick = (e: MouseEvent) => {
+      if (active) this.handlePointEvent("click", active.series, active.point, e);
+    };
+    root.addEventListener("mousemove", onMove);
+    root.addEventListener("mouseleave", onLeave);
+    root.addEventListener("click", onClick);
+    this.boostHoverCleanups.push(() => {
+      marker?.remove();
+      root.removeEventListener("mousemove", onMove);
+      root.removeEventListener("mouseleave", onLeave);
+      root.removeEventListener("click", onClick);
     });
   }
 
@@ -1266,7 +1365,7 @@ export class FacetViz {
     // loop's own `computeStacks` call below just re-confirms the same result.
     for (const rv of rowVals) {
       for (const cv of colVals) {
-        this.computeStacks(cellSeriesFor(cv, rv));
+        computeStacks(cellSeriesFor(cv, rv));
       }
     }
 
@@ -1679,7 +1778,7 @@ export class FacetViz {
         }
 
         if (cellSeries.length) {
-          this.computeStacks(cellSeries);
+          computeStacks(cellSeries);
           const group = this.groupInfo(cellSeries);
           for (const s of cellSeries) {
             const sy = yScale2 && onSecondary(s) ? yScale2 : yScale;
@@ -2518,7 +2617,8 @@ export class FacetViz {
         s.type,
       ),
     );
-    if (includeZero) {
+    const primaryValueAxis = inverted ? xAxisOpts : yAxisOpts;
+    if (includeZero && primaryValueAxis.type !== "log") {
       vMin = Math.min(vMin, 0);
       vMax = Math.max(vMax, 0);
     }
@@ -2600,12 +2700,14 @@ export class FacetViz {
           reversed,
           ticks,
           format: (v) => formatDate(v, format),
+          nice: xAxisOpts.min === undefined && xAxisOpts.max === undefined,
         });
       }
       return new LinearScale({
         domain: [min, max],
         range,
         ...(reversed ? { reversed } : {}),
+        nice: xAxisOpts.min === undefined && xAxisOpts.max === undefined,
       });
     };
 
@@ -2654,7 +2756,7 @@ export class FacetViz {
           "lollipop",
         ].includes(s.type),
       );
-      if (includeZero2) {
+      if (includeZero2 && axisAt(this.options.yAxis, 1).type !== "log") {
         vMin2 = Math.min(vMin2, 0);
         vMax2 = Math.max(vMax2, 0);
       }
@@ -2683,6 +2785,7 @@ export class FacetViz {
       domain: [min, max],
       range,
       tickCount,
+      nice: opts.min === undefined && opts.max === undefined,
     });
   }
 
@@ -2751,58 +2854,6 @@ export class FacetViz {
   }
 
   // -- Stacking & grouping ----------------------------------------------
-
-  private computeStacks(visible: BaseSeries[]): void {
-    // Reset any previous stack computation.
-    for (const s of visible)
-      for (const p of s.points) {
-        p.stackLow = undefined;
-        p.stackHigh = undefined;
-      }
-
-    // Group stackable series by (axis, stack key).
-    const groups = new Map<string, BaseSeries[]>();
-    for (const s of visible) {
-      if (!s.options.stacking || !s.capabilities().stackable) continue;
-      const key = `${s.options.yAxis ?? 0}:${s.options.stack ?? "default"}`;
-      (groups.get(key) ?? groups.set(key, []).get(key)!).push(s);
-    }
-
-    for (const [, group] of groups) {
-      const mode = group[0].options.stacking;
-      // Gather category indices present.
-      const indices = new Set<number>();
-      for (const s of group) for (const p of s.points) indices.add(p.index);
-
-      for (const idx of indices) {
-        let posBase = 0;
-        let negBase = 0;
-        // Percent stacking needs the total magnitude first.
-        let total = 0;
-        if (mode === "percent") {
-          for (const s of group) {
-            const p = s.points.find((pp) => pp.index === idx);
-            total += Math.abs(p?.y ?? 0);
-          }
-        }
-        for (const s of group) {
-          const p = s.points.find((pp) => pp.index === idx);
-          if (!p || p.y === undefined) continue;
-          let y = p.y;
-          if (mode === "percent" && total > 0) y = (y / total) * 100;
-          if (y >= 0) {
-            p.stackLow = posBase;
-            p.stackHigh = posBase + y;
-            posBase += y;
-          } else {
-            p.stackHigh = negBase;
-            p.stackLow = negBase + y;
-            negBase += y;
-          }
-        }
-      }
-    }
-  }
 
   private groupInfo(visible: BaseSeries[]): GroupInfo {
     const columnKeys: string[] = [];
@@ -2901,7 +2952,7 @@ export class FacetViz {
         y1: ctx.plot.y,
         x2: x,
         y2: ctx.plot.y + ctx.plot.height,
-        stroke: THEME.axis.labelColor,
+        stroke: this.theme.axis.labelColor,
         "stroke-width": 1,
         "stroke-dasharray": "3 3",
         "pointer-events": "none",
@@ -2943,7 +2994,7 @@ export class FacetViz {
   private applyHover(el: SVGElement, s: BaseSeries): void {
     const hover = s.options.states?.hover;
     if (hover?.enabled === false) return;
-    const scale = hover?.scale ?? 1.03; // undefined by default → no scaling
+    const scale = hover?.scale ?? 0;
     const brightness = hover?.brightness ?? 0.08;
     const style = el.style as CSSStyleDeclaration & { transformBox: string };
     style.transition = "filter 0.12s ease";
@@ -3161,39 +3212,43 @@ export class FacetViz {
    * in the constructor, so `update({ theme })` silently had no effect.
    */
   update(options: Partial<ChartOptions>): void {
-    Object.assign(this.options, merge(this.options, options as ChartOptions));
-    if (options.series) this.build();
-    if (options.theme !== undefined) {
-      this.theme = resolveTheme(this.options.theme);
-      this.colors =
-        this.options.chart?.colors ?? this.options.colors ?? this.theme.colors;
-    }
+    if (this.destroyed) return;
+    this.userOptions = merge(this.userOptions, options as ChartOptions);
+    this.resolveUpdatedOptions(options.series === undefined);
+    this.setupReflow();
     this.animateNext = true;
     this.render();
   }
 
   /** Replace one series' data in place and re-render (incremental update). */
   setData(seriesIndex: number, data: SeriesOptions["data"]): void {
-    const opts = this.options.series[seriesIndex];
+    if (this.destroyed) return;
+    const opts = this.userOptions.series[seriesIndex];
     if (!opts) return;
     opts.data = data;
-    this.build();
+    this.resolveUpdatedOptions(true);
     this.animateNext = true;
     this.render();
   }
 
   /** Append a point to a series and re-render. */
   addPoint(seriesIndex: number, point: SeriesOptions["data"][number]): void {
-    const opts = this.options.series[seriesIndex];
+    if (this.destroyed) return;
+    const opts = this.userOptions.series[seriesIndex];
     if (!opts) return;
     opts.data = [...opts.data, point];
-    this.build();
+    this.resolveUpdatedOptions(true);
+    this.animateNext = true;
     this.render();
   }
 
   setSize(width: number, height: number): void {
+    if (this.destroyed) return;
+    this.userOptions.chart = { ...(this.userOptions.chart ?? {}), width, height };
+    this.options.chart = { ...(this.options.chart ?? {}), width, height };
     this.width = width;
     this.height = height;
+    this.setupReflow();
     this.render();
   }
 
@@ -3246,6 +3301,15 @@ export class FacetViz {
   }
 
   destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    if (this.initialReflowFrame !== undefined)
+      cancelAnimationFrame(this.initialReflowFrame);
+    if (this.resizeFrame !== undefined) cancelAnimationFrame(this.resizeFrame);
+    this.initialReflowFrame = undefined;
+    this.resizeFrame = undefined;
+    this.boostHoverCleanups.forEach((cleanup) => cleanup());
+    this.boostHoverCleanups = [];
     this.tooltip?.destroy();
     this.resizeObserver?.disconnect();
     this.events.clear();

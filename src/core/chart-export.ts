@@ -7,6 +7,33 @@ export function serializeSVG(
   height: number,
 ): string {
   const clone = renderer.root.cloneNode(true) as SVGSVGElement;
+  // Canvas drawing buffers are not part of serialized markup. Replace every
+  // boost canvas in the clone with an SVG image containing its pixels so both
+  // SVG and PNG exports retain the high-volume series.
+  const originals = renderer.root.querySelectorAll<SVGForeignObjectElement>(
+    "foreignObject.facet-boost",
+  );
+  const copies = clone.querySelectorAll<SVGForeignObjectElement>(
+    "foreignObject.facet-boost",
+  );
+  originals.forEach((source, i) => {
+    const canvas = source.querySelector("canvas");
+    const copy = copies[i];
+    if (!canvas || !copy) return;
+    try {
+      const image = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "image",
+      );
+      for (const attr of ["x", "y", "width", "height", "class", "clip-path"])
+        if (copy.hasAttribute(attr))
+          image.setAttribute(attr, copy.getAttribute(attr)!);
+      image.setAttribute("href", canvas.toDataURL("image/png"));
+      copy.replaceWith(image);
+    } catch {
+      // Tainted canvases cannot be read; retain the original markup fallback.
+    }
+  });
   clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
   clone.setAttribute("width", String(width));
   clone.setAttribute("height", String(height));

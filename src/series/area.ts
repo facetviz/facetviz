@@ -24,33 +24,24 @@ export class AreaSeries extends LineSeries {
     const { renderer } = ctx;
     const g = renderer.group({ class: `facet-series facet-area ${this.name}` }, renderer.root);
 
-    const top: Pt[] = [];
-    const bottom: Pt[] = [];
+    let top: Pt[] = [];
+    let bottom: Pt[] = [];
     const hover: Array<{ pt: Pt; p: Point }> = [];
+    // `chart.inverted` swaps which scale carries the category vs. the
+    // value axis (same convention as ColumnSeries.render / LineSeries).
+    const catScale = ctx.inverted ? ctx.yScale : ctx.xScale;
+    const valScale = ctx.inverted ? ctx.xScale : ctx.yScale;
 
-    for (const p of this.points) {
-      const hi = p.stackHigh !== undefined ? p.stackHigh : p.y;
-      if (hi === undefined) continue;
-      const lo = p.stackLow !== undefined ? p.stackLow : 0;
-      const topPt = { x: ctx.xScale.scale(p.x), y: ctx.yScale.scale(hi) };
-      top.push(topPt);
-      bottom.push({ x: ctx.xScale.scale(p.x), y: ctx.yScale.scale(lo) });
-      hover.push({ pt: topPt, p });
-    }
-
-    if (top.length) {
+    const drawSegment = () => {
+      if (!top.length) return;
       const line = this.smooth() ? splinePath : linePath;
       const topD = line(top);
-      // Trace the bottom boundary in reverse to close the polygon.
-      const bottomReversed = [...bottom].reverse();
-      const bottomD = line(bottomReversed).replace(/^M/, 'L');
+      const bottomD = line([...bottom].reverse()).replace(/^M/, 'L');
       renderer.create('path', {
         d: `${topD} ${bottomD} Z`,
         fill: alpha(this.color, 0.35),
         stroke: 'none',
       }, g);
-
-      // Top boundary stroke.
       renderer.create('path', {
         d: topD,
         fill: 'none',
@@ -58,7 +49,29 @@ export class AreaSeries extends LineSeries {
         'stroke-width': this.options.lineWidth ?? this.options.size ?? 2,
         'stroke-linejoin': 'round',
       }, g);
+      top = [];
+      bottom = [];
+    };
+
+    for (const p of this.points) {
+      const hi = p.stackHigh !== undefined ? p.stackHigh : p.y;
+      if (hi === undefined) {
+        drawSegment();
+        continue;
+      }
+      const lo = p.stackLow !== undefined ? p.stackLow : 0;
+      const catPx = catScale.scale(p.x);
+      const topPt = ctx.inverted
+        ? { x: valScale.scale(hi), y: catPx }
+        : { x: catPx, y: valScale.scale(hi) };
+      const botPt = ctx.inverted
+        ? { x: valScale.scale(lo), y: catPx }
+        : { x: catPx, y: valScale.scale(lo) };
+      top.push(topPt);
+      bottom.push(botPt);
+      hover.push({ pt: topPt, p });
     }
+    drawSegment();
 
     this.renderMarkers(ctx, g, hover);
     drawPointLabels(ctx.renderer, g, this.options.dataLabels, this.name, hover, this.color);

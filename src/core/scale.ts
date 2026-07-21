@@ -31,6 +31,8 @@ export interface LinearScaleConfig {
   /** Provide explicit ticks to override the "nice" default. */
   ticks?: number[];
   format?: (v: number) => string;
+  /** Expand an automatically-derived domain to its outer ticks (default true). */
+  nice?: boolean;
 }
 
 export class LinearScale implements Scale {
@@ -47,9 +49,14 @@ export class LinearScale implements Scale {
     this.format = cfg.format;
     this.tickValues = cfg.ticks ?? niceTicks(this.d0, this.d1, cfg.tickCount ?? 6);
     // Expand the domain so the outermost ticks sit on the axis ends.
-    if (this.tickValues.length) {
+    if (cfg.nice !== false && this.tickValues.length) {
       this.d0 = Math.min(this.d0, this.tickValues[0]);
       this.d1 = Math.max(this.d1, this.tickValues[this.tickValues.length - 1]);
+    } else if (cfg.nice === false) {
+      // Exact/zoomed bounds must not render generated ticks outside the plot.
+      this.tickValues = this.tickValues.filter((v) => v >= this.d0 && v <= this.d1);
+      if (!this.tickValues.includes(this.d0)) this.tickValues.unshift(this.d0);
+      if (!this.tickValues.includes(this.d1)) this.tickValues.push(this.d1);
     }
   }
 
@@ -115,12 +122,17 @@ export class LogScale implements Scale {
     return this.r0 + t * (this.r1 - this.r0);
   }
 
+  invert(pixel: number): number {
+    const t = this.r1 === this.r0 ? 0 : (pixel - this.r0) / (this.r1 - this.r0);
+    return Math.pow(10, this.l0 + t * (this.l1 - this.l0));
+  }
+
   ticks(): number[] {
     const ticks: number[] = [];
-    for (let e = Math.floor(this.l0); e <= Math.ceil(this.l1); e++) {
+    for (let e = Math.ceil(this.l0); e <= Math.floor(this.l1); e++) {
       ticks.push(Math.pow(10, e));
     }
-    return ticks;
+    return ticks.length ? ticks : [Math.pow(10, this.l0), Math.pow(10, this.l1)];
   }
 
   tickLabel(value: number | string): string {

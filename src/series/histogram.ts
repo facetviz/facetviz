@@ -45,6 +45,9 @@ export class HistogramSeries extends BaseSeries {
     const min = Math.min(...values);
     const max = Math.max(...values);
     const count = this.options.bins ?? Math.max(1, Math.ceil(Math.sqrt(values.length)));
+    if (!Number.isSafeInteger(count) || count <= 0) {
+      throw new RangeError('FacetViz: histogram bins must be a positive integer');
+    }
     const width = (max - min) / count || 1;
     const bins: Bin[] = Array.from({ length: count }, (_, i) => ({ x0: min + i * width, x1: min + (i + 1) * width, count: 0 }));
     for (const v of values) {

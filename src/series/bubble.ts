@@ -10,6 +10,7 @@ import { drawMarker } from './marker.js';
 import { drawPointLabels } from './data-label.js';
 import type { Pt } from './paths.js';
 import type { Point } from '../core/point.js';
+import { extent } from '../core/utils.js';
 
 /** Bubble's series-level fields. Its point-level `z` isn't listed here
  *  because it's shared with pie's variable-radius slices — see `PointOptions`
@@ -29,7 +30,7 @@ export class BubbleSeries extends BaseSeries {
     const g = renderer.group({ class: `facet-series facet-bubble ${this.name}` }, renderer.root);
 
     const zs = this.points.map((p) => (p.options.z as number) ?? 1);
-    const zMin = Math.min(...zs), zMax = Math.max(...zs);
+    const [zMin, zMax] = extent(zs);
     const [rMin, rMax] = this.options.sizeRange ?? [6, 34];
     // Map z → radius by area so value ∝ visual area, not radius.
     const radiusFor = (z: number) => {
