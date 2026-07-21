@@ -159,7 +159,10 @@ export class FacetViz {
   // -- Build model -------------------------------------------------------
 
   private build(): void {
-    const categories = resolveCategories(this.options.series, this.options.xAxis);
+    const categories = resolveCategories(
+      this.options.series,
+      this.options.xAxis,
+    );
     this.series = this.options.series.map((opts, i) => {
       const s = createSeries(opts.type ?? "line", opts, categories);
       s.index = i;
@@ -172,92 +175,34 @@ export class FacetViz {
   // -- Rendering ---------------------------------------------------------
 
   /**
-   * Progressive degradation as the chart shrinks: past size thresholds, drop
-   * data labels, then the legend, then axis titles, then axis tick labels,
-   * then finally the axis lines themselves — leaving just gridlines and the
-   * series geometry at the smallest sizes — rather than rendering an
-   * unreadably cramped chart. Overrides `this.series`/`this.options` (both
-   * already mutable per-instance state) for the duration of this render
-   * only; returns a function that restores the originals.
+   * Drop the axis lines themselves once the container gets too small to
+   * read comfortably — leaving just gridlines and the series geometry —
+   * rather than rendering an unreadably cramped chart. Data labels, axis
+   * labels/titles, and the legend are no longer part of this degradation;
+   * they render at whatever size the chart is. Overrides `this.options`
+   * (mutable per-instance state) for the duration of this render only;
+   * returns a function that restores the originals.
    */
   private applyResponsiveOverrides(): () => void {
     if (this.options.chart?.responsive === false) return () => {};
     const shortSide = Math.min(this.width, this.height);
-    // Circular charts (pie/donut/funnel/sunburst/radialbar/gauge) have no axes
-    // eating into their space, and their data labels are the only way to read
-    // a value — unlike a cartesian chart's optional label overlay, so they're
-    // exempt from the generic size-based label hide. A shrunk pie instead
-    // thins its own labels out (see PieSeries) rather than losing them all.
-    const circular = this.series.length > 0 && this.series.every((s) => !s.capabilities().cartesian);
-    const hideLabels = !circular && shortSide < 260;
-    // The legend still gets cramped once a pie has more than a handful of
-    // slices (each with its own swatch), so it's only exempted below that
-    // count — a 3-slice pie keeps its legend at any height, an 8-slice one
-    // sheds it once the chart shrinks, same as a cartesian chart's legend.
-    const maxSlices = circular
-      ? this.series.reduce((m, s) => Math.max(m, s.points.length), 0)
-      : 0;
-    const hideLegend = circular ? maxSlices > 5 && shortSide < 220 : shortSide < 220;
-    const hideAxisTitles = shortSide < 190;
-    const hideAxisLabels = shortSide < 150;
     const hideAxisLines = shortSide < 110;
-    if (
-      !hideLabels &&
-      !hideLegend &&
-      !hideAxisTitles &&
-      !hideAxisLabels &&
-      !hideAxisLines
-    ) {
-      return () => {};
-    }
+    if (!hideAxisLines) return () => {};
 
-    const restores: Array<() => void> = [];
-
-    if (hideLabels) {
-      const originalSeries = this.series;
-      this.series = this.series.map((s) =>
-        s.options.dataLabels?.enabled
-          ? s.withOptions({
-              dataLabels: { ...s.options.dataLabels, enabled: false },
-            })
-          : s,
-      );
-      restores.push(() => {
-        this.series = originalSeries;
-      });
-    }
-
-    if (hideLegend && this.options.legend?.enabled !== false) {
-      const originalLegend = this.options.legend;
-      this.options.legend = { ...originalLegend, enabled: false };
-      restores.push(() => {
-        this.options.legend = originalLegend;
-      });
-    }
-
-    if (hideAxisTitles || hideAxisLabels || hideAxisLines) {
-      const patch: Partial<AxisOptions> = {};
-      if (hideAxisTitles) patch.title = { text: undefined };
-      if (hideAxisLabels) patch.labels = { enabled: false };
-      if (hideAxisLines) patch.lineWidth = 0;
-      const overrideAxis = (
-        a: AxisOptions | AxisOptions[] | undefined,
-      ): AxisOptions | AxisOptions[] | undefined =>
-        Array.isArray(a)
-          ? a.map((ax) => ({ ...ax, ...patch }))
-          : { ...(a ?? {}), ...patch };
-      const originalX = this.options.xAxis;
-      const originalY = this.options.yAxis;
-      this.options.xAxis = overrideAxis(originalX);
-      this.options.yAxis = overrideAxis(originalY);
-      restores.push(() => {
-        this.options.xAxis = originalX;
-        this.options.yAxis = originalY;
-      });
-    }
-
+    const patch: Partial<AxisOptions> = { lineWidth: 0 };
+    const overrideAxis = (
+      a: AxisOptions | AxisOptions[] | undefined,
+    ): AxisOptions | AxisOptions[] | undefined =>
+      Array.isArray(a)
+        ? a.map((ax) => ({ ...ax, ...patch }))
+        : { ...(a ?? {}), ...patch };
+    const originalX = this.options.xAxis;
+    const originalY = this.options.yAxis;
+    this.options.xAxis = overrideAxis(originalX);
+    this.options.yAxis = overrideAxis(originalY);
     return () => {
-      for (const restore of restores) restore();
+      this.options.xAxis = originalX;
+      this.options.yAxis = originalY;
     };
   }
 
@@ -954,14 +899,20 @@ export class FacetViz {
     // slope lines strung across them, Tufte-style — no axis baseline and no
     // horizontal value gridlines, just a vertical line at each x-category
     // (drawn via the category axis's own gridline mechanism, forced on).
-    const isSlope = visible.length > 0 && visible.every((s) => s.type === "slope");
+    const isSlope =
+      visible.length > 0 && visible.every((s) => s.type === "slope");
     const catAxis = new Axis({
       renderer: this.renderer,
       scale: catScale,
       position: catSide,
       plot: axisPlot,
       options: isSlope
-        ? { ...catOpts, lineWidth: 0, ticks: false, gridLineWidth: catOpts.gridLineWidth ?? 1 }
+        ? {
+            ...catOpts,
+            lineWidth: 0,
+            ticks: false,
+            gridLineWidth: catOpts.gridLineWidth ?? 1,
+          }
         : catOpts,
       // Off by default (matching the usual column/bar look), but honour an
       // explicit `gridLineWidth` — currently the only way to opt in, since
@@ -1291,9 +1242,7 @@ export class FacetViz {
     const primaryVisible = hasSecondary
       ? allVisible.filter((s) => !onSecondary(s))
       : allVisible;
-    const yOpts1 = hasSecondary
-      ? axisAt(this.options.yAxis, 1)
-      : undefined;
+    const yOpts1 = hasSecondary ? axisAt(this.options.yAxis, 1) : undefined;
 
     // Series filtered down to one cell's (column, row) dimension values —
     // shared by the pre-pass below and the actual per-cell render loop.
@@ -1922,7 +1871,8 @@ export class FacetViz {
       const leftReserve = catVisible
         ? LAYOUT.tickLength + 8 + (split ? innerW : totalW)
         : 6;
-      const rightReserve = catVisible && split ? LAYOUT.tickLength + 8 + outerW : 8;
+      const rightReserve =
+        catVisible && split ? LAYOUT.tickLength + 8 + outerW : 8;
       const bottomReserve =
         LAYOUT.defaultBottomAxisHeight + (yOpts0.title?.text ? 32 : 0);
       const topReserve = 6;
@@ -1940,7 +1890,11 @@ export class FacetViz {
       let [lo, hi] = this.valueDomain(aggSeries);
       lo = Math.min(lo, 0);
       hi = Math.max(hi, 0);
-      valScale0 = this.valueScale(yOpts0, [lo, hi], [plot.x, plot.x + plot.width]);
+      valScale0 = this.valueScale(
+        yOpts0,
+        [lo, hi],
+        [plot.x, plot.x + plot.width],
+      );
       valScale1 = valScale0;
 
       valAxis0 = new Axis({
@@ -2560,7 +2514,9 @@ export class FacetViz {
       primaryVisible.length ? primaryVisible : visible,
     );
     const includeZero = primaryVisible.some((s) =>
-      ["column", "bar", "area", "areaspline", "errorbar", "lollipop"].includes(s.type),
+      ["column", "bar", "area", "areaspline", "errorbar", "lollipop"].includes(
+        s.type,
+      ),
     );
     if (includeZero) {
       vMin = Math.min(vMin, 0);
@@ -2689,7 +2645,14 @@ export class FacetViz {
       const secondaryVisible = visible.filter(onSecondary);
       let [vMin2, vMax2] = this.valueDomain(secondaryVisible);
       const includeZero2 = secondaryVisible.some((s) =>
-        ["column", "bar", "area", "areaspline", "errorbar", "lollipop"].includes(s.type),
+        [
+          "column",
+          "bar",
+          "area",
+          "areaspline",
+          "errorbar",
+          "lollipop",
+        ].includes(s.type),
       );
       if (includeZero2) {
         vMin2 = Math.min(vMin2, 0);
@@ -2980,7 +2943,7 @@ export class FacetViz {
   private applyHover(el: SVGElement, s: BaseSeries): void {
     const hover = s.options.states?.hover;
     if (hover?.enabled === false) return;
-    const scale = hover?.scale; // undefined by default → no scaling
+    const scale = hover?.scale ?? 1.03; // undefined by default → no scaling
     const brightness = hover?.brightness ?? 0.08;
     const style = el.style as CSSStyleDeclaration & { transformBox: string };
     style.transition = "filter 0.12s ease";
@@ -3117,8 +3080,11 @@ export class FacetViz {
     );
   }
 
-  private buildLegendItems(): LegendItem[] {
+  private buildLegendItems(): Array<LegendItem & { seriesIndex?: number }> {
     const first = this.series[0];
+    if (this.series.length === 1 && first?.options.showInLegend === false) {
+      return [];
+    }
     // A series may supply its own legend (e.g. multi-level pie → inner groups).
     if (this.series.length === 1 && first?.legendItems) {
       const custom = first.legendItems(this.colors);
@@ -3131,11 +3097,17 @@ export class FacetViz {
         visible: !first.hiddenPoints.has(p.index),
       }));
     }
-    return this.series.map((s) => ({
-      label: s.name,
-      color: s.color,
-      visible: s.visible,
-    }));
+    return this.series
+      .map((s, seriesIndex) => ({
+        label: s.name,
+        color: s.color,
+        visible: s.visible,
+        seriesIndex,
+      }))
+      .filter(
+        (_, seriesIndex) =>
+          this.series[seriesIndex].options.showInLegend !== false,
+      );
   }
 
   private toggleSeries(index: number): void {
@@ -3164,7 +3136,9 @@ export class FacetViz {
       this.render();
       return;
     }
-    const s = this.series[index];
+    // Filtered series legends need to retain their original series index.
+    const seriesIndex = this.buildLegendItems()[index]?.seriesIndex ?? index;
+    const s = this.series[seriesIndex];
     if (!s) return;
     s.visible = !s.visible;
     this.options.seriesEvents?.legendItemClick?.({

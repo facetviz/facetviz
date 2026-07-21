@@ -18,6 +18,50 @@ import { shade } from '../core/colors.js';
 import { THEME } from '../core/theme.js';
 import { drawMarker } from './marker.js';
 import type { Point } from '../core/point.js';
+import type { MarkerOptions } from '../core/options.js';
+
+/** Set `lower`/`upper` to two distinct hues for a split-colour box, or leave
+ *  unset for two shades of the series colour. */
+export interface BoxColors {
+  lower?: string;
+  upper?: string;
+  median?: string;
+  whisker?: string;
+  border?: string;
+}
+
+/** Boxplot's point-level fields — the five-number summary plus outliers. */
+export interface BoxplotPointOptions {
+  min?: number;
+  q1?: number;
+  median?: number;
+  q3?: number;
+  max?: number;
+  /** Outlier values, drawn as markers beyond the whiskers instead of folded
+   *  into `min`/`max`. Positioned at this box's own centre, so a grouped
+   *  boxplot keeps each series' outliers over its own box rather than the
+   *  shared category centre. */
+  outliers?: number[];
+  /** Per-point override of the series' (or `plotOptions.boxplot`'s) `boxColors`. */
+  boxColors?: BoxColors;
+  /** Per-point override of the series' (or `plotOptions.boxplot`'s) `outlierMarker`. */
+  outlierMarker?: MarkerOptions;
+}
+
+/**
+ * Boxplot's series-level fields. Resolution order for any given box is:
+ * point option → series option → `plotOptions.boxplot`/`plotOptions.series`
+ * → built-in default — the last three are already folded into `this.options`
+ * by the time a series renders (see `resolveChartOptions`), so render() only
+ * has to choose between the point's own value and `this.options`'.
+ */
+export interface BoxplotSeriesOptions {
+  boxColors?: BoxColors;
+  /** Outlier marker styling — see point-level `outliers`. Defaults to a
+   *  small hollow circle (background-coloured fill, `boxColors.border`
+   *  stroke). */
+  outlierMarker?: MarkerOptions;
+}
 
 export class BoxplotSeries extends BaseSeries {
   override capabilities(): SeriesCapabilities {
@@ -48,8 +92,9 @@ export class BoxplotSeries extends BaseSeries {
       const box = p.box;
       if (!box) continue;
       const base = p.color ?? this.color;
-      // Dual colour: user hues, or two shades of the series colour by default.
-      const bc = this.options.boxColors ?? {};
+      // Dual colour: point override > series option (itself already resolved
+      // against plotOptions) > two shades of the series colour by default.
+      const bc: BoxColors = { ...this.options.boxColors, ...p.options.boxColors };
       const upperFill = bc.upper ?? shade(base, 0.15);
       const lowerFill = bc.lower ?? shade(base, 0.5);
       const stroke = bc.border ?? shade(base, -0.25);
@@ -96,7 +141,7 @@ export class BoxplotSeries extends BaseSeries {
       // groupIndex within the category band), so a grouped boxplot keeps
       // each series' outliers stacked above/below its own box instead of
       // drifting to the shared category centre.
-      const om = this.options.outlierMarker ?? {};
+      const om: MarkerOptions = { ...this.options.outlierMarker, ...p.options.outlierMarker };
       const outlierR = om.radius ?? Math.min(4, half * 0.5);
       for (const val of box.outliers ?? []) {
         const pos = v(val);

@@ -38,18 +38,29 @@ export class Tooltip {
   }
 
   show(ctx: TooltipContext, seriesTip?: SeriesTooltipOptions): void {
-    if (this.options.enabled === false) return;
+    if (this.options.enabled === false || seriesTip?.enabled === false) return;
     this.el.innerHTML = this.content(ctx, seriesTip);
     this.el.style.opacity = '1';
   }
 
   move(clientX: number, clientY: number): void {
     const rect = this.container.getBoundingClientRect();
-    let x = clientX - rect.left + 12;
-    let y = clientY - rect.top + 12;
-    // Keep inside the container horizontally.
     const w = this.el.offsetWidth;
-    if (x + w > rect.width) x = clientX - rect.left - w - 12;
+    const h = this.el.offsetHeight;
+    const gap = 12;
+    const cx = clientX - rect.left;
+    const cy = clientY - rect.top;
+
+    // Prefer the cursor's bottom-right, flipping to whichever side of the
+    // cursor actually has room first — better than clamping straight away,
+    // which would otherwise plant the tooltip right under the pointer. Then
+    // clamp into the container regardless, so it stays fully visible even in
+    // a corner, or a container too short/narrow for either preferred side.
+    let x = cx + gap + w <= rect.width ? cx + gap : cx - gap - w;
+    let y = cy + gap + h <= rect.height ? cy + gap : cy - gap - h;
+    x = Math.max(0, Math.min(x, rect.width - w));
+    y = Math.max(0, Math.min(y, rect.height - h));
+
     this.el.style.left = `${x}px`;
     this.el.style.top = `${y}px`;
   }

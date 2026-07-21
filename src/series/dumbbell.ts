@@ -14,6 +14,37 @@ import { drawDataLabel, labelString, LabelPlacement } from "./data-label.js";
 import { THEME } from "../core/theme.js";
 import type { Point } from "../core/point.js";
 
+/**
+ * Dumbbell's series-level fields. Its `low`/`high` point shape isn't listed
+ * separately here because it's shared verbatim with the other range-band
+ * types (arearange, areasplinerange, columnrange, errorbar) — see
+ * `PointOptions` in core/options.ts.
+ *
+ * Resolution order for any given point's colour/width is: point option →
+ * series option → `plotOptions.dumbbell`/`plotOptions.series` → built-in
+ * default — the last three are already folded into `this.options` by the
+ * time a series renders (see `resolveChartOptions`), so render() only has to
+ * choose between the point's own value and `this.options`'.
+ */
+export interface DumbbellSeriesOptions {
+  /** Low-end marker colour. Defaults to the series colour. */
+  lowColor?: string;
+  /** High-end marker colour (also the legend swatch). Defaults to the series colour. */
+  highColor?: string;
+  /** Connector line colour. */
+  connectorColor?: string;
+  /** Connector line thickness. */
+  connectorWidth?: number;
+}
+
+/** Per-point overrides of the series' dumbbell colours/width. */
+export interface DumbbellPointOptions {
+  lowColor?: string;
+  highColor?: string;
+  connectorColor?: string;
+  connectorWidth?: number;
+}
+
 export class DumbbellSeries extends BaseSeries {
   override capabilities(): SeriesCapabilities {
     return { grouped: true, cartesian: true, stackable: false };
@@ -38,14 +69,16 @@ export class DumbbellSeries extends BaseSeries {
     const radius = this.options.marker?.radius ?? 5;
     const rectWidth = this.options.marker?.width ?? 5;
     const rectHeight = this.options.marker?.height ?? 5;
-    const lowColor = this.options.lowColor ?? this.color;
-    const highColor = this.options.highColor ?? this.color;
-    const connColor = this.options.connectorColor ?? THEME.neutralColor;
-    const connWidth = this.options.connectorWidth ?? 7;
     const isRect = this.options.marker?.symbol === "rectangle";
 
     for (const p of this.points) {
       if (p.low === undefined || p.high === undefined) continue;
+      // Point override > series option (itself already resolved against
+      // plotOptions) > built-in default.
+      const lowColor = p.options.lowColor ?? this.options.lowColor ?? this.color;
+      const highColor = p.options.highColor ?? this.options.highColor ?? this.color;
+      const connColor = p.options.connectorColor ?? this.options.connectorColor ?? THEME.neutralColor;
+      const connWidth = p.options.connectorWidth ?? this.options.connectorWidth ?? 7;
       const cat =
         catScale.scale(p.x) - band / 2 + (groupIndex + 0.5) * subWidth;
       const vLow = valScale.scale(p.low);

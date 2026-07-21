@@ -8,6 +8,14 @@
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
 import { CategoryScale } from '../core/scale.js';
 
+/** Waterfall's point-level fields. */
+export interface WaterfallPointOptions {
+  /** Treat this point as a (running) sum instead of a delta — draws an
+   *  absolute bar from zero to the running total. */
+  isSum?: boolean;
+  isIntermediateSum?: boolean;
+}
+
 export class WaterfallSeries extends BaseSeries {
   private colors = { up: '#26a69a', down: '#ef5350', sum: '#4472c4' };
 

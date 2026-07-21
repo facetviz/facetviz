@@ -11,6 +11,12 @@ import type { Point } from '../core/point.js';
 const UP = '#26a69a';
 const DOWN = '#ef5350';
 
+/** Candlestick's point-level fields — OHLC (`low`/`high` are the shared range pair). */
+export interface CandlestickPointOptions {
+  open?: number;
+  close?: number;
+}
+
 export class CandlestickSeries extends BaseSeries {
   override capabilities(): SeriesCapabilities {
     return { grouped: false, cartesian: true, stackable: false };
@@ -29,8 +35,7 @@ export class CandlestickSeries extends BaseSeries {
 
     for (const p of this.points) {
       const o = p.options;
-      const open = o.open as number, close = o.close as number;
-      const high = o.high as number, low = o.low as number;
+      const open = o.open!, close = o.close!, high = o.high!, low = o.low!;
       if ([open, close, high, low].some((v) => typeof v !== 'number')) continue;
       const cx = catScale.scale(p.x);
       const up = close >= open;

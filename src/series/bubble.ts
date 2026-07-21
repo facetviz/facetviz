@@ -11,6 +11,14 @@ import { drawPointLabels } from './data-label.js';
 import type { Pt } from './paths.js';
 import type { Point } from '../core/point.js';
 
+/** Bubble's series-level fields. Its point-level `z` isn't listed here
+ *  because it's shared with pie's variable-radius slices — see `PointOptions`
+ *  in core/options.ts. */
+export interface BubbleSeriesOptions {
+  /** Marker radius range [min, max] in px, mapped from each point's `z`. */
+  sizeRange?: [number, number];
+}
+
 export class BubbleSeries extends BaseSeries {
   override capabilities(): SeriesCapabilities {
     return { grouped: false, cartesian: true, stackable: false };

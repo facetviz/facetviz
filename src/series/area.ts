@@ -55,7 +55,7 @@ export class AreaSeries extends LineSeries {
         d: topD,
         fill: 'none',
         stroke: this.color,
-        'stroke-width': this.options.lineWidth ?? 2,
+        'stroke-width': this.options.lineWidth ?? this.options.size ?? 2,
         'stroke-linejoin': 'round',
       }, g);
     }

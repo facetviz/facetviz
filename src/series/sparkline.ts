@@ -12,10 +12,23 @@
 
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
 import type { Point } from '../core/point.js';
-import type { SparklineOptions } from '../core/options.js';
 import type { Renderer } from '../core/renderer.js';
 import { linePath, Pt } from './paths.js';
 import { drawMarker } from './marker.js';
+
+export interface SparklineOptions {
+  /** Highlight the final point. Default `true`. */
+  last?: boolean | { color?: string };
+  /** Highlight the minimum-value point. Default `false`. */
+  min?: boolean | { color?: string };
+  /** Highlight the maximum-value point. Default `false`. */
+  max?: boolean | { color?: string };
+}
+
+/** Sparkline's series-level fields. */
+export interface SparklineSeriesOptions {
+  sparkline?: SparklineOptions;
+}
 
 const MIN_COLOR = '#e63946';
 const MAX_COLOR = '#00b894';

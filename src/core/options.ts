@@ -17,6 +17,36 @@
  */
 
 import type { ThemeInput } from "./theme.js";
+// Per-type option fields are colocated with the series that owns them and
+// composed back into the public `PointOptions`/`SeriesOptions` here — mirrors
+// how a Highcharts-style library keeps each chart type's shape in its own
+// module instead of one shared grab-bag interface. This import is type-only
+// (erased at build) so it doesn't create a real runtime dependency from core
+// on series/, even though the two files reference each other's types.
+import type {
+  BoxplotPointOptions,
+  BoxplotSeriesOptions,
+} from "../series/boxplot.js";
+import type {
+  DumbbellPointOptions,
+  DumbbellSeriesOptions,
+} from "../series/dumbbell.js";
+import type { CandlestickPointOptions } from "../series/candlestick.js";
+import type { BulletPointOptions } from "../series/bullet.js";
+import type { WaterfallPointOptions } from "../series/waterfall.js";
+import type { SankeyPointOptions } from "../series/sankey.js";
+import type { GanttPointOptions } from "../series/gantt.js";
+import type { CalendarPointOptions } from "../series/calendar.js";
+import type { GaugeSeriesOptions } from "../series/gauge.js";
+import type { HistogramSeriesOptions } from "../series/histogram.js";
+import type { PieSeriesOptions } from "../series/pie.js";
+import type { BubbleSeriesOptions } from "../series/bubble.js";
+import type { ColumnOptions } from "../series/column.js";
+import type {
+  ScatterPointOptions,
+  ScatterSeriesOptions,
+} from "../series/scatter.js";
+import type { SparklineSeriesOptions } from "../series/sparkline.js";
 
 /** Every built-in series/chart type. */
 export type ChartType =
@@ -69,50 +99,35 @@ export type PointInput =
   | PointOptions
   | null;
 
-export interface PointOptions {
+export interface PointOptions
+  extends
+    BoxplotPointOptions,
+    DumbbellPointOptions,
+    CandlestickPointOptions,
+    BulletPointOptions,
+    WaterfallPointOptions,
+    SankeyPointOptions,
+    GanttPointOptions,
+    CalendarPointOptions,
+    ScatterPointOptions,
+    ColumnOptions {
   x?: number | string;
   y?: number;
-  /** Range / dumbbell charts (arearange, areasplinerange, dumbbell). */
+  /** Range / dumbbell charts (arearange, areasplinerange, dumbbell, columnrange,
+   *  errorbar) — shared verbatim across all of them, so it stays here rather
+   *  than colocated with any single one. */
   low?: number;
   high?: number;
-  /** Boxplot. */
-  min?: number;
-  q1?: number;
-  median?: number;
-  q3?: number;
-  max?: number;
-  /** Boxplot outlier values, drawn as markers beyond the whiskers instead of
-   *  folded into `min`/`max`. Positioned at this box's own centre, so a
-   *  grouped boxplot keeps each series' outliers over its own box rather
-   *  than the shared category centre. */
-  outliers?: number[];
   /** Pie / categorical slices. */
   name?: string;
-  /** Third value: variable-radius pie slice weight, or bubble marker size. */
+  /** Third value: variable-radius pie slice weight, or bubble marker size —
+   *  shared between the two, so it stays here. */
   z?: number;
-  /** Heatmap cell value (colour). */
+  /** Heatmap / sunburst cell or node measure — shared between the two. */
   value?: number;
-  /** Candlestick OHLC. */
-  open?: number;
-  close?: number;
-  /** Bullet: comparative target marker and qualitative range boundaries. */
-  target?: number;
-  ranges?: number[];
-  /** Waterfall: treat this point as a (running) sum instead of a delta. */
-  isSum?: boolean;
-  isIntermediateSum?: boolean;
-  /** Treegraph / sunburst node identity / parent link. */
+  /** Treegraph / sunburst node identity / parent link — shared between the two. */
   id?: string;
   parent?: string;
-  /** Sankey flow endpoints and weight. */
-  from?: string;
-  to?: string;
-  weight?: number;
-  /** Gantt duration (ms timestamps or numbers). */
-  start?: number;
-  end?: number;
-  /** Calendar heatmap date (ms timestamp, Date, or ISO string). */
-  date?: number | string;
   /** Drill-down: id of a `drilldown.series` entry to expand into on click. */
   drilldown?: string;
   /** Per-point colour override. */
@@ -121,7 +136,17 @@ export interface PointOptions {
   [key: string]: unknown;
 }
 
-export interface SeriesOptions {
+export interface SeriesOptions
+  extends
+    BoxplotSeriesOptions,
+    DumbbellSeriesOptions,
+    GaugeSeriesOptions,
+    HistogramSeriesOptions,
+    PieSeriesOptions,
+    BubbleSeriesOptions,
+    ScatterSeriesOptions,
+    SparklineSeriesOptions,
+    ColumnOptions {
   type?: ChartType;
   name?: string;
   data: PointInput[];
@@ -133,61 +158,29 @@ export interface SeriesOptions {
   xAxis?: number;
   yAxis?: number;
   visible?: boolean;
-  /** Pie/donut inner radius as a percentage string e.g. '60%'. */
-  innerSize?: string;
-  /**
-   * Pie/donut multi-level (two-dimension) rings: field names read from each
-   * point. The first is the inner ring (grouped totals), the second the outer
-   * ring (breakdown within each inner slice). Outer slices are shaded variants
-   * of their parent's colour.
-   */
-  dimensions?: string[];
-  /** Line width in px for line-family series. */
+  /** Whether this series contributes an item to the chart legend. */
+  showInLegend?: boolean;
   lineWidth?: number;
+  /**
+   * Generic shape-size override, interpreted per series type: rect
+   * width/height for bar/column-family series (`columnWidth` wins if also
+   * set), stroke width for line-family series -- line/spline/step/area/
+   * slope/lollipop (`lineWidth` wins if also set). Lets a caller reach for
+   * one property without knowing which specific option name a given chart
+   * type uses.
+   */
+  size?: number;
   /** Marker configuration for point-based series. */
   marker?: MarkerOptions;
   dataLabels?: DataLabelOptions;
-  /** Amount of horizontal jitter (in category widths) for jitter charts. */
-  jitter?: number;
-  /** Boxplot colours. Set `lower`/`upper` to two distinct hues for a
-   *  split-colour box, or leave unset for two shades of the series colour. */
-  boxColors?: {
-    lower?: string;
-    upper?: string;
-    median?: string;
-    whisker?: string;
-    border?: string;
-  };
-  /** Boxplot outlier marker styling — see point-level `outliers`. Defaults to
-   *  a small hollow circle (background-coloured fill, `boxColors.border`
-   *  stroke). */
-  outlierMarker?: MarkerOptions;
-  /** Dumbbell endpoint / connector colours. */
-  lowColor?: string;
-  highColor?: string;
-  connectorColor?: string;
-  connectorWidth?: number;
-  /** Bubble marker radius range [min, max] in px (mapped from `z`). */
-  sizeRange?: [number, number];
   /** Radar/area fill opacity (0 = line only). */
   fillOpacity?: number;
   /** Interaction states (hover scaling / highlight). */
   states?: { hover?: HoverStateOptions };
   /** Per-series tooltip formatter override. */
   tooltip?: SeriesTooltipOptions;
-  /** Sparkline point highlights (last point on by default; min/max opt-in). */
-  sparkline?: SparklineOptions;
   /** Arbitrary user data. */
   [key: string]: unknown;
-}
-
-export interface SparklineOptions {
-  /** Highlight the final point. Default `true`. */
-  last?: boolean | { color?: string };
-  /** Highlight the minimum-value point. Default `false`. */
-  min?: boolean | { color?: string };
-  /** Highlight the maximum-value point. Default `false`. */
-  max?: boolean | { color?: string };
 }
 
 export interface MarkerOptions {
@@ -374,7 +367,7 @@ export interface TooltipOptions {
 
 export type SeriesTooltipOptions = Pick<
   TooltipOptions,
-  "format" | "formatter" | "valueSuffix" | "valuePrefix" | "valueDecimals"
+  "enabled" | "format" | "formatter" | "valueSuffix" | "valuePrefix" | "valueDecimals"
 >;
 
 export interface TooltipContext {
@@ -530,10 +523,10 @@ export interface ChartOptions {
     /** Auto re-render when the container resizes (default true). */
     reflow?: boolean;
     /**
-     * Progressively drop chrome as the container shrinks, rather than
-     * rendering an unreadably cramped chart: data labels go first, then axis
-     * labels, then the axis lines themselves. Default `true`; pass `false`
-     * to always render every element regardless of size.
+     * Drop the axis lines themselves once the container gets too small,
+     * leaving just gridlines and the series geometry, rather than rendering
+     * an unreadably cramped chart. Default `true`; pass `false` to always
+     * render every element regardless of size.
      */
     responsive?: boolean;
     /**

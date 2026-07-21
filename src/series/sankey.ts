@@ -10,6 +10,13 @@ import { paletteColor, alpha } from '../core/colors.js';
 import { FONTS } from '../core/defaults.js';
 import type { Point } from '../core/point.js';
 
+/** Sankey's point-level fields — each point is one weighted flow link. */
+export interface SankeyPointOptions {
+  from?: string;
+  to?: string;
+  weight?: number;
+}
+
 interface Link { from: string; to: string; weight: number; point: Point; }
 interface Node { id: string; depth: number; inflow: number; outflow: number; x: number; y: number; h: number; color: string; }
 
@@ -23,7 +30,7 @@ export class SankeySeries extends BaseSeries {
     const g = renderer.group({ class: `facet-series facet-sankey ${this.name}` }, renderer.root);
 
     const links: Link[] = this.points
-      .map((p) => ({ from: String(p.options.from ?? ''), to: String(p.options.to ?? ''), weight: (p.options.weight as number) ?? p.y ?? 1, point: p }))
+      .map((p) => ({ from: String(p.options.from ?? ''), to: String(p.options.to ?? ''), weight: p.options.weight ?? p.y ?? 1, point: p }))
       .filter((l) => l.from && l.to);
     if (!links.length) return;
 

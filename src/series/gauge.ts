@@ -8,6 +8,16 @@ import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
 import { FONTS } from '../core/defaults.js';
 import { THEME } from '../core/theme.js';
 
+/** Gauge's series-level fields — the value domain and optional qualitative
+ *  bands drawn as a coloured track instead of a single value arc. There's
+ *  only ever one point per gauge, so unlike boxplot/dumbbell these have no
+ *  per-point override — they describe the dial itself, not a datum. */
+export interface GaugeSeriesOptions {
+  min?: number;
+  max?: number;
+  bands?: Array<{ from: number; to: number; color: string }>;
+}
+
 const START = 135; // degrees (SVG: 0 = east, clockwise); 270° sweep to 45°
 const SWEEP = 270;
 
@@ -22,8 +32,8 @@ export class GaugeSeries extends BaseSeries {
     const p = this.points[0];
     if (!p) return;
 
-    const min = (this.options.min as number) ?? 0;
-    const max = (this.options.max as number) ?? 100;
+    const min = this.options.min ?? 0;
+    const max = this.options.max ?? 100;
     const value = p.y ?? 0;
     const frac = Math.max(0, Math.min(1, (value - min) / (max - min || 1)));
 
@@ -38,7 +48,7 @@ export class GaugeSeries extends BaseSeries {
     renderer.create('path', { d: this.arc(cx, cy, r, START, START + SWEEP), fill: 'none', stroke: THEME.axis.gridLineColor, 'stroke-width': thickness, 'stroke-linecap': 'round' }, g);
 
     // Coloured bands, or a single value arc.
-    const bands = this.options.bands as Array<{ from: number; to: number; color: string }> | undefined;
+    const bands = this.options.bands;
     if (bands) {
       for (const b of bands) {
         const a0 = START + SWEEP * ((b.from - min) / (max - min || 1));

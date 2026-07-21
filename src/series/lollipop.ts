@@ -9,12 +9,12 @@
  * band, same convention as column/dumbbell.
  */
 
-import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
-import { CategoryScale } from '../core/scale.js';
-import { drawMarker } from './marker.js';
-import { drawDataLabel, labelString, LabelPlacement } from './data-label.js';
-import { alpha } from '../core/colors.js';
-import type { Point } from '../core/point.js';
+import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from "./base.js";
+import { CategoryScale } from "../core/scale.js";
+import { drawMarker } from "./marker.js";
+import { drawDataLabel, labelString, LabelPlacement } from "./data-label.js";
+import { alpha } from "../core/colors.js";
+import type { Point } from "../core/point.js";
 
 export class LollipopSeries extends BaseSeries {
   override capabilities(): SeriesCapabilities {
@@ -37,12 +37,13 @@ export class LollipopSeries extends BaseSeries {
     const band = catScale.bandwidth ? catScale.bandwidth() : 0;
     const subWidth = band / groupCount;
     const radius = this.options.marker?.radius ?? 5;
-    const stemWidth = this.options.lineWidth ?? 2;
+    const stemWidth = this.options.lineWidth ?? this.options.size ?? 2;
 
     for (const p of this.points) {
       if (p.y === undefined) continue;
       const color = p.color ?? this.color;
-      const cat = catScale.scale(p.x) - band / 2 + (groupIndex + 0.5) * subWidth;
+      const cat =
+        catScale.scale(p.x) - band / 2 + (groupIndex + 0.5) * subWidth;
       const vBase = valScale.scale(0);
       const vEnd = valScale.scale(p.y);
 
@@ -50,12 +51,12 @@ export class LollipopSeries extends BaseSeries {
         ? { x1: vBase, y1: cat, x2: vEnd, y2: cat }
         : { x1: cat, y1: vBase, x2: cat, y2: vEnd };
       renderer.create(
-        'line',
+        "line",
         {
           ...stem,
           stroke: alpha(color, 0.55),
-          'stroke-width': stemWidth,
-          'stroke-linecap': 'round',
+          "stroke-width": stemWidth,
+          "stroke-linecap": "round",
         },
         g,
       );
@@ -63,18 +64,22 @@ export class LollipopSeries extends BaseSeries {
       const cx = inverted ? vEnd : cat;
       const cy = inverted ? cat : vEnd;
       const el = drawMarker(renderer, g, cx, cy, {
-        symbol: this.options.marker?.symbol ?? 'circle',
+        symbol: this.options.marker?.symbol ?? "circle",
         radius,
         fill: color,
-        stroke: '#fff',
+        stroke: "#fff",
         strokeWidth: 1.5,
       });
       ctx.registerHover(el, p);
-      el.addEventListener('click', (e: Event) => ctx.onPointEvent('click', p, e));
-      el.addEventListener('mouseover', (e: Event) =>
-        ctx.onPointEvent('mouseOver', p, e),
+      el.addEventListener("click", (e: Event) =>
+        ctx.onPointEvent("click", p, e),
       );
-      el.addEventListener('mouseout', (e: Event) => ctx.onPointEvent('mouseOut', p, e));
+      el.addEventListener("mouseover", (e: Event) =>
+        ctx.onPointEvent("mouseOver", p, e),
+      );
+      el.addEventListener("mouseout", (e: Event) =>
+        ctx.onPointEvent("mouseOut", p, e),
+      );
 
       this.drawLabel(ctx, p, cx, cy, radius, inverted);
     }
@@ -105,12 +110,12 @@ export class LollipopSeries extends BaseSeries {
     let place: LabelPlacement;
     if (inverted) {
       place = negative
-        ? { x: cx - gap, y: cy + 4, anchor: 'end' }
-        : { x: cx + gap, y: cy + 4, anchor: 'start' };
+        ? { x: cx - gap, y: cy + 4, anchor: "end" }
+        : { x: cx + gap, y: cy + 4, anchor: "start" };
     } else {
       place = negative
-        ? { x: cx, y: cy + gap + 8, anchor: 'middle' }
-        : { x: cx, y: cy - gap, anchor: 'middle' };
+        ? { x: cx, y: cy + gap + 8, anchor: "middle" }
+        : { x: cx, y: cy - gap, anchor: "middle" };
     }
     drawDataLabel(ctx.renderer, ctx.renderer.root, text, place, dl);
   }

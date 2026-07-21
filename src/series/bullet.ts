@@ -8,6 +8,13 @@ import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
 import { FONTS } from '../core/defaults.js';
 import { THEME } from '../core/theme.js';
 
+/** Bullet's point-level fields — the comparative target marker and the
+ *  qualitative range band boundaries drawn behind the measure bar. */
+export interface BulletPointOptions {
+  target?: number;
+  ranges?: number[];
+}
+
 export class BulletSeries extends BaseSeries {
   override capabilities(): SeriesCapabilities {
     return { grouped: false, cartesian: false, stackable: false };
@@ -26,8 +33,8 @@ export class BulletSeries extends BaseSeries {
     const bandShades = ['#e6e6e6', '#d0d0d0', '#bcbcbc', '#a8a8a8'];
 
     points.forEach((p, i) => {
-      const ranges = (p.options.ranges as number[]) ?? [];
-      const target = p.options.target as number | undefined;
+      const ranges = p.options.ranges ?? [];
+      const target = p.options.target;
       const value = p.y ?? 0;
       const max = Math.max(value, target ?? 0, ...ranges) || 1;
       const sx = (v: number) => gx + (v / max) * gw;

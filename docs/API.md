@@ -16,7 +16,7 @@ const chart = new FacetViz(container, options);
 
 - [ChartOptions](#chartoptions) · [chart](#chartoptions-chart) · [title / subtitle](#title--subtitle)
 - [Axes](#axisoptions) · [plotLines](#plotlineoptions) · [plotBands](#plotbandoptions)
-- [series](#seriesoptions) · [marker](#markeroptions) · [dataLabels](#datalabeloptions) · [states.hover](#hoverstateoptions) · [boxColors](#boxplot-options)
+- [series](#seriesoptions) · [marker](#markeroptions) · [dataLabels](#datalabeloptions) · [states.hover](#hoverstateoptions) · [boxColors](#boxplot-options) · [dumbbell](#dumbbell-options)
 - [tooltip](#tooltipoptions) · [legend](#legendoptions) · [plotOptions](#plotoptions)
 - [trellis](#trellisoptions) · [nested x-axis](#nested-hierarchical-x-axis)
 - [Events](#events) · [Data formats](#point-data-formats) · [Chart types](#chart-types)
@@ -183,6 +183,7 @@ One object per series in the `series` array.
 | `name`           | `string`                                                  | –             | Series name (legend, tooltip).                                                                                                                                                                                                                  |
 | `color`          | `string`                                                  | palette       | Series colour.                                                                                                                                                                                                                                  |
 | `visible`        | `boolean`                                                 | `true`        | Initial visibility (toggled via the legend).                                                                                                                                                                                                    |
+| `showInLegend`   | `boolean`                                                 | `true`        | Set to `false` to omit this series from the chart legend.                                                                                                                                                                                       |
 | `stack`          | `string \| number`                                        | –             | Series sharing a stack id pile together.                                                                                                                                                                                                        |
 | `stacking`       | `'normal' \| 'percent'`                                   | –             | Enable stacking (`percent` = 100% stacked).                                                                                                                                                                                                     |
 | `xAxis`          | `number`                                                  | `0`           | Index of the bound x-axis.                                                                                                                                                                                                                      |
@@ -197,10 +198,10 @@ One object per series in the `series` array.
 | `tooltip`        | [`SeriesTooltipOptions`](#tooltipoptions)                 | –             | Per-series tooltip overrides.                                                                                                                                                                                                                   |
 | `boxColors`      | [see below](#boxplot-options)                             | –             | Boxplot colours.                                                                                                                                                                                                                                |
 | `outlierMarker`  | [`MarkerOptions`](#markeroptions)                         | hollow circle | Boxplot outlier marker styling — see point-level `outliers`.                                                                                                                                                                                    |
-| `lowColor`       | `string`                                                  | series colour | Dumbbell low-end marker colour.                                                                                                                                                                                                                 |
-| `highColor`      | `string`                                                  | series colour | Dumbbell high-end marker colour (also the legend swatch).                                                                                                                                                                                       |
-| `connectorColor` | `string`                                                  | `'#b0b0b0'`   | Dumbbell connector line colour.                                                                                                                                                                                                                 |
-| `connectorWidth` | `number`                                                  | `3`           | Dumbbell connector thickness.                                                                                                                                                                                                                   |
+| `lowColor`       | [see below](#dumbbell-options)                            | series colour | Dumbbell low-end marker colour.                                                                                                                                                                                                                 |
+| `highColor`      | [see below](#dumbbell-options)                            | series colour | Dumbbell high-end marker colour (also the legend swatch).                                                                                                                                                                                       |
+| `connectorColor` | [see below](#dumbbell-options)                            | `'#b0b0b0'`   | Dumbbell connector line colour.                                                                                                                                                                                                                 |
+| `connectorWidth` | [see below](#dumbbell-options)                            | `3`           | Dumbbell connector thickness.                                                                                                                                                                                                                   |
 
 Any extra keys you add to a series or point are preserved and surfaced back in
 tooltips and event payloads.
@@ -234,6 +235,24 @@ split-colour box, or leave unset for two shades of the series colour.
 Boxplots render **horizontally** when `chart.inverted` is set, and multiple
 boxplot series **group** side-by-side within each category.
 
+Both `boxColors` and `outlierMarker` can also be set on an individual **point**
+to override that series' (or `plotOptions.boxplot`'s) value for just that one
+box — see [Resolution order](#plotoptions):
+
+```ts
+plotOptions: {
+  boxplot: { boxColors: { border: '#888' } },   // every boxplot series
+},
+series: [{
+  type: 'boxplot',
+  boxColors: { lower: '#74c0fc' },              // this series' boxes
+  data: [
+    { min: 2, q1: 4, median: 5, q3: 6.5, max: 8 },                       // border: #888 (plotOptions), lower: #74c0fc (series)
+    { min: 1, q1: 3, median: 4, q3: 6, max: 9, boxColors: { upper: '#f08c4b' } }, // upper overridden for this box only
+  ],
+}]
+```
+
 **Outliers.** Give a point `outliers: number[]` for values that fall outside
 the whiskers; each renders as a small hollow marker positioned above/below
 that point's own box — not the shared category centre — so grouped boxplots
@@ -253,6 +272,33 @@ series: [
 Outlier values also extend the value axis domain, and are listed in the
 default tooltip. Style them via `SeriesOptions.outlierMarker` (`radius`,
 `symbol`, `fillColor`, `lineColor`, `lineWidth`).
+
+### Dumbbell options
+
+| Key              | Type     | Default       | Description                                                |
+| ---------------- | -------- | ------------- | ------------------------------------------------------------ |
+| `lowColor`       | `string` | series colour | Low-end marker colour.                                       |
+| `highColor`      | `string` | series colour | High-end marker colour (also the legend swatch).              |
+| `connectorColor` | `string` | `'#b0b0b0'`   | Connector line colour.                                        |
+| `connectorWidth` | `number` | `3`           | Connector line thickness.                                     |
+
+All four can also be set on an individual **point** to override that series'
+(or `plotOptions.dumbbell`'s) value for just that one connector — see
+[Resolution order](#plotoptions):
+
+```ts
+plotOptions: {
+  dumbbell: { connectorColor: '#999', connectorWidth: 2 },  // every dumbbell series
+},
+series: [{
+  type: 'dumbbell',
+  lowColor: 'orange',                     // this series' low-end markers
+  data: [
+    { low: 2, high: 8 },                              // connector from plotOptions, low from series
+    { low: 3, high: 7, highColor: 'green' },          // high overridden for this point only
+  ],
+}]
+```
 
 ### MarkerOptions
 
@@ -495,6 +541,22 @@ plotOptions: {
 Keys are `'series'` or any [`ChartType`](#chart-types); values are partial
 [`SeriesOptions`](#seriesoptions).
 
+**Resolution order.** For any option a series or point reads, the most specific
+value wins:
+
+1. The **point's own option** (a field on that `data` entry), if set.
+2. The **series' option** (a field on that `series` entry), if set.
+3. **`plotOptions[type]`**, then **`plotOptions.series`**, if set.
+4. The chart's **built-in default**.
+
+Not every field supports a point-level override (most series-wide settings —
+`stacking`, `dataLabels`, `marker`, etc. — only make sense per series), but
+per-point styling knobs do: boxplot's `boxColors`/`outlierMarker` and
+dumbbell's `lowColor`/`highColor`/`connectorColor`/`connectorWidth` can all be
+set on an individual point to override that series' (or `plotOptions`') value
+for just that one point. See [Boxplot options](#boxplot-options) and
+[Dumbbell options](#dumbbell-options).
+
 ---
 
 ## TrellisOptions
@@ -632,6 +694,8 @@ Each entry in `series.data` (`PointInput`) may be:
 | `low` / `high`                 | `number`           | range, dumbbell                      |
 | `min`/`q1`/`median`/`q3`/`max` | `number`           | boxplot                              |
 | `outliers`                     | `number[]`         | boxplot (values beyond the whiskers) |
+| `boxColors` / `outlierMarker`  | see [Boxplot options](#boxplot-options) | boxplot — per-point override |
+| `lowColor`/`highColor`/`connectorColor`/`connectorWidth` | see [Dumbbell options](#dumbbell-options) | dumbbell — per-point override |
 | `name`                         | `string`           | pie / categorical                    |
 | `color`                        | `string`           | per-point colour (any series)        |
 | _(custom)_                     | `any`              | surfaced in tooltips & events        |

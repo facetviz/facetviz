@@ -38,7 +38,7 @@ export class SlopeSeries extends BaseSeries {
         d: linePath(data.map((d) => d.pt)),
         fill: 'none',
         stroke: this.color,
-        'stroke-width': this.options.lineWidth ?? 2.5,
+        'stroke-width': this.options.lineWidth ?? this.options.size ?? 2.5,
         'stroke-linejoin': 'round',
         'stroke-linecap': 'round',
       },

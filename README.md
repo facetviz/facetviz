@@ -246,7 +246,7 @@ Boxplots accept two distinct hues (or any of the sub-colours):
 - `tooltip`: `enabled`, `format` (token string), `formatter` (callback), `valuePrefix/Suffix/Decimals`
 - `legend`: `enabled`, `align`, `verticalAlign`
 - `plotOptions`: per-type defaults, e.g. `{ column: { stacking: 'normal' } }`
-- `series[]`: `type`, `name`, `data`, `color`, `stack`, `stacking`, `marker`, `dataLabels`, `innerSize` (pie/donut), `jitter`
+- `series[]`: `type`, `name`, `data`, `color`, `visible`, `showInLegend`, `stack`, `stacking`, `marker`, `dataLabels`, `innerSize` (pie/donut), `jitter`
 - `trellis`: `columns`, `rows`, `gap`, `sharedX`, `sharedY`
 
 ### Tooltip format tokens

@@ -10,6 +10,13 @@ import { FONTS } from '../core/defaults.js';
 import { THEME } from '../core/theme.js';
 import { formatDate } from '../core/utils.js';
 
+/** Gantt's point-level fields — task duration (ms timestamps or plain
+ *  numbers). Falls back to the shared `low`/`high` pair when omitted. */
+export interface GanttPointOptions {
+  start?: number;
+  end?: number;
+}
+
 export class GanttSeries extends BaseSeries {
   override capabilities(): SeriesCapabilities {
     return { grouped: false, cartesian: false, stackable: false };
@@ -20,7 +27,7 @@ export class GanttSeries extends BaseSeries {
     const g = renderer.group({ class: `facet-series facet-gantt ${this.name}` }, renderer.root);
 
     const tasks = this.points
-      .map((p) => ({ name: String(p.name ?? p.x), start: (p.options.start as number) ?? p.low ?? 0, end: (p.options.end as number) ?? p.high ?? 0, point: p }))
+      .map((p) => ({ name: String(p.name ?? p.x), start: p.options.start ?? p.low ?? 0, end: p.options.end ?? p.high ?? 0, point: p }))
       .filter((t) => t.end > t.start);
     if (!tasks.length) return;
 

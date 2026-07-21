@@ -9,6 +9,12 @@ import { lerpColor } from '../core/colors.js';
 import { FONTS } from '../core/defaults.js';
 import { THEME } from '../core/theme.js';
 
+/** Calendar's point-level fields — a day (ms timestamp, Date, or ISO string)
+ *  plus the shared `value` cell measure (also used by heatmap/sunburst). */
+export interface CalendarPointOptions {
+  date?: number | string;
+}
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAY = 86400000;
 
@@ -22,7 +28,7 @@ export class CalendarSeries extends BaseSeries {
     const g = renderer.group({ class: `facet-series facet-calendar ${this.name}` }, renderer.root);
 
     const days = this.points
-      .map((p) => ({ date: new Date((p.options.date as number | string) ?? p.x), value: (p.options.value as number) ?? p.y ?? 0, point: p }))
+      .map((p) => ({ date: new Date(p.options.date ?? p.x), value: p.options.value ?? p.y ?? 0, point: p }))
       .filter((d) => !Number.isNaN(d.date.getTime()))
       .sort((a, b) => a.date.getTime() - b.date.getTime());
     if (!days.length) return;

@@ -9,6 +9,10 @@ import { CategoryScale, Scale } from "../core/scale.js";
 import type { Point } from "../core/point.js";
 import { drawDataLabel, labelString, LabelPlacement } from "./data-label.js";
 
+export interface ColumnOptions {
+  columnWidth?: number;
+}
+
 export class ColumnSeries extends BaseSeries {
   override capabilities(): SeriesCapabilities {
     return { grouped: true, cartesian: true, stackable: true };
@@ -43,20 +47,26 @@ export class ColumnSeries extends BaseSeries {
       const catStart = center - band / 2 + groupIndex * subWidth;
       const vLo = valScale.scale(loVal);
       const vHi = valScale.scale(hiVal);
+      const max_colWidth = Math.max(1, subWidth * 0.9);
+      let colWidth =
+        p.options.columnWidth ??
+        this.options.columnWidth ??
+        this.options.size ??
+        max_colWidth; // leave a little gap between bars
 
       let rect: { x: number; y: number; width: number; height: number };
       if (horizontal) {
         rect = {
           x: Math.min(vLo, vHi),
-          y: catStart,
+          y: catStart + (subWidth - colWidth) / 2,
           width: Math.max(1, Math.abs(vHi - vLo)),
-          height: Math.max(1, subWidth * 0.9),
+          height: colWidth,
         };
       } else {
         rect = {
-          x: catStart,
+          x: catStart + (subWidth - colWidth) / 2,
           y: Math.min(vLo, vHi),
-          width: Math.max(1, subWidth * 0.9),
+          width: colWidth,
           height: Math.max(1, Math.abs(vHi - vLo)),
         };
       }

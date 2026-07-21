@@ -9,6 +9,19 @@ import { FONTS } from '../core/defaults.js';
 import { formatString, sum } from '../core/utils.js';
 import type { Point } from '../core/point.js';
 
+/** Pie/donut's series-level fields. */
+export interface PieSeriesOptions {
+  /** Inner radius as a percentage string, e.g. '60%' (makes a donut). */
+  innerSize?: string;
+  /**
+   * Multi-level (two-dimension) rings: field names read from each point. The
+   * first is the inner ring (grouped totals), the second the outer ring
+   * (breakdown within each inner slice). Outer slices are shaded variants of
+   * their parent's colour.
+   */
+  dimensions?: string[];
+}
+
 interface PieCenter { cx: number; cy: number; radius: number; margin: number; outside: boolean; }
 
 /**
@@ -302,6 +315,33 @@ export class PieSeries extends BaseSeries {
   }
 
   private slicePath(cx: number, cy: number, r: number, ir: number, a0: number, a1: number): string {
+    // SVG cannot represent a full circle with a single arc because its start
+    // and end points coincide. Split a 100% slice into two half-arcs so pies
+    // and donuts with only one point remain visible.
+    if (a1 - a0 >= Math.PI * 2 - 1e-10) {
+      const am = a0 + Math.PI;
+      const x0 = cx + r * Math.cos(a0);
+      const y0 = cy + r * Math.sin(a0);
+      const xm = cx + r * Math.cos(am);
+      const ym = cy + r * Math.sin(am);
+
+      if (ir <= 0) {
+        return (
+          `M ${cx} ${cy} L ${x0} ${y0} ` +
+          `A ${r} ${r} 0 1 1 ${xm} ${ym} A ${r} ${r} 0 1 1 ${x0} ${y0} Z`
+        );
+      }
+
+      const ix0 = cx + ir * Math.cos(a0);
+      const iy0 = cy + ir * Math.sin(a0);
+      const ixm = cx + ir * Math.cos(am);
+      const iym = cy + ir * Math.sin(am);
+      return (
+        `M ${x0} ${y0} A ${r} ${r} 0 1 1 ${xm} ${ym} A ${r} ${r} 0 1 1 ${x0} ${y0} ` +
+        `L ${ix0} ${iy0} A ${ir} ${ir} 0 1 0 ${ixm} ${iym} A ${ir} ${ir} 0 1 0 ${ix0} ${iy0} Z`
+      );
+    }
+
     const large = a1 - a0 > Math.PI ? 1 : 0;
     const x0 = cx + r * Math.cos(a0);
     const y0 = cy + r * Math.sin(a0);

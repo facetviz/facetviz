@@ -8,6 +8,12 @@ import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
 import type { SeriesOptions } from '../core/options.js';
 import type { Point } from '../core/point.js';
 
+/** Histogram's series-level fields. */
+export interface HistogramSeriesOptions {
+  /** Bin count. Defaults to the square-root rule. */
+  bins?: number;
+}
+
 interface Bin { x0: number; x1: number; count: number; }
 
 export class HistogramSeries extends BaseSeries {
@@ -38,7 +44,7 @@ export class HistogramSeries extends BaseSeries {
     if (!values.length) return [];
     const min = Math.min(...values);
     const max = Math.max(...values);
-    const count = (this.options.bins as number) ?? Math.max(1, Math.ceil(Math.sqrt(values.length)));
+    const count = this.options.bins ?? Math.max(1, Math.ceil(Math.sqrt(values.length)));
     const width = (max - min) / count || 1;
     const bins: Bin[] = Array.from({ length: count }, (_, i) => ({ x0: min + i * width, x1: min + (i + 1) * width, count: 0 }));
     for (const v of values) {

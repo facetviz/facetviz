@@ -4,13 +4,24 @@
  * out (useful for distribution views).
  */
 
-import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
-import { CategoryScale } from '../core/scale.js';
-import { drawMarker } from './marker.js';
-import { seededRandom } from '../core/utils.js';
-import { drawPointLabels } from './data-label.js';
-import type { Pt } from './paths.js';
-import type { Point } from '../core/point.js';
+import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from "./base.js";
+import { CategoryScale } from "../core/scale.js";
+import { drawMarker } from "./marker.js";
+import { seededRandom } from "../core/utils.js";
+import { drawPointLabels } from "./data-label.js";
+import type { Pt } from "./paths.js";
+import type { Point } from "../core/point.js";
+
+export interface ScatterPointOptions {
+  radius?: number;
+}
+
+/** Scatter/jitter's series-level fields. */
+export interface ScatterSeriesOptions {
+  /** Horizontal spread (in category band widths) for `jitter` charts. */
+  jitter?: number;
+  radius?: number;
+}
 
 export class ScatterSeries extends BaseSeries {
   override capabilities(): SeriesCapabilities {
@@ -18,12 +29,15 @@ export class ScatterSeries extends BaseSeries {
   }
 
   private get isJitter(): boolean {
-    return this.type === 'jitter';
+    return this.type === "jitter";
   }
 
   override render(ctx: SeriesRenderContext): void {
     const { renderer, xScale } = ctx;
-    const g = renderer.group({ class: `facet-series facet-scatter ${this.name}` }, renderer.root);
+    const g = renderer.group(
+      { class: `facet-series facet-scatter ${this.name}` },
+      renderer.root,
+    );
 
     const marker = this.options.marker ?? {};
     const rng = seededRandom(this.index * 7919 + this.points.length + 1);
@@ -40,17 +54,30 @@ export class ScatterSeries extends BaseSeries {
       const y = ctx.yScale.scale(p.y);
       labelData.push({ pt: { x, y }, p });
       const el = drawMarker(renderer, g, x, y, {
-        symbol: marker.symbol ?? 'circle',
-        radius: marker.radius ?? 5,
+        symbol: marker.symbol ?? "circle",
+        radius: p.options.radius ?? this.options.radius ?? marker.radius ?? 5,
         fill: p.color ?? marker.fillColor ?? this.color,
-        stroke: marker.lineColor ?? '#ffffff',
+        stroke: marker.lineColor ?? "#ffffff",
         strokeWidth: marker.lineWidth ?? 1,
       });
       ctx.registerHover(el, p);
-      el.addEventListener('click', (e: Event) => ctx.onPointEvent('click', p, e));
-      el.addEventListener('mouseover', (e: Event) => ctx.onPointEvent('mouseOver', p, e));
-      el.addEventListener('mouseout', (e: Event) => ctx.onPointEvent('mouseOut', p, e));
+      el.addEventListener("click", (e: Event) =>
+        ctx.onPointEvent("click", p, e),
+      );
+      el.addEventListener("mouseover", (e: Event) =>
+        ctx.onPointEvent("mouseOver", p, e),
+      );
+      el.addEventListener("mouseout", (e: Event) =>
+        ctx.onPointEvent("mouseOut", p, e),
+      );
     }
-    drawPointLabels(renderer, g, this.options.dataLabels, this.name, labelData, this.color);
+    drawPointLabels(
+      renderer,
+      g,
+      this.options.dataLabels,
+      this.name,
+      labelData,
+      this.color,
+    );
   }
 }
