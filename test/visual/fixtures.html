@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FacetViz visual fixtures</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; min-height: 100%; background: #eef1f5; }
+      body { padding: 20px; font-family: Arial, sans-serif; }
+      .fixture-card {
+        width: 436px;
+        padding: 8px;
+        overflow: hidden;
+        border: 1px solid #d8dee8;
+        border-radius: 8px;
+        background: #fff;
+        box-shadow: 0 1px 3px rgba(30, 45, 70, 0.08);
+      }
+      .fixture-label {
+        height: 20px;
+        margin: 0 4px 4px;
+        color: #344054;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 20px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .chart { width: 418px; height: 278px; }
+      .fixture-card.compact { width: 236px; }
+      .fixture-card.compact .chart { width: 218px; height: 178px; }
+      .fixture-card.sparkline { width: 436px; }
+      .fixture-card.sparkline .chart { height: 92px; }
+      #status { position: fixed; left: -9999px; }
+    </style>
+  </head>
+  <body>
+    <main id="fixtures"></main>
+    <div id="status" role="status">loading</div>
+    <script type="module" src="./visual-fixtures.ts"></script>
+  </body>
+</html>

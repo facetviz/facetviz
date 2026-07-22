@@ -761,6 +761,8 @@ automatically. Mix `type`s across series for combination charts.
 | `chart.update(options)`                                   | Merge new options and re-render (`series` triggers a rebuild).                                                                                                                                                                                                                                                         |
 | `chart.setData(i, data)`                                  | Replace one series' data in place and re-render.                                                                                                                                                                                                                                                                       |
 | `chart.addPoint(i, point)`                                | Append a point to a series and re-render.                                                                                                                                                                                                                                                                              |
+| `chart.appendData(i, points, { maxPoints? })`             | Append several source points and optionally retain only the newest `maxPoints`.                                                                                                                                                                                                                                        |
+| `chart.batchUpdate(callback)`                             | Run synchronous updates transactionally with one final validation, rebuild, and render. Supports nesting and rolls back a failed batch level.                                                                                                                                                                          |
 | `chart.drillUp()`                                         | Return to the previous level after a drill-down.                                                                                                                                                                                                                                                                       |
 | `chart.getSVG()`                                          | Serialise to a standalone SVG string.                                                                                                                                                                                                                                                                                  |
 | `chart.downloadSVG(name?)` / `downloadPNG(name?, scale?)` | Download the chart as SVG / PNG.                                                                                                                                                                                                                                                                                       |
@@ -782,7 +784,50 @@ automatically. Mix `type`s across series for combination charts.
 
 Axes add `type: 'datetime'` (nice date ticks) and `crosshair: true` (hover guide
 line). Points add `drilldown: '<id>'`; top-level `drilldown.series` lists the
-child series. `accessibility: { description }` overrides the auto SVG label.
+child series.
+
+### Accessibility
+
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+| `enabled` | `boolean` | `true` | Expose chart and point semantics. |
+| `description` | `string` | chart title or generated summary | Accessible chart-level label. |
+| `keyboardNavigation` | `boolean` | `true` | One Tab stop enters the chart; Arrow keys navigate points, Home/End jump, and Enter/Space activate. |
+| `pointDescriptionFormatter` | `(context) => string` | generated label | Override each point's screen-reader description. Context contains `seriesName`, `seriesIndex`, `pointIndex`, `x`, `y`, `low`, `high`, and `point`. |
+
+SVG data marks use roving `tabindex`, so a chart with many points does not add
+one page-level Tab stop per mark. Focus also shows the point tooltip. Canvas
+boost mode retains the chart-level description but intentionally does not expose
+thousands of individual focus targets.
+
+### Configuration validation
+
+`validateChartOptions(value)` accepts `unknown` and returns structured,
+side-effect-free diagnostics:
+
+```ts
+const { valid, errors, warnings, issues } = validateChartOptions(candidate);
+// issue: { code, severity, path, message, suggestion? }
+```
+
+It validates the root structure, registered chart/series types, positive chart
+dimensions, palettes, axis bounds and indices, logarithmic values, histogram
+bins, specialised point shapes and ordering, Gantt durations, Sankey weights
+and cycles, hierarchy links, gauges, and drilldown references. Runtime custom
+series are accepted after `registerSeriesType()`.
+
+Automatic validation is opt-in through the root `validation` option:
+
+| Value | Behavior |
+| --- | --- |
+| `true` | Validate and log every issue with its code and path. |
+| `{ mode: 'warn' }` | Same as `true`. |
+| `{ mode: 'error' }` | Throw `ChartValidationError` when errors exist, before constructor/update state mutates. |
+| `{ mode: 'silent', onIssue }` | Deliver structured issues without console output. |
+
+Configured validation also runs before `setData`, `addPoint`, `appendData`, and
+`setSize`. A batch validates its final outer configuration atomically. Warnings
+do not make `valid` false and do not throw in error mode.
 
 Chart size defaults to the container's `clientWidth`/`clientHeight` (falling
 back to 640×400 only when the container itself can't report a size, e.g.
@@ -794,11 +839,15 @@ if the container hadn't finished layout yet.
 ## Package exports
 
 ```ts
+// Full bundle: all built-in renderers are registered.
 import {
   FacetViz,
   Chart, // main class (Chart is an alias)
   registerSeriesType,
+  isSeriesTypeRegistered,
   createSeries, // custom series extensibility
+  validateChartOptions,
+  ChartValidationError,
   BaseSeries, // base class for custom series
   LinearScale,
   LogScale,
@@ -807,7 +856,19 @@ import {
   computeBoxStats, // boxplot summary helper
   DEFAULT_COLORS, // default palette
 } from "facetviz";
+
+// Modular bundle: register only selected renderer families before use.
+import { FacetViz, validateChartOptions } from "facetviz/core";
+import "facetviz/series/line"; // line, spline, step
+import "facetviz/series/pie";  // pie, donut
 ```
+
+The `facetviz/series/*` subpaths correspond to renderer modules rather than
+every alias. For example `column` registers `column`, `bar`, and `butterfly`;
+`range` registers `arearange` and `areasplinerange`; `scatter` registers
+`scatter` and `jitter`. `facetviz/series/all` registers everything. Each family
+also exports its concrete renderer class and a `register…Series()` function.
+The full entrypoint remains backward compatible.
 
 All option interfaces are exported as types for TypeScript users
 (`ChartOptions`, `SeriesOptions`, `AxisOptions`, `DataLabelOptions`, …).

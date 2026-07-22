@@ -19,6 +19,7 @@ import type {
   TitleOptions,
   TooltipContext,
   TrellisOptions,
+  AppendDataOptions,
 } from "./options.js";
 import { Renderer } from "./renderer.js";
 import { Axis, Rect } from "./axis.js";
@@ -50,6 +51,7 @@ import {
 import { downloadBlob, rasterizePNG, serializeSVG } from "./chart-export.js";
 import { computeStacks } from "./stacking.js";
 import { captureSeriesState, restoreSeriesState } from "./series-state.js";
+import { enforceConfiguredValidation } from "./validation.js";
 import { paletteColor, alpha, shade } from "./colors.js";
 import { Theme, resolveTheme, applyTheme, THEME } from "./theme.js";
 import { BaseSeries, SeriesRenderContext } from "../series/base.js";
@@ -87,6 +89,12 @@ export class FacetViz {
     inverted: boolean;
   };
   private crosshairEl?: SVGElement;
+  /** Rendered SVG data marks in keyboard-navigation order. */
+  private accessiblePoints: Array<{
+    el: SVGElement;
+    series: BaseSeries;
+    point: Point;
+  }> = [];
   private clipSeq = 0;
   /** Saved series/title/xAxis levels for drill-down navigation. */
   private drillStack: Array<{
@@ -94,6 +102,14 @@ export class FacetViz {
     title?: TitleOptions;
     xAxis?: AxisOptions | AxisOptions[];
   }> = [];
+  /** Nested transaction state used to coalesce public API mutations. */
+  private batchDepth = 0;
+  private batchDirty = false;
+  private batchPreserveSeriesState = true;
+  private batchPreserveAxisRange = true;
+  private batchNeedsReflow = false;
+  private batchAnimate = false;
+  private batchCheckpoints: BatchCheckpoint[] = [];
 
   constructor(container: HTMLElement | string, options: ChartOptions) {
     const el =
@@ -102,6 +118,7 @@ export class FacetViz {
         : container;
     if (!el) throw new Error("FacetViz: container element not found");
     this.container = el as HTMLElement;
+    enforceConfiguredValidation(options);
     this.userOptions = merge({} as ChartOptions, options);
     this.options = resolveChartOptions(this.userOptions);
     this.theme = resolveTheme(this.options.theme);
@@ -195,12 +212,19 @@ export class FacetViz {
   }
 
   /** Re-resolve all defaults and rebuild the model after an API update. */
-  private resolveUpdatedOptions(preserveSeriesState: boolean): void {
+  private resolveUpdatedOptions(
+    preserveSeriesState: boolean,
+    preserveAxisRange = false,
+  ): void {
     const state = preserveSeriesState ? captureSeriesState(this.series) : [];
+    const xRange = preserveAxisRange ? this.axisRange(this.options.xAxis) : undefined;
+    const yRange = preserveAxisRange ? this.axisRange(this.options.yAxis) : undefined;
     const resolved = resolveChartOptions(this.userOptions);
     const target = this.options as unknown as Record<string, unknown>;
     for (const key of Object.keys(target)) delete target[key];
     Object.assign(this.options, resolved);
+    if (xRange) this.restoreAxisRange("xAxis", xRange);
+    if (yRange) this.restoreAxisRange("yAxis", yRange);
 
     this.theme = resolveTheme(this.options.theme);
     this.colors =
@@ -212,6 +236,64 @@ export class FacetViz {
 
     this.build();
     if (preserveSeriesState) restoreSeriesState(this.series, state);
+  }
+
+  private axisRange(axis: AxisOptions | AxisOptions[] | undefined): AxisRange | undefined {
+    if (!axis || Array.isArray(axis)) return undefined;
+    if (axis.min === undefined && axis.max === undefined) return undefined;
+    return { min: axis.min, max: axis.max };
+  }
+
+  private restoreAxisRange(axis: "xAxis" | "yAxis", range: AxisRange): void {
+    const current = this.options[axis];
+    if (Array.isArray(current)) return;
+    this.options[axis] = { ...(current ?? {}), ...range };
+  }
+
+  /** Validate and apply immediately, or queue a single rebuild/render in a batch. */
+  private commitOptions(
+    nextOptions: ChartOptions,
+    behavior: CommitBehavior,
+  ): void {
+    if (this.batchDepth > 0) {
+      this.userOptions = nextOptions;
+      this.batchDirty = true;
+      this.batchPreserveSeriesState &&= behavior.preserveSeriesState;
+      this.batchPreserveAxisRange &&= behavior.preserveAxisRange;
+      this.batchNeedsReflow ||= behavior.setupReflow;
+      this.batchAnimate ||= behavior.animate;
+      return;
+    }
+    enforceConfiguredValidation(nextOptions);
+    this.userOptions = nextOptions;
+    this.resolveUpdatedOptions(behavior.preserveSeriesState, behavior.preserveAxisRange);
+    if (behavior.setupReflow) this.setupReflow();
+    this.animateNext = behavior.animate;
+    this.render();
+  }
+
+  private flushBatch(): void {
+    if (!this.batchDirty || this.destroyed) {
+      this.resetBatchFlags();
+      return;
+    }
+    enforceConfiguredValidation(this.userOptions);
+    this.resolveUpdatedOptions(
+      this.batchPreserveSeriesState,
+      this.batchPreserveAxisRange,
+    );
+    if (this.batchNeedsReflow) this.setupReflow();
+    this.animateNext = this.batchAnimate;
+    this.render();
+    this.resetBatchFlags();
+  }
+
+  private resetBatchFlags(): void {
+    this.batchDirty = false;
+    this.batchPreserveSeriesState = true;
+    this.batchPreserveAxisRange = true;
+    this.batchNeedsReflow = false;
+    this.batchAnimate = false;
   }
 
   // -- Rendering ---------------------------------------------------------
@@ -254,6 +336,7 @@ export class FacetViz {
     try {
     this.boostHoverCleanups.forEach((cleanup) => cleanup());
     this.boostHoverCleanups = [];
+    this.accessiblePoints = [];
     if (!this.renderer) {
       this.renderer = new Renderer(this.width, this.height);
       this.renderer.mount(this.container);
@@ -389,21 +472,27 @@ export class FacetViz {
     }
   }
 
-  /**
-   * Set root ARIA role + label for screen readers. Deliberately not using an
-   * SVG <title> element here — browsers render that as a native hover
-   * tooltip over the whole chart, which is a worse experience than no
-   * tooltip. aria-label carries the same accessible name without it.
-   */
+  /** Set chart-level semantics after all point marks have been registered. */
   private applyAccessibility(): void {
-    if (this.options.accessibility?.enabled === false) return;
     const root = this.renderer.root;
+    if (this.options.accessibility?.enabled === false) {
+      root.removeAttribute("role");
+      root.removeAttribute("aria-label");
+      root.removeAttribute("aria-roledescription");
+      return;
+    }
     const label =
       this.options.accessibility?.description ??
       this.options.title?.text ??
       `${this.options.chart?.type ?? "chart"} chart with ${this.series.length} series`;
-    root.setAttribute("role", "img");
+    // `figure` keeps data-mark descendants exposed. `img` would make the SVG
+    // an opaque accessibility node and hide every point label below it.
+    root.setAttribute("role", "figure");
+    root.setAttribute("aria-roledescription", "chart");
     root.setAttribute("aria-label", label);
+
+    const style = this.renderer.create("style", {}, root);
+    style.textContent = `.facet-a11y-point:focus{outline:none}.facet-a11y-point:focus-visible{filter:drop-shadow(0 0 2px ${this.theme.axis.labelColor}) drop-shadow(0 0 2px ${this.theme.axis.labelColor})}`;
   }
 
   /** Enter animation: bars grow from the baseline, lines draw in, the rest fade. */
@@ -2228,7 +2317,7 @@ export class FacetViz {
         { ...rect, fill: p.color ?? s.color, class: "facet-point" },
         g,
       );
-      this.bindTooltip(el, s, p);
+      this.bindPointInteraction(el, s, p);
       el.addEventListener("click", (e) =>
         this.handlePointEvent("click", s, p, e),
       );
@@ -2388,7 +2477,7 @@ export class FacetViz {
           },
           g,
         );
-        this.bindTooltip(el, s, point);
+        this.bindPointInteraction(el, s, point);
         el.addEventListener("click", (e) =>
           this.handlePointEvent("click", s, point, e),
         );
@@ -2446,7 +2535,7 @@ export class FacetViz {
           ),
         );
         if (p) {
-          this.bindTooltip(el, s, p);
+          this.bindPointInteraction(el, s, p);
           el.addEventListener("click", (e) =>
             this.handlePointEvent("click", s, p, e),
           );
@@ -2896,13 +2985,14 @@ export class FacetViz {
       groupCount: group.count,
       groupIndex: group.index.get(s.index) ?? 0,
       onPointEvent: (kind, p, dom) => this.handlePointEvent(kind, s, p, dom),
-      registerHover: (el, p) => this.bindTooltip(el, s, p),
+      registerHover: (el, p) => this.bindPointInteraction(el, s, p),
     };
   }
 
-  private bindTooltip(el: SVGElement, s: BaseSeries, p: Point): void {
+  private bindPointInteraction(el: SVGElement, s: BaseSeries, p: Point): void {
     // Hover scale/highlight animation — independent of the tooltip.
     this.applyHover(el, s);
+    this.bindPointAccessibility(el, s, p);
 
     if (!this.tooltip) return;
     const total = s.points.reduce((sum, pt) => sum + (pt.y ?? 0), 0);
@@ -2936,6 +3026,118 @@ export class FacetViz {
       this.tooltip!.hide();
       this.hideCrosshair();
     });
+    if (
+      this.options.accessibility?.enabled !== false &&
+      this.options.accessibility?.keyboardNavigation !== false
+    ) {
+      el.addEventListener("focus", () => {
+        this.tooltip!.show(build(), s.options.tooltip);
+        const rect = el.getBoundingClientRect();
+        this.tooltip!.move(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        this.showCrosshair(p);
+      });
+      el.addEventListener("blur", () => {
+        this.tooltip!.hide();
+        this.hideCrosshair();
+      });
+    }
+  }
+
+  /** Add point semantics plus one-tab-stop, arrow-key navigation. */
+  private bindPointAccessibility(
+    el: SVGElement,
+    s: BaseSeries,
+    p: Point,
+  ): void {
+    const accessibility = this.options.accessibility;
+    if (accessibility?.enabled === false) return;
+
+    // Some renderers expose more than one hover target for one logical point
+    // (for example both ends of a dumbbell). Keep those pointer targets, but
+    // expose only one screen-reader/focus stop for the datum.
+    if (
+      this.accessiblePoints.some(
+        (entry) => entry.series === s && entry.point === p,
+      )
+    ) {
+      el.setAttribute("aria-hidden", "true");
+      return;
+    }
+
+    this.accessiblePoints.push({ el, series: s, point: p });
+    el.classList.add("facet-a11y-point");
+    el.setAttribute("role", "img");
+    el.setAttribute("aria-roledescription", "data point");
+    el.setAttribute("aria-label", this.pointAccessibilityLabel(s, p));
+
+    if (accessibility?.keyboardNavigation === false) return;
+    el.setAttribute("tabindex", this.accessiblePoints.length === 1 ? "0" : "-1");
+    el.setAttribute(
+      "aria-keyshortcuts",
+      "ArrowLeft ArrowRight ArrowUp ArrowDown Home End Enter Space",
+    );
+
+    const activate = () => {
+      for (const entry of this.accessiblePoints)
+        entry.el.setAttribute("tabindex", entry.el === el ? "0" : "-1");
+    };
+    el.addEventListener("focus", activate);
+    el.addEventListener("pointerdown", activate);
+    el.addEventListener("keydown", (event: KeyboardEvent) => {
+      const points = this.accessiblePoints.filter((entry) => entry.el.isConnected);
+      const current = points.findIndex((entry) => entry.el === el);
+      if (current < 0) return;
+      let target = current;
+      if (event.key === "ArrowRight" || event.key === "ArrowDown")
+        target = (current + 1) % points.length;
+      else if (event.key === "ArrowLeft" || event.key === "ArrowUp")
+        target = (current - 1 + points.length) % points.length;
+      else if (event.key === "Home") target = 0;
+      else if (event.key === "End") target = points.length - 1;
+      else if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        this.handlePointEvent("click", s, p, event);
+        return;
+      } else return;
+
+      event.preventDefault();
+      for (const entry of points) entry.el.setAttribute("tabindex", "-1");
+      points[target].el.setAttribute("tabindex", "0");
+      points[target].el.focus();
+    });
+  }
+
+  /** Human-readable fallback for standard and specialised point shapes. */
+  private pointAccessibilityLabel(s: BaseSeries, p: Point): string {
+    const context = {
+      seriesName: s.name,
+      seriesIndex: s.index,
+      pointIndex: p.index,
+      x: p.x,
+      y: p.y,
+      low: p.low,
+      high: p.high,
+      point: p.options,
+    };
+    const custom =
+      this.options.accessibility?.pointDescriptionFormatter?.(context);
+    if (custom) return custom;
+
+    const o = p.options;
+    const prefix = `${s.name}, ${p.name ?? p.x}`;
+    if (p.box)
+      return `${prefix}: minimum ${p.box.min}, lower quartile ${p.box.q1}, median ${p.box.median}, upper quartile ${p.box.q3}, maximum ${p.box.max}`;
+    if (p.low !== undefined || p.high !== undefined)
+      return `${prefix}: low ${p.low ?? "unknown"}, high ${p.high ?? "unknown"}`;
+    if (o.from !== undefined || o.to !== undefined)
+      return `${s.name}: ${String(o.from ?? "unknown")} to ${String(o.to ?? "unknown")}, weight ${String(o.weight ?? p.y ?? "unknown")}`;
+    if (o.open !== undefined || o.close !== undefined)
+      return `${prefix}: open ${String(o.open ?? "unknown")}, high ${String(o.high ?? "unknown")}, low ${String(o.low ?? "unknown")}, close ${String(o.close ?? "unknown")}`;
+    if (o.start !== undefined || o.end !== undefined)
+      return `${prefix}: start ${String(o.start ?? "unknown")}, end ${String(o.end ?? "unknown")}`;
+    if (o.value !== undefined) return `${prefix}: ${String(o.value)}`;
+    if (p.y !== undefined) return `${prefix}: ${p.y}`;
+    return prefix;
   }
 
   /** Draw a guide line at the hovered point when `xAxis.crosshair` is on. */
@@ -3207,17 +3409,60 @@ export class FacetViz {
   }
 
   /**
+   * Coalesce synchronous mutations into one validation, rebuild, and render.
+   * Nested batches are supported. If the callback throws,
+   * every mutation made within that batch level is rolled back.
+   */
+  batchUpdate(callback: (chart: FacetViz) => void): void {
+    if (this.destroyed) return;
+    const checkpoint: BatchCheckpoint = {
+      userOptions: this.userOptions,
+      dirty: this.batchDirty,
+      preserveSeriesState: this.batchPreserveSeriesState,
+      preserveAxisRange: this.batchPreserveAxisRange,
+      needsReflow: this.batchNeedsReflow,
+      animate: this.batchAnimate,
+    };
+    this.batchCheckpoints.push(checkpoint);
+    this.batchDepth += 1;
+    let active = true;
+    try {
+      const result = (callback as (chart: FacetViz) => unknown)(this);
+      if (result && typeof (result as { then?: unknown }).then === "function")
+        throw new TypeError("FacetViz.batchUpdate() callback must be synchronous.");
+      this.batchDepth -= 1;
+      this.batchCheckpoints.pop();
+      active = false;
+      if (this.batchDepth === 0) this.flushBatch();
+    } catch (error) {
+      if (active) {
+        this.batchDepth -= 1;
+        this.batchCheckpoints.pop();
+      }
+      this.userOptions = checkpoint.userOptions;
+      this.batchDirty = checkpoint.dirty;
+      this.batchPreserveSeriesState = checkpoint.preserveSeriesState;
+      this.batchPreserveAxisRange = checkpoint.preserveAxisRange;
+      this.batchNeedsReflow = checkpoint.needsReflow;
+      this.batchAnimate = checkpoint.animate;
+      throw error;
+    }
+  }
+
+  /**
    * Merge new options and re-render (rebuilds series when `series` is
    * given). `theme` is re-resolved too — previously it was only read once,
    * in the constructor, so `update({ theme })` silently had no effect.
    */
   update(options: Partial<ChartOptions>): void {
     if (this.destroyed) return;
-    this.userOptions = merge(this.userOptions, options as ChartOptions);
-    this.resolveUpdatedOptions(options.series === undefined);
-    this.setupReflow();
-    this.animateNext = true;
-    this.render();
+    const nextOptions = merge(this.userOptions, options as ChartOptions);
+    this.commitOptions(nextOptions, {
+      preserveSeriesState: options.series === undefined,
+      preserveAxisRange: options.xAxis === undefined && options.yAxis === undefined,
+      setupReflow: true,
+      animate: true,
+    });
   }
 
   /** Replace one series' data in place and re-render (incremental update). */
@@ -3225,31 +3470,72 @@ export class FacetViz {
     if (this.destroyed) return;
     const opts = this.userOptions.series[seriesIndex];
     if (!opts) return;
-    opts.data = data;
-    this.resolveUpdatedOptions(true);
-    this.animateNext = true;
-    this.render();
+    const nextOptions = {
+      ...this.userOptions,
+      series: this.userOptions.series.map((series, index) =>
+        index === seriesIndex ? { ...series, data } : series,
+      ),
+    };
+    this.commitOptions(nextOptions, {
+      preserveSeriesState: true,
+      preserveAxisRange: true,
+      setupReflow: false,
+      animate: true,
+    });
   }
 
   /** Append a point to a series and re-render. */
   addPoint(seriesIndex: number, point: SeriesOptions["data"][number]): void {
-    if (this.destroyed) return;
+    this.appendData(seriesIndex, [point]);
+  }
+
+  /**
+   * Append multiple raw source points, optionally retaining only a bounded
+   * rolling window. Use batchUpdate() to append to several series atomically.
+   */
+  appendData(
+    seriesIndex: number,
+    points: readonly SeriesOptions["data"][number][],
+    options: AppendDataOptions = {},
+  ): void {
+    if (this.destroyed || points.length === 0) return;
     const opts = this.userOptions.series[seriesIndex];
     if (!opts) return;
-    opts.data = [...opts.data, point];
-    this.resolveUpdatedOptions(true);
-    this.animateNext = true;
-    this.render();
+    const maxPoints = options.maxPoints;
+    if (
+      maxPoints !== undefined &&
+      (!Number.isSafeInteger(maxPoints) || maxPoints <= 0)
+    )
+      throw new RangeError("FacetViz.appendData(): maxPoints must be a positive integer.");
+    let data = [...opts.data, ...points];
+    if (maxPoints !== undefined && data.length > maxPoints)
+      data = data.slice(data.length - maxPoints);
+    const nextOptions = {
+      ...this.userOptions,
+      series: this.userOptions.series.map((series, index) =>
+        index === seriesIndex ? { ...series, data } : series,
+      ),
+    };
+    this.commitOptions(nextOptions, {
+      preserveSeriesState: true,
+      preserveAxisRange: true,
+      setupReflow: false,
+      animate: true,
+    });
   }
 
   setSize(width: number, height: number): void {
     if (this.destroyed) return;
-    this.userOptions.chart = { ...(this.userOptions.chart ?? {}), width, height };
-    this.options.chart = { ...(this.options.chart ?? {}), width, height };
-    this.width = width;
-    this.height = height;
-    this.setupReflow();
-    this.render();
+    const nextOptions = {
+      ...this.userOptions,
+      chart: { ...(this.userOptions.chart ?? {}), width, height },
+    };
+    this.commitOptions(nextOptions, {
+      preserveSeriesState: true,
+      preserveAxisRange: true,
+      setupReflow: true,
+      animate: false,
+    });
   }
 
   /**
@@ -3326,6 +3612,27 @@ interface PanelSpec {
 interface GroupInfo {
   count: number;
   index: Map<number, number>;
+}
+
+interface AxisRange {
+  min?: number;
+  max?: number;
+}
+
+interface CommitBehavior {
+  preserveSeriesState: boolean;
+  preserveAxisRange: boolean;
+  setupReflow: boolean;
+  animate: boolean;
+}
+
+interface BatchCheckpoint {
+  userOptions: ChartOptions;
+  dirty: boolean;
+  preserveSeriesState: boolean;
+  preserveAxisRange: boolean;
+  needsReflow: boolean;
+  animate: boolean;
 }
 
 /** A boosted point's pixel position, for nearest-point hover lookup. */

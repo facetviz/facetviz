@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FacetViz performance fixture</title>
+    <style>
+      html, body { margin: 0; background: #f5f7fa; font-family: Arial, sans-serif; }
+      body { padding: 20px; }
+      #chart { width: 960px; height: 520px; background: #fff; }
+      #metrics { display: block; width: 960px; margin-top: 12px; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div id="chart"></div>
+      <output id="metrics" aria-live="polite">running</output>
+    </main>
+    <script type="module" src="./performance-fixtures.ts"></script>
+  </body>
+</html>

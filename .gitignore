@@ -59,6 +59,10 @@ pnpm-debug.log*
 coverage/
 .nyc_output/
 *.lcov
+test-results/
+playwright-report/
+playwright-performance-report/
+blob-report/
 
 # Environment Variables & Secrets
 .env

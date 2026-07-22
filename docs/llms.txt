@@ -24,6 +24,9 @@ When asked to create a chart:
    milliseconds or treating categories as ordered.
 7. For application code, create one chart instance and update it. Do not mount a
    new instance into the same container on every data/theme change.
+8. When configuration comes from generated JSON or another untrusted source,
+   call `validateChartOptions(candidate)` and repair every error before render.
+   Use `validation:{mode:'error'}` when later runtime updates must be guarded too.
 
 ```ts
 import { FacetViz } from 'facetviz';
@@ -32,6 +35,22 @@ const chart = new FacetViz(container, options);
 // container: HTMLElement or CSS selector string
 // options.series is required
 ```
+
+The default `facetviz` entrypoint includes every renderer. When bundle size is
+important, use `facetviz/core` and import each required family before validation
+or construction:
+
+```ts
+import { FacetViz, validateChartOptions } from 'facetviz/core';
+import 'facetviz/series/line';   // line, spline, step
+import 'facetviz/series/pie';    // pie, donut
+```
+
+Other family paths mirror renderer module names; `column` also registers bar
+and butterfly, `range` registers both area-range aliases, and `scatter`
+registers jitter. Use `facetviz/series/all` when dynamic configurations may use
+arbitrary chart types. If validation reports `chart.type.unknown` with the core
+entrypoint, import the matching family before changing the chart configuration.
 
 ## Choose the chart type
 
@@ -123,7 +142,20 @@ interface ChartOptions {
   trellis?: { columns?: string; rows?: string; gap?: number;
               sharedX?: boolean; sharedY?: boolean; table?: boolean };
   drilldown?: { series: Array<SeriesOptions & { id: string }> };
-  accessibility?: { enabled?: boolean; description?: string };
+  accessibility?: {
+    enabled?: boolean;
+    description?: string;
+    keyboardNavigation?: boolean;             // default true
+    pointDescriptionFormatter?: (ctx: {
+      seriesName: string; seriesIndex: number; pointIndex: number;
+      x: number|string; y?: number; low?: number; high?: number; point: PointOptions;
+    }) => string;
+  };
+  validation?: boolean | {
+    mode?: 'warn'|'error'|'silent';
+    onIssue?: (issue: { code: string; severity: 'error'|'warning';
+                        path: string; message: string; suggestion?: string }) => void;
+  };
   seriesEvents?: { click?; mouseOver?; mouseOut?; legendItemClick? };
 }
 ```
@@ -361,6 +393,11 @@ Type-specific series options:
   alone for meaning; names, labels, or position must carry the distinction.
 - Use `high-contrast` and an accessibility description when accessibility is a
   priority.
+- SVG points are keyboard navigable by default: Tab enters once; Arrow keys move
+  between points; Home/End jump; Enter/Space activate. Preserve this behavior
+  unless the surrounding application supplies an equivalent interaction model.
+- Use `accessibility.pointDescriptionFormatter` when domain context or units are
+  not clear from the generated series/category/value label.
 
 ### Labels, legend, and tooltip
 
@@ -496,6 +533,11 @@ donut, sunburst, gauge, and other non-cartesian types, use
 chart.update(partialOptions);            // deep-merge, re-resolve, render
 chart.setData(seriesIndex, data);         // preserve runtime visibility
 chart.addPoint(seriesIndex, point);
+chart.appendData(seriesIndex, points, { maxPoints: 2_000 });
+chart.batchUpdate((batch) => {            // synchronous; one final render
+  batch.appendData(0, pointsA, { maxPoints: 2_000 });
+  batch.appendData(1, pointsB, { maxPoints: 2_000 });
+});
 chart.setSize(width, height);
 chart.reflow();
 chart.drillUp();
@@ -508,6 +550,14 @@ chart.legendItems;
 chart.hasLegend;
 chart.destroy();
 ```
+
+For live or streaming charts, prefer `appendData()` over repeatedly copying the
+entire data array into `setData()`. Set `maxPoints` to an explicit positive
+integer so long-lived dashboards have bounded memory; it limits raw source rows
+before rendering. Wrap related series/options changes in `batchUpdate()` so
+validation, rebuilding, and rendering occur once. The callback
+must be synchronous. Batches can nest, and thrown callbacks roll back their
+level. Streaming preserves series visibility and active single-axis zoom.
 
 For palette/theme changes, use `chart.update({theme})` or
 `chart.update({colors:[...]})`; existing cartesian and point-based series are
@@ -535,8 +585,18 @@ Before returning generated chart code, verify:
 - Long category labels use `bar`, rotation, thinning, or fewer categories.
 - Colors have adequate contrast against `chart.backgroundColor`.
 - The accessibility description explains the key measure and grouping.
+- Custom point descriptions include domain meaning and units when the defaults
+  are insufficient.
+- `validateChartOptions()` returns no errors. Treat its stable `path` as the
+  field to repair and its `code` as the machine-readable failure category;
+  warnings should be reviewed but do not make the configuration invalid.
 - Application code updates or destroys an existing chart rather than stacking
   multiple SVG roots in one container.
+- Library changes that touch rendering, layout, point normalization, or boost
+  preserve the automated budgets: 1,200 SVG points, 100k boosted points, and a
+  100k live update must each complete under one second in the browser suite;
+  boosted cases must remain below 200 DOM nodes. The bundled library must stay
+  below 280 kB raw and 70 kB gzip.
 
 ## Common mistakes to avoid
 

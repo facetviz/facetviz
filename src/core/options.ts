@@ -490,11 +490,61 @@ export interface BoostOptions {
   threshold?: number;
 }
 
-/** Accessibility hints applied to the root SVG. */
+/** Controls bounded streaming appends. The limit applies to raw source data. */
+export interface AppendDataOptions {
+  /** Retain only the newest N source points after appending. */
+  maxPoints?: number;
+}
+
+export interface AccessibilityPointContext {
+  seriesName: string;
+  seriesIndex: number;
+  pointIndex: number;
+  x: number | string;
+  y?: number;
+  low?: number;
+  high?: number;
+  point: PointOptions;
+}
+
+/** Accessibility hints applied to the chart and its rendered data points. */
 export interface AccessibilityOptions {
   enabled?: boolean;
   /** Overrides the auto description (defaults to the chart title). */
   description?: string;
+  /**
+   * Enable roving keyboard navigation across rendered SVG data points.
+   * Arrow keys move between points; Home/End jump to the first/last point;
+   * Enter/Space activate the same click path as a pointer. Default `true`.
+   */
+  keyboardNavigation?: boolean;
+  /** Override the screen-reader label generated for each rendered point. */
+  pointDescriptionFormatter?: (ctx: AccessibilityPointContext) => string;
+}
+
+export type ChartValidationSeverity = "error" | "warning";
+
+export interface ChartValidationIssue {
+  /** Stable machine-readable identifier, e.g. `series.data.required`. */
+  code: string;
+  severity: ChartValidationSeverity;
+  /** Dot/bracket path into the supplied configuration. */
+  path: string;
+  message: string;
+  suggestion?: string;
+}
+
+export interface ChartValidationResult {
+  valid: boolean;
+  errors: ChartValidationIssue[];
+  warnings: ChartValidationIssue[];
+  issues: ChartValidationIssue[];
+}
+
+export interface ChartValidationOptions {
+  /** `warn` logs issues, `error` throws on errors, `silent` only calls `onIssue`. */
+  mode?: "warn" | "error" | "silent";
+  onIssue?: (issue: ChartValidationIssue) => void;
 }
 
 /** A drill-down series shown when a point with a matching `drilldown` id is clicked. */
@@ -553,6 +603,8 @@ export interface ChartOptions {
   drilldown?: DrilldownOptions;
   /** Accessibility hints for the root SVG. */
   accessibility?: AccessibilityOptions;
+  /** Opt-in runtime configuration diagnostics. `true` is shorthand for warn mode. */
+  validation?: boolean | ChartValidationOptions;
   /**
    * Visual theme. A built-in name (`'light'` | `'dark'` | `'high-contrast'` |
    * `'pastel'`), or a custom object (optionally extending a built-in via `base`).
