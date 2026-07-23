@@ -327,8 +327,25 @@ export function sanitizeStyle(
   style?: Record<string, string>,
 ): Record<string, string> {
   if (!style) return {};
-  const fontSize = style['font-size'];
-  if (fontSize === undefined) return style;
+  const normalized = { ...style };
+  const aliases: Record<string, string> = {
+    fontSize: 'font-size',
+    fontWeight: 'font-weight',
+    fontFamily: 'font-family',
+    fontStyle: 'font-style',
+    letterSpacing: 'letter-spacing',
+    textDecoration: 'text-decoration',
+    color: 'fill',
+  };
+  for (const [cssName, svgName] of Object.entries(aliases)) {
+    if (normalized[cssName] !== undefined && normalized[svgName] === undefined)
+      normalized[svgName] = normalized[cssName];
+    delete normalized[cssName];
+  }
+  const fontSize = normalized['font-size'];
+  if (fontSize === undefined) return normalized;
   const clamped = clampFontSize(fontSize);
-  return clamped === fontSize ? style : { ...style, 'font-size': clamped };
+  return clamped === fontSize
+    ? normalized
+    : { ...normalized, 'font-size': clamped };
 }

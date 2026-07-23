@@ -45,16 +45,24 @@ export class SlopeSeries extends BaseSeries {
       g,
     );
 
-    const radius = this.options.marker?.radius ?? 4.5;
+    const marker = this.options.marker ?? {};
+    const radius = marker.radius ?? 4.5;
     data.forEach(({ pt, p }, i) => {
       const color = p.color ?? this.color;
-      const el = drawMarker(renderer, g, pt.x, pt.y, {
-        symbol: this.options.marker?.symbol ?? 'circle',
-        radius,
-        fill: color,
-        stroke: '#fff',
-        strokeWidth: 1.5,
-      });
+      const el = marker.enabled === false
+        ? renderer.create('circle', {
+            cx: pt.x, cy: pt.y, r: Math.max(8, radius), fill: 'transparent',
+            'pointer-events': 'all', class: 'facet-point-hit',
+          }, g)
+        : drawMarker(renderer, g, pt.x, pt.y, {
+            symbol: marker.symbol ?? 'circle',
+            radius,
+            fill: marker.fillColor ?? color,
+            stroke: marker.lineColor ?? '#fff',
+            strokeWidth: marker.lineWidth ?? 1.5,
+            width: marker.width,
+            height: marker.height,
+          });
       ctx.registerHover(el, p);
       el.addEventListener('click', (e: Event) => ctx.onPointEvent('click', p, e));
       el.addEventListener('mouseover', (e: Event) =>

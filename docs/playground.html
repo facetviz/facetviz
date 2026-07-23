@@ -1072,6 +1072,24 @@
             { name: "Product C", data: [15, 25, 45] },
           ],
         },
+        "Dashboard starter": {
+          chart: { type: "column", height: 440 },
+          title: { text: "Performance overview" },
+          subtitle: { text: "Monthly revenue by region and product" },
+          xAxis: { title: { text: "Month" } },
+          yAxis: {
+            title: { text: "Revenue" },
+            labels: { format: "${value:,.0f}k" },
+          },
+          tooltip: { shared: true, format: "<b>{x}</b><br/>{name}: ${y:,.0f}k" },
+          trellis: { columns: "cat", rows: "region" },
+          series: [
+            {
+              name: "Revenue",
+              data: trellisData(() => Math.round(40 + Math.random() * 60)),
+            },
+          ],
+        },
         "Trellis table": {
           chart: { type: "column", height: 380 },
           title: { text: "Sales small multiples" },
@@ -1344,7 +1362,14 @@
           return false;
         }
       }
-      if (!loadHandoff()) loadPreset(Object.keys(PRESETS)[0]);
+      function loadRequestedPreset() {
+        const requested = new URLSearchParams(location.search).get("preset");
+        if (!requested || !Object.hasOwn(PRESETS, requested)) return false;
+        presetSel.value = requested;
+        loadPreset(requested);
+        return true;
+      }
+      if (!loadHandoff() && !loadRequestedPreset()) loadPreset(Object.keys(PRESETS)[0]);
     </script>
   </body>
 </html>

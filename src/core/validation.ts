@@ -192,6 +192,7 @@ export function validateChartOptions(options: unknown): ChartValidationResult {
       typeof yAxisIndex === "number" &&
       Number.isInteger(yAxisIndex) &&
       yAxisIndex >= 0 &&
+      yAxisIndex <= 1 &&
       yAxisIndex < yAxes.length;
     if (!validYAxisIndex)
       add("series.y_axis.index", "error", `${base}.yAxis`, `yAxis index must reference one of ${yAxes.length} configured axes.`);
@@ -204,6 +205,7 @@ export function validateChartOptions(options: unknown): ChartValidationResult {
       typeof xAxisIndex === "number" &&
       Number.isInteger(xAxisIndex) &&
       xAxisIndex >= 0 &&
+      xAxisIndex <= 1 &&
       xAxisIndex < xAxes.length;
     if (!validXAxisIndex)
       add("series.x_axis.index", "error", `${base}.xAxis`, `xAxis index must reference one of ${xAxes.length} configured axes.`);
@@ -265,6 +267,14 @@ type AddIssue = (
 
 function validateAxes(value: unknown, path: string, add: AddIssue): UnknownRecord[] {
   const axes = Array.isArray(value) ? value : [value ?? {}];
+  if (axes.length > 2)
+    add(
+      "axis.count.maximum",
+      "error",
+      path,
+      "FacetViz supports at most two axes per direction.",
+      "Keep a primary axis at index 0 and an optional secondary axis at index 1.",
+    );
   return axes.map((axis, index) => {
     const axisPath = Array.isArray(value) ? `${path}[${index}]` : path;
     if (!isRecord(axis)) {

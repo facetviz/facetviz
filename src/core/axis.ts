@@ -133,8 +133,16 @@ export class Axis {
         : { x: plot.x, y: Math.min(p0, p1), width: plot.width, height: Math.abs(p1 - p0) };
       renderer.create('rect', { ...rect, fill: band.color ?? 'rgba(70,130,180,0.12)', stroke: 'none', class: 'facet-plotband' }, g);
       if (band.label?.text) {
-        renderer.text(band.label.text, rect.x + 4, rect.y + 12, {
-          ...FONTS.axisLabel, fill: band.label.color ?? '#666', 'text-anchor': 'start',
+        const align = band.label.align ?? 'left';
+        const x = align === 'center'
+          ? rect.x + rect.width / 2
+          : align === 'right'
+            ? rect.x + rect.width - 4
+            : rect.x + 4;
+        renderer.text(band.label.text, x, rect.y + 12, {
+          ...FONTS.axisLabel,
+          fill: band.label.color ?? '#666',
+          'text-anchor': align === 'center' ? 'middle' : align === 'right' ? 'end' : 'start',
         }, g);
       }
     }
@@ -271,11 +279,12 @@ export class Axis {
 
   private drawLabel(g: SVGGElement, pos: number, text: string, options: AxisOptions): void {
     const { renderer, plot, position } = this.cfg;
-    const style: Record<string, string> = { ...FONTS.axisLabel, ...sanitizeStyle(options.labels?.style) };
+    const customStyle = sanitizeStyle(options.labels?.style);
+    const style: Record<string, string> = { ...FONTS.axisLabel, ...customStyle };
     // Shrink the label font slightly on a small/cramped plot (a dashboard
     // card, a resizable panel) instead of using the same size as a
     // full-width chart — skipped when the caller set an explicit font-size.
-    if (!options.labels?.style?.['font-size']) {
+    if (!customStyle['font-size']) {
       const shortSide = Math.min(plot.width, plot.height);
       if (shortSide < 120) style['font-size'] = '9px';
       else if (shortSide < 220) style['font-size'] = '10px';
@@ -323,7 +332,10 @@ export class Axis {
 
   private drawTitle(g: SVGGElement, text: string): void {
     const { renderer, plot, position } = this.cfg;
-    const style = FONTS.axisTitle;
+    const style = {
+      ...FONTS.axisTitle,
+      ...sanitizeStyle(this.cfg.options.title?.style),
+    };
     // Place the title just beyond the tick labels so the two never overlap,
     // regardless of how wide/tall the labels are.
     const labelsEnabled = this.cfg.options.labels?.enabled !== false;
@@ -351,7 +363,8 @@ export class Axis {
    */
   labelExtent(): number {
     const { scale, options } = this.cfg;
-    const fontPx = parseFloat(options.labels?.style?.['font-size'] ?? FONTS.axisLabel['font-size'] ?? '11') || 11;
+    const labelStyle = sanitizeStyle(options.labels?.style);
+    const fontPx = parseFloat(labelStyle['font-size'] ?? FONTS.axisLabel['font-size'] ?? '11') || 11;
     const charW = fontPx * 0.6;
     let maxW = 0;
     for (const t of scale.ticks()) {

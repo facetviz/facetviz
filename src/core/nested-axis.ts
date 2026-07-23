@@ -14,8 +14,10 @@
 import type { Renderer, Attrs } from "./renderer.js";
 import type { CategoryScale } from "./scale.js";
 import type { Rect } from "./axis.js";
+import type { AxisOptions } from "./options.js";
 import { FONTS, LAYOUT } from "./defaults.js";
 import { THEME } from "./theme.js";
+import { formatString, sanitizeStyle } from "./utils.js";
 
 export interface NestedAxisConfig {
   renderer: Renderer;
@@ -32,7 +34,8 @@ export interface NestedAxisConfig {
    * responsive shrink handling) hides every tier's label text; the axis
    * baseline and group dividers still draw unless `lineWidth: 0` too.
    */
-  labels?: { rotation?: number; enabled?: boolean };
+  labels?: AxisOptions["labels"];
+  title?: AxisOptions["title"];
   /** `0` hides the baseline and group-divider lines (gridlines are separate, see `gridLineWidth`). */
   lineWidth?: number;
   /**
@@ -121,7 +124,16 @@ export class NestedAxis {
     g: SVGGElement,
   ): SVGTextElement | undefined {
     if (!this.labelsOn) return undefined;
-    return this.cfg.renderer.text(text, x, y, attrs, g);
+    const labels = this.cfg.labels;
+    const formatted = labels?.formatter
+      ? labels.formatter(text)
+      : labels?.format
+        ? formatString(labels.format, { value: text })
+        : text;
+    return this.cfg.renderer.text(String(formatted), x, y, {
+      ...attrs,
+      ...sanitizeStyle(labels?.style),
+    }, g);
   }
 
   /** No-ops when the axis's own lines (baseline, dividers) are switched off. */
@@ -144,6 +156,45 @@ export class NestedAxis {
     } else {
       this.renderStacked(g, this.cfg.position === "top");
     }
+    this.drawTitle(g);
+  }
+
+  private drawTitle(g: SVGGElement): void {
+    const title = this.cfg.title;
+    if (!title?.text) return;
+    const { plot, leaves, vertical, position } = this.cfg;
+    const levels = leaves[0]?.length ?? 0;
+    const style = {
+      ...FONTS.axisTitle,
+      ...sanitizeStyle(title.style),
+      "text-anchor": "middle",
+    };
+    if (vertical) {
+      const widths = nestedLevelWidths(leaves);
+      const sideRight = position === "top";
+      const extent = position === "split"
+        ? widths[widths.length - 1] ?? 0
+        : widths.reduce((sum, width) => sum + width, 0);
+      const x = sideRight
+        ? plot.x + plot.width + LAYOUT.tickLength + extent + 16
+        : plot.x - LAYOUT.tickLength - extent - 16;
+      const y = plot.y + plot.height / 2;
+      const rotation = sideRight ? 90 : -90;
+      this.cfg.renderer.text(title.text, x, y, {
+        ...style,
+        transform: `rotate(${rotation} ${x} ${y})`,
+      }, g);
+      return;
+    }
+    const rotation = this.cfg.labels?.rotation ?? 0;
+    const rotExtra = nestedInnerRotationExtent(leaves, rotation);
+    const top = position === "top";
+    const tierCount = position === "split" ? 1 : levels;
+    const x = plot.x + plot.width / 2;
+    const y = top
+      ? plot.y - LAYOUT.tickLength - tierCount * 18 - rotExtra - 12
+      : plot.y + plot.height + LAYOUT.tickLength + tierCount * 18 + rotExtra + 14;
+    this.cfg.renderer.text(title.text, x, y, style, g);
   }
 
   /** A gridline through the plot at each leaf position, opt-in via `gridLineWidth`. */

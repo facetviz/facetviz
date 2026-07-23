@@ -80,6 +80,86 @@ describe('FacetViz rendering', () => {
     expect(path?.getAttribute('d')?.match(/\bA\b/g)).toHaveLength(4);
   });
 
+  it('shows the hovered donut slice value in the hollow centre', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { type: 'donut', animation: false },
+      series: [{
+        name: 'S',
+        tooltip: { valuePrefix: '$', valueSuffix: 'm', valueDecimals: 1 },
+        data: [{ name: 'A', y: 3 }, { name: 'B', y: 5 }],
+      }],
+    });
+
+    const slices = el.querySelectorAll<SVGPathElement>('.facet-pie .facet-point');
+    const center = el.querySelector<SVGTextElement>('.facet-donut-center-value');
+    expect(center?.textContent).toBe('');
+
+    slices[1].dispatchEvent(new MouseEvent('mouseenter'));
+    expect(center?.textContent).toBe('$5.0m');
+
+    slices[1].dispatchEvent(new MouseEvent('mouseleave'));
+    expect(center?.textContent).toBe('');
+
+    slices[0].dispatchEvent(new FocusEvent('focus'));
+    expect(center?.textContent).toBe('$3.0m');
+
+    slices[0].dispatchEvent(new FocusEvent('blur'));
+    expect(center?.textContent).toBe('');
+  });
+
+  it('does not add a centre value readout to a pie without a hole', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { type: 'pie', animation: false },
+      series: [{ name: 'S', data: [{ name: 'A', y: 3 }] }],
+    });
+
+    expect(el.querySelector('.facet-donut-center-value')).toBeNull();
+  });
+
+  it('configures the donut centre label formatting and style', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { type: 'donut', animation: false },
+      series: [{
+        name: 'Revenue',
+        centerLabel: {
+          format: '{name}: {y:,.1f}',
+          color: '#123456',
+          fontSize: '18px',
+          fontWeight: '700',
+          fontFamily: 'serif',
+        },
+        data: [{ name: 'Direct', y: 1234.5 }],
+      }],
+    });
+
+    const slice = el.querySelector<SVGPathElement>('.facet-pie .facet-point')!;
+    const center = el.querySelector<SVGTextElement>('.facet-donut-center-value')!;
+    expect(center.getAttribute('fill')).toBe('#123456');
+    expect(center.getAttribute('font-size')).toBe('18px');
+    expect(center.getAttribute('font-weight')).toBe('700');
+    expect(center.getAttribute('font-family')).toBe('serif');
+
+    slice.dispatchEvent(new MouseEvent('mouseenter'));
+    expect(center.textContent).toBe('Direct: 1,234.5');
+  });
+
+  it('can disable the donut centre label', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { type: 'donut', animation: false },
+      series: [{
+        name: 'S',
+        centerLabel: { enabled: false },
+        data: [{ name: 'A', y: 3 }],
+      }],
+    });
+
+    expect(el.querySelector('.facet-donut-center-value')).toBeNull();
+  });
+
   it('renders a large (boost-triggering) scatter without throwing', () => {
     const el = container();
     const data = Array.from({ length: 3000 }, (_, i) => [i, Math.sin(i / 20)]);
@@ -120,5 +200,58 @@ describe('FacetViz rendering', () => {
     expect(chart.series[0].visible).toBe(true);
     expect(chart.series[1].visible).toBe(true);
     expect(chart.series[2].visible).toBe(false);
+  });
+
+  it('applies itemStyle attributes to legend text', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { type: 'column', animation: false },
+      legend: {
+        itemStyle: {
+          'font-size': '20px',
+          'font-weight': '700',
+          fill: '#123456',
+        },
+      },
+      series: [
+        { name: 'First', data: [3] },
+        { name: 'Second', data: [5] },
+      ],
+    });
+
+    const label = el.querySelector<SVGTextElement>('.facet-legend-item text');
+    expect(label?.getAttribute('font-size')).toBe('20px');
+    expect(label?.getAttribute('font-weight')).toBe('700');
+    expect(label?.getAttribute('fill')).toBe('#123456');
+  });
+
+  it('wraps and spaces legend items according to their font size', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { type: 'column', width: 320, height: 360, animation: false },
+      legend: { itemStyle: { 'font-size': '24px' } },
+      series: [
+        { name: 'Alpha label', data: [1] },
+        { name: 'Bravo label', data: [2] },
+        { name: 'Charlie label', data: [3] },
+      ],
+    });
+
+    const labels = [
+      ...el.querySelectorAll<SVGTextElement>('.facet-legend-item text'),
+    ];
+    const labelYs = labels.map((label) => Number(label.getAttribute('y')));
+    expect(new Set(labelYs).size).toBe(3);
+    expect(labelYs[1] - labelYs[0]).toBeGreaterThanOrEqual(24);
+    expect(labelYs[2] - labelYs[1]).toBeGreaterThanOrEqual(24);
+
+    const firstLegendY = labelYs[0];
+    const plotBottom = Math.max(
+      ...[...el.querySelectorAll<SVGRectElement>('.facet-column .facet-point')]
+        .map((point) =>
+          Number(point.getAttribute('y')) + Number(point.getAttribute('height')),
+        ),
+    );
+    expect(plotBottom).toBeLessThan(firstLegendY);
   });
 });

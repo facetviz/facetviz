@@ -75,7 +75,7 @@ a:hover { text-decoration: underline; }
 .side a { display: block; color: var(--muted); font-size: 13.5px; padding: 6px 10px; border-radius: 8px; margin: 1px 0; }
 .side a:hover { color: var(--text); background: color-mix(in srgb, var(--brand) 7%, transparent); text-decoration: none; }
 .side a.active { color: var(--brand-ink); background: var(--chip); font-weight: 600; }
-.content { padding: 34px 40px 120px; max-width: 1040px; }
+.content { padding: 34px 40px 120px; max-width: 1160px; width: 100%; min-width: 0; }
 
 /* ---- Typography ---- */
 h1 { font-size: 34px; letter-spacing: -.8px; margin: 0 0 8px; }
@@ -98,6 +98,58 @@ pre code { font-family: var(--mono); background: none; padding: 0; color: #e6edf
 .feature h4 { margin: 0 0 6px; font-size: 15px; }
 .feature p { margin: 0; font-size: 13px; color: var(--muted); }
 .btn-row { display: flex; gap: 12px; flex-wrap: wrap; margin: 22px 0 8px; }
+
+/* ---- Home overview ---- */
+.eyebrow {
+  display: block; color: var(--brand-ink); font-size: 11px; line-height: 1.2; font-weight: 800;
+  letter-spacing: .09em; text-transform: uppercase; margin-bottom: 8px;
+}
+.hero-heading { display: flex; justify-content: space-between; align-items: end; gap: 32px; margin: 10px 0 28px; }
+.hero-heading > div:first-child { max-width: 720px; }
+.hero-heading h1 { font-size: clamp(36px, 4.6vw, 56px); line-height: 1.05; letter-spacing: -2px; max-width: 700px; }
+.hero-heading .lead { max-width: 700px; margin: 16px 0 0; }
+.hero-actions { display: flex; flex-direction: column; align-items: stretch; gap: 9px; min-width: 150px; }
+.hero-actions .btn { justify-content: center; }
+
+.capability-list h2, .section-heading h2 {
+  border: 0; padding: 0; margin: 0; font-size: 22px; line-height: 1.25;
+}
+.snapshot { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; margin: 20px 0 36px; background: var(--border); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.snapshot > div { display: flex; align-items: baseline; gap: 7px; padding: 12px 14px; background: var(--panel-2); }
+.snapshot strong { color: var(--text); font-size: 17px; letter-spacing: -.4px; }
+.snapshot span { color: var(--muted); font-size: 11.5px; }
+
+.home-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(280px, .75fr); gap: 28px; align-items: stretch; margin: 0 0 42px; }
+.live-preview { overflow: hidden; min-width: 0; }
+.panel-heading { min-height: 47px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 16px; border-bottom: 1px solid var(--border); font-size: 12px; }
+.panel-heading > div { display: flex; align-items: center; gap: 8px; }
+.panel-heading a { font-weight: 700; }
+.live-dot { width: 7px; height: 7px; background: var(--ok); border-radius: 50%; box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 12%, transparent); }
+.live-preview #hero-chart { padding: 6px 10px 10px; min-height: 300px; }
+.capability-list { padding: 6px 0; }
+.capability-list h2 { margin-bottom: 12px; font-size: 25px; letter-spacing: -.5px; }
+.capability-list > a { display: flex; flex-direction: column; padding: 12px 2px; color: var(--text); border-top: 1px solid var(--border); }
+.capability-list > a:hover { text-decoration: none; color: var(--brand-ink); }
+.capability-list > a strong { font-size: 13px; }
+.capability-list > a span { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+
+.section-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin: 38px 0 16px; }
+.section-heading > a:not(.btn) { font-size: 13px; font-weight: 700; white-space: nowrap; }
+.section-heading.compact { margin-top: 48px; }
+.use-cases { grid-template-columns: repeat(4, 1fr); margin-top: 0; }
+.use-cases .feature { color: var(--text); min-width: 0; transition: transform .16s ease, border-color .16s ease; }
+.use-cases .feature:hover { transform: translateY(-2px); border-color: var(--brand); text-decoration: none; }
+.feature-kicker { display: inline-block; color: var(--brand-ink); background: var(--chip); border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 800; margin-bottom: 14px; }
+
+#data-model { scroll-margin-top: calc(var(--nav-h) + 12px); }
+#data-model > p { color: var(--muted); max-width: 800px; }
+.data-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 20px 0 8px; }
+.data-option { display: flex; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
+.data-option > div { min-width: 0; }
+.data-option > span { color: var(--brand-ink); font: 700 11px/1.5 var(--mono); }
+.data-option strong { font-size: 13px; }
+.data-option p { margin: 3px 0 10px; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+.data-option code { display: block; max-width: 100%; overflow-x: auto; white-space: nowrap; font-size: 10.5px; }
 
 /* ---- Examples page: a grid of compact cards, many visible at once ---- */
 .ex-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; align-items: start; margin: 0 0 36px; }
@@ -152,4 +204,23 @@ pre code { font-family: var(--mono); background: none; padding: 0; color: #e6edf
   .menu-btn { display: inline-flex; }
   .topnav a { padding: 7px 9px; }
   .ex-grid { grid-template-columns: 1fr; }
+  .hero-heading { align-items: start; }
+  .data-options { grid-template-columns: 1fr; }
+  .home-grid { grid-template-columns: 1fr; }
+  .use-cases { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .topbar { gap: 10px; padding: 0 12px; }
+  .topnav { display: none; }
+  .topbar > .btn.primary { padding: 8px 10px; }
+  .hero-heading { display: block; margin-top: 0; }
+  .hero-heading h1 { font-size: 38px; letter-spacing: -1.4px; }
+  .hero-actions { flex-direction: row; margin-top: 20px; }
+  .hero-actions .btn { flex: 1; }
+  .snapshot { grid-template-columns: repeat(2, 1fr); }
+  .snapshot > div { flex-direction: column; gap: 0; }
+  .use-cases { grid-template-columns: 1fr; }
+  .section-heading { align-items: start; }
+  .section-heading.compact { display: block; }
+  .section-heading.compact .btn { margin-top: 14px; }
 }

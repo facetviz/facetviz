@@ -57,7 +57,7 @@ export type { GanttPointOptions } from "./series/gantt.js";
 export type { CalendarPointOptions } from "./series/calendar.js";
 export type { GaugeSeriesOptions } from "./series/gauge.js";
 export type { HistogramSeriesOptions } from "./series/histogram.js";
-export type { PieSeriesOptions } from "./series/pie.js";
+export type { PieSeriesOptions, PieCenterLabelOptions } from "./series/pie.js";
 export type { BubbleSeriesOptions } from "./series/bubble.js";
 export type {
   ScatterSeriesOptions,

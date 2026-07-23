@@ -89,7 +89,9 @@ export class SparklineSeries extends BaseSeries {
     data: Array<{ pt: Pt; p: Point }>,
   ): void {
     const opts: SparklineOptions = this.options.sparkline ?? {};
-    const radius = this.options.marker?.radius ?? 2.5;
+    const marker = this.options.marker ?? {};
+    if (marker.enabled === false) return;
+    const radius = marker.radius ?? 2.5;
     const dot = (
       point: { pt: Pt; p: Point },
       spec: boolean | { color?: string } | undefined,
@@ -98,11 +100,13 @@ export class SparklineSeries extends BaseSeries {
       if (!spec) return;
       const color = (typeof spec === 'object' ? spec.color : undefined) ?? defaultColor;
       drawMarker(renderer, g, point.pt.x, point.pt.y, {
-        symbol: this.options.marker?.symbol ?? 'circle',
+        symbol: marker.symbol ?? 'circle',
         radius,
-        fill: color,
-        stroke: '#fff',
-        strokeWidth: 1,
+        fill: marker.fillColor ?? color,
+        stroke: marker.lineColor ?? '#fff',
+        strokeWidth: marker.lineWidth ?? 1,
+        width: marker.width,
+        height: marker.height,
       });
     };
 

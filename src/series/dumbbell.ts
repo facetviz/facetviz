@@ -69,7 +69,12 @@ export class DumbbellSeries extends BaseSeries {
     const radius = this.options.marker?.radius ?? 5;
     const rectWidth = this.options.marker?.width ?? 5;
     const rectHeight = this.options.marker?.height ?? 5;
-    const isRect = this.options.marker?.symbol === "rectangle";
+    const isRect =
+      this.options.marker?.enabled !== false &&
+      this.options.marker?.symbol === "rectangle";
+    const markerHalfAlongValue = isRect
+      ? (inverted ? rectWidth : rectHeight) / 2
+      : radius;
 
     for (const p of this.points) {
       if (p.low === undefined || p.high === undefined) continue;
@@ -88,16 +93,16 @@ export class DumbbellSeries extends BaseSeries {
       const conn = isRect
         ? inverted
           ? {
-              x1: vLow < vHigh ? vLow + radius : vLow - radius,
+              x1: vLow < vHigh ? vLow + markerHalfAlongValue : vLow - markerHalfAlongValue,
               y1: cat,
-              x2: vLow < vHigh ? vHigh - radius : vHigh + radius,
+              x2: vLow < vHigh ? vHigh - markerHalfAlongValue : vHigh + markerHalfAlongValue,
               y2: cat,
             }
           : {
               x1: cat,
-              y1: vLow < vHigh ? vLow + radius : vLow - radius,
+              y1: vLow < vHigh ? vLow + markerHalfAlongValue : vLow - markerHalfAlongValue,
               x2: cat,
-              y2: vLow < vHigh ? vHigh - radius : vHigh + radius,
+              y2: vLow < vHigh ? vHigh - markerHalfAlongValue : vHigh + markerHalfAlongValue,
             }
         : inverted
           ? { x1: vLow, y1: cat, x2: vHigh, y2: cat }
@@ -119,15 +124,21 @@ export class DumbbellSeries extends BaseSeries {
       ] as const) {
         const cx = inverted ? (v as number) : cat;
         const cy = inverted ? cat : (v as number);
-        const el = drawMarker(renderer, g, cx, cy, {
-          symbol: this.options.marker?.symbol ?? "circle",
-          radius,
-          fill: color as string,
-          stroke: "#fff",
-          strokeWidth: 1.5,
-          width: rectWidth,
-          height: rectHeight,
-        });
+        const marker = this.options.marker ?? {};
+        const el = marker.enabled === false
+          ? renderer.create("circle", {
+              cx, cy, r: Math.max(8, radius), fill: "transparent",
+              "pointer-events": "all", class: "facet-point-hit",
+            }, g)
+          : drawMarker(renderer, g, cx, cy, {
+              symbol: marker.symbol ?? "circle",
+              radius,
+              fill: marker.fillColor ?? color as string,
+              stroke: marker.lineColor ?? "#fff",
+              strokeWidth: marker.lineWidth ?? 1.5,
+              width: rectWidth,
+              height: rectHeight,
+            });
         ctx.registerHover(el, p);
         el.addEventListener("click", (e: Event) =>
           ctx.onPointEvent("click", p, e),

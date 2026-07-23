@@ -64,6 +64,8 @@ export class SunburstSeries extends BaseSeries {
         if (n.point) {
           ctx.registerHover(el, n.point);
           el.addEventListener('click', (e: Event) => ctx.onPointEvent('click', n.point!, e));
+          el.addEventListener('mouseover', (e: Event) => ctx.onPointEvent('mouseOver', n.point!, e));
+          el.addEventListener('mouseout', (e: Event) => ctx.onPointEvent('mouseOut', n.point!, e));
         }
         // Label if the slice is roomy.
         if (a1 - a0 > 0.18 && rOut - rIn > 14) {

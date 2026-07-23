@@ -29,6 +29,7 @@
       <div class="grouplbl">Guide</div>
       <nav>
         <a href="#overview">Overview</a>
+        <a href="#data-model">Data model</a>
         <a href="#install">Installation</a>
         <a href="#tutorial">Tutorial</a>
         <a href="#concepts">Core concepts</a>
@@ -44,28 +45,66 @@
 
     <main class="content">
       <section id="overview">
-        <h1>FacetViz</h1>
-        <p class="lead">A modular, dependency-free <strong>TypeScript + SVG</strong> charting library with a
-          declarative config API, small-multiples trellising, and 35+ chart types — built to be read and
-          maintained by hand.</p>
-        <div class="chips">
-          <span class="chip">Zero dependencies</span>
-          <span class="chip">Declarative config</span>
-          <span class="chip">Trellis / nested axes</span>
-          <span class="chip">Themeable</span>
-          <span class="chip">Canvas boost (100k+ points)</span>
+        <div class="hero-heading">
+          <div>
+            <span class="eyebrow">TypeScript + SVG charting</span>
+            <h1>Turn data into clear, interactive stories.</h1>
+            <p class="lead">FacetViz gives you 35+ chart types, flexible layouts, accessible interactions, and a
+              declarative API — with zero runtime dependencies.</p>
+          </div>
+          <div class="hero-actions">
+            <a class="btn primary" href="./playground.html">Open playground</a>
+            <a class="btn" href="#install">Install FacetViz</a>
+          </div>
         </div>
-        <div class="btn-row">
-          <a class="btn primary" href="#tutorial">Get started</a>
-          <a class="btn" href="./examples.html">Browse examples</a>
-          <a class="btn" href="./playground.html">Open playground</a>
+
+        <div class="snapshot" aria-label="FacetViz at a glance">
+          <div><strong>35+</strong><span>chart types</span></div>
+          <div><strong>0</strong><span>runtime dependencies</span></div>
+          <div><strong>100k+</strong><span>points with boost</span></div>
+          <div><strong>4</strong><span>built-in themes</span></div>
         </div>
-        <div class="panel" style="padding:14px;margin-top:8px"><div id="hero-chart"></div></div>
-        <div class="features">
-          <div class="feature"><h4>Familiar API</h4><p>A declarative config object: <code>chart</code>, <code>series</code>, <code>xAxis</code>, <code>tooltip</code>, <code>legend</code>.</p></div>
-          <div class="feature"><h4>Nested layouts</h4><p>Hierarchical axes, small-multiple trellis tables, dual axes, and combo charts.</p></div>
-          <div class="feature"><h4>Rich formatting</h4><p>Format specs like <code>{y:$,.1s}</code>, percentages, SI units and dates in labels and tooltips.</p></div>
-          <div class="feature"><h4>Fast at scale</h4><p>Boost mode renders 100k+ points to a canvas overlay in ~100&nbsp;ms.</p></div>
+
+        <div class="home-grid">
+          <div class="panel live-preview">
+            <div class="panel-heading">
+              <div><span class="live-dot"></span><strong>Live preview</strong></div>
+              <a href="./playground.html">Edit this chart →</a>
+            </div>
+            <div id="hero-chart"></div>
+          </div>
+          <div class="capability-list">
+            <span class="eyebrow">Everything you need</span>
+            <h2>One small library, a complete visualization toolkit.</h2>
+            <a href="./examples.html#ex-trellis-table"><strong>Small multiples &amp; nested axes</strong><span>Compare dimensions without losing context.</span></a>
+            <a href="./theme.html"><strong>Themes that fit your product</strong><span>Use built-in themes or customize every visual token.</span></a>
+            <a href="./api.html#accessibility"><strong>Accessible by default</strong><span>Keyboard navigation and screen-reader descriptions are built in.</span></a>
+            <a href="./api.html#interactivity-options-chart"><strong>Performance when data grows</strong><span>Canvas boost keeps dense plots responsive.</span></a>
+          </div>
+        </div>
+
+        <div class="section-heading">
+          <div><span class="eyebrow">Choose a starting point</span><h2>Go from question to chart.</h2></div>
+          <a href="./examples.html">View all examples →</a>
+        </div>
+        <div class="features use-cases">
+          <a class="feature" href="./examples.html#ex-grouped-column"><span class="feature-kicker">Compare</span><h4>Categories &amp; rankings</h4><p>Column, bar, lollipop, slope, and dumbbell charts.</p></a>
+          <a class="feature" href="./examples.html#ex-line-spline-step"><span class="feature-kicker">Track</span><h4>Trends over time</h4><p>Line, area, timeline, candlestick, and calendar charts.</p></a>
+          <a class="feature" href="./examples.html#ex-scatter"><span class="feature-kicker">Explore</span><h4>Relationships</h4><p>Scatter, bubble, heatmap, boxplot, and error bars.</p></a>
+          <a class="feature" href="./examples.html#ex-trellis-table"><span class="feature-kicker">Explain</span><h4>Flows &amp; composition</h4><p>Sankey, waterfall, funnel, trellis, pie, and sunburst.</p></a>
+        </div>
+      </section>
+
+      <section id="data-model">
+        <div class="section-heading compact">
+          <div><span class="eyebrow">Dataset starter</span><h2>Bring data in the shape you already have.</h2></div>
+          <a class="btn" href="./api.html#seriesoptions">Explore series options</a>
+        </div>
+        <p>FacetViz accepts simple number arrays, <code>[x, y]</code> pairs, or descriptive object rows. Start simple, then add fields as your visualization needs them.</p>
+        <div class="data-options">
+          <div class="data-option"><span>01</span><div><strong>Categories + values</strong><p>Best for a fast bar, line, or area chart.</p><code>data: [12, 18, 15, 24]</code></div></div>
+          <div class="data-option"><span>02</span><div><strong>Coordinate pairs</strong><p>Use explicit x and y values for continuous axes.</p><code>data: [[1, 12], [2, 18]]</code></div></div>
+          <div class="data-option"><span>03</span><div><strong>Object rows</strong><p>Add names, dimensions, ranges, colors, or metadata.</p><code>data: [{ x: 'Q1', y: 12 }]</code></div></div>
         </div>
       </section>
 

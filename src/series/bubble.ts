@@ -39,16 +39,27 @@ export class BubbleSeries extends BaseSeries {
     };
 
     const labelData: Array<{ pt: Pt; p: Point }> = [];
+    const marker = this.options.marker ?? {};
     for (const p of this.points) {
       if (p.y === undefined) continue;
       const x = xScale.scale(p.x);
       const y = yScale.scale(p.y);
       const base = p.color ?? this.color;
-      const el = drawMarker(renderer, g, x, y, {
-        symbol: this.options.marker?.symbol ?? 'circle',
-        radius: radiusFor((p.options.z as number) ?? 1),
-        fill: alpha(base, 0.55), stroke: base, strokeWidth: 1,
-      });
+      const radius = radiusFor((p.options.z as number) ?? 1);
+      const el = marker.enabled === false
+        ? renderer.create('circle', {
+            cx: x, cy: y, r: Math.max(8, radius), fill: 'transparent',
+            'pointer-events': 'all', class: 'facet-point-hit',
+          }, g)
+        : drawMarker(renderer, g, x, y, {
+            symbol: marker.symbol ?? 'circle',
+            radius,
+            fill: marker.fillColor ?? alpha(base, 0.55),
+            stroke: marker.lineColor ?? base,
+            strokeWidth: marker.lineWidth ?? 1,
+            width: marker.width,
+            height: marker.height,
+          });
       ctx.registerHover(el, p);
       el.addEventListener('click', (e: Event) => ctx.onPointEvent('click', p, e));
       el.addEventListener('mouseover', (e: Event) => ctx.onPointEvent('mouseOver', p, e));

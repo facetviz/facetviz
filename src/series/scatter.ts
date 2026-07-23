@@ -61,18 +61,35 @@ export class ScatterSeries extends BaseSeries {
       const x = ctx.inverted ? valPx : catPx;
       const y = ctx.inverted ? catPx : valPx;
       labelData.push({ pt: { x, y }, p });
-      const el = drawMarker(renderer, g, x, y, {
-        symbol: marker.symbol ?? "circle",
-        radius:
-          p.options.radius ??
-          this.options.radius ??
-          this.options.size ??
-          marker.radius ??
-          5,
-        fill: p.color ?? marker.fillColor ?? this.color,
-        stroke: marker.lineColor ?? "#ffffff",
-        strokeWidth: marker.lineWidth ?? 1,
-      });
+      const radius =
+        p.options.radius ??
+        this.options.radius ??
+        this.options.size ??
+        marker.radius ??
+        5;
+      const el =
+        marker.enabled === false
+          ? renderer.create(
+              "circle",
+              {
+                cx: x,
+                cy: y,
+                r: Math.max(8, radius),
+                fill: "transparent",
+                "pointer-events": "all",
+                class: "facet-point-hit",
+              },
+              g,
+            )
+          : drawMarker(renderer, g, x, y, {
+              symbol: marker.symbol ?? "circle",
+              radius,
+              fill: p.color ?? marker.fillColor ?? this.color,
+              stroke: marker.lineColor ?? "#ffffff",
+              strokeWidth: marker.lineWidth ?? 1,
+              width: marker.width,
+              height: marker.height,
+            });
       ctx.registerHover(el, p);
       el.addEventListener("click", (e: Event) =>
         ctx.onPointEvent("click", p, e),

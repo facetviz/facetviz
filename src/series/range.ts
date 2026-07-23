@@ -49,7 +49,11 @@ export class RangeSeries extends BaseSeries {
     const bottomD = line([...bottom].reverse()).replace(/^M/, 'L');
 
     // Filled band.
-    renderer.create('path', { d: `${topD} ${bottomD} Z`, fill: alpha(this.color, 0.35), stroke: 'none' }, g);
+    renderer.create('path', {
+      d: `${topD} ${bottomD} Z`,
+      fill: alpha(this.color, this.options.fillOpacity ?? 0.35),
+      stroke: 'none',
+    }, g);
     // Boundary strokes.
     renderer.create('path', { d: topD, fill: 'none', stroke: this.color, 'stroke-width': this.options.lineWidth ?? 2 }, g);
     renderer.create('path', { d: line(bottom), fill: 'none', stroke: this.color, 'stroke-width': this.options.lineWidth ?? 2 }, g);
@@ -67,6 +71,8 @@ export class RangeSeries extends BaseSeries {
               fill: marker?.fillColor ?? this.color,
               stroke: marker?.lineColor ?? '#fff',
               strokeWidth: marker?.lineWidth ?? 1,
+              width: marker?.width,
+              height: marker?.height,
             })
           : renderer.create('circle', {
               cx: pt.x, cy: pt.y, r: 8, fill: 'transparent',

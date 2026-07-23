@@ -36,7 +36,8 @@ export class LollipopSeries extends BaseSeries {
 
     const band = catScale.bandwidth ? catScale.bandwidth() : 0;
     const subWidth = band / groupCount;
-    const radius = this.options.marker?.radius ?? 5;
+    const marker = this.options.marker ?? {};
+    const radius = marker.radius ?? 5;
     const stemWidth = this.options.lineWidth ?? this.options.size ?? 2;
 
     for (const p of this.points) {
@@ -63,13 +64,20 @@ export class LollipopSeries extends BaseSeries {
 
       const cx = inverted ? vEnd : cat;
       const cy = inverted ? cat : vEnd;
-      const el = drawMarker(renderer, g, cx, cy, {
-        symbol: this.options.marker?.symbol ?? "circle",
-        radius,
-        fill: color,
-        stroke: "#fff",
-        strokeWidth: 1.5,
-      });
+      const el = marker.enabled === false
+        ? renderer.create("circle", {
+            cx, cy, r: Math.max(8, radius), fill: "transparent",
+            "pointer-events": "all", class: "facet-point-hit",
+          }, g)
+        : drawMarker(renderer, g, cx, cy, {
+            symbol: marker.symbol ?? "circle",
+            radius,
+            fill: marker.fillColor ?? color,
+            stroke: marker.lineColor ?? "#fff",
+            strokeWidth: marker.lineWidth ?? 1.5,
+            width: marker.width,
+            height: marker.height,
+          });
       ctx.registerHover(el, p);
       el.addEventListener("click", (e: Event) =>
         ctx.onPointEvent("click", p, e),

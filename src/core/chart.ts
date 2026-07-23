@@ -20,6 +20,7 @@ import type {
   TooltipContext,
   TrellisOptions,
   AppendDataOptions,
+  MarkerOptions,
 } from "./options.js";
 import { Renderer } from "./renderer.js";
 import { Axis, Rect } from "./axis.js";
@@ -38,6 +39,7 @@ import {
   extent,
   niceDateTicks,
   formatDate,
+  formatString,
   decimateLine,
   sanitizeStyle,
   seededRandom,
@@ -57,6 +59,7 @@ import { Theme, resolveTheme, applyTheme, THEME } from "./theme.js";
 import { BaseSeries, SeriesRenderContext } from "../series/base.js";
 import { createSeries } from "../series/registry.js";
 import { drawDataLabel, labelString } from "../series/data-label.js";
+import { drawMarker } from "../series/marker.js";
 import type { Point } from "./point.js";
 
 export class FacetViz {
@@ -85,6 +88,7 @@ export class FacetViz {
   private plotCtx?: {
     plot: Rect;
     xScale: Scale;
+    xScale2?: Scale;
     yScale: Scale;
     inverted: boolean;
   };
@@ -134,6 +138,7 @@ export class FacetViz {
       this.options.chart?.height ?? (this.container.clientHeight || 400);
     this.build();
     this.render();
+    this.options.chart?.events?.load?.(this);
     this.setupReflow();
     // The container may not have finished layout yet when this constructor
     // runs (flex/grid mounting order, layout libraries — e.g. GridStack —
@@ -198,11 +203,11 @@ export class FacetViz {
   // -- Build model -------------------------------------------------------
 
   private build(): void {
-    const categories = resolveCategories(
-      this.options.series,
-      this.options.xAxis,
-    );
     this.series = this.options.series.map((opts, i) => {
+      const categories = resolveCategories(
+        [opts],
+        axisAt(this.options.xAxis, opts.xAxis ?? 0),
+      );
       const s = createSeries(opts.type ?? "line", opts, categories);
       s.index = i;
       // Dumbbells legend/identity read best as their high-end colour.
@@ -386,8 +391,17 @@ export class FacetViz {
     let legendReserveH = 0;
     let legendReserveW = 0;
     if (showLegend) {
-      if (legendVertical) legendReserveW = Legend.verticalWidth(legendItems);
-      else legendReserveH = LAYOUT.legendHeight;
+      const legendOptions = this.options.legend ?? {};
+      if (legendVertical) {
+        legendReserveW = Legend.verticalWidth(legendItems, legendOptions);
+      } else {
+        const legendWidth = this.width - spacing[1] - spacing[3];
+        legendReserveH = Legend.horizontalHeight(
+          legendItems,
+          legendWidth,
+          legendOptions,
+        );
+      }
     }
 
     const outer: Rect = {
@@ -414,13 +428,33 @@ export class FacetViz {
         this.series.filter((s) => s.visible && s.points.length),
         nestedDims,
       );
-    } else if (t && (t.columns || t.rows) && t.table !== false) {
+    } else if (
+      t &&
+      (t.columns || t.rows) &&
+      t.table !== false &&
+      t.sharedX !== false &&
+      t.sharedY !== false
+    ) {
       // Cross-tab table: shared axes, dimension names as row/column headers.
       this.renderTrellisTable(outer, t);
     } else {
       // Independent small-multiple panels (or a single panel when no trellis).
       const panels = this.computePanels(outer);
-      for (const panel of panels) this.renderPanel(panel);
+      const sharedSeries =
+        t && (t.columns || t.rows)
+          ? this.series.filter((s) => s.visible && s.points.length)
+          : undefined;
+      for (const panel of panels) {
+        this.renderPanel(
+          panel,
+          sharedSeries
+            ? {
+                x: t?.sharedX === false ? undefined : sharedSeries,
+                y: t?.sharedY === false ? undefined : sharedSeries,
+              }
+            : undefined,
+        );
+      }
     }
 
     // Draw the legend in its reserved area. For `bottom`, anchor to the
@@ -432,7 +466,7 @@ export class FacetViz {
       let lx = outer.x;
       let ly = outer.y + outer.height + 14;
       let lw = outer.width;
-      let lh = LAYOUT.legendHeight;
+      let lh = legendReserveH;
       if (legendPlace === "top") {
         ly = top + 12;
       } else if (legendPlace === "left") {
@@ -779,6 +813,7 @@ export class FacetViz {
         {
           "text-anchor": this.anchor(sub.align),
           ...FONTS.subtitle,
+          ...sanitizeStyle(sub.style as Record<string, string>),
         },
         this.renderer.root,
       );
@@ -849,9 +884,20 @@ export class FacetViz {
   }
 
   /** Estimated px width of the widest category-axis label. */
-  private catLabelWidth(visible: BaseSeries[]): number {
-    const cats = this.currentCategories(visible) ?? [];
-    return cats.reduce((m, c) => Math.max(m, String(c).length), 0) * 6.6;
+  private catLabelWidth(
+    visible: BaseSeries[],
+    opts: AxisOptions = axisAt(this.options.xAxis, 0),
+    axisIndex = 0,
+  ): number {
+    const cats = this.currentCategories(visible, axisIndex) ?? [];
+    const label = (value: string) => {
+      if (opts.labels?.formatter) return String(opts.labels.formatter(value));
+      return opts.labels?.format
+        ? formatString(opts.labels.format, { value })
+        : value;
+    };
+    return cats.reduce((m, c) => Math.max(m, label(String(c)).length), 0) *
+      this.axisLabelCharWidth(opts);
   }
 
   /** Estimated px width of the widest value-axis label. */
@@ -860,15 +906,25 @@ export class FacetViz {
     const fmt = (v: number) => {
       if (valOpts.labels?.formatter) return String(valOpts.labels.formatter(v));
       const r = Math.abs(v) >= 100 ? Math.round(v) : Math.round(v * 100) / 100;
-      return String(r);
+      return valOpts.labels?.format
+        ? formatString(valOpts.labels.format, { value: r })
+        : String(r);
     };
     return (
       Math.max(
         fmt(dmin).length,
         fmt(dmax).length,
         fmt((dmin + dmax) / 2).length,
-      ) * 6.6
+      ) * this.axisLabelCharWidth(valOpts)
     );
+  }
+
+  private axisLabelCharWidth(opts: AxisOptions): number {
+    const style = sanitizeStyle(opts.labels?.style);
+    const fontPx =
+      parseFloat(style["font-size"] ?? FONTS.axisLabel["font-size"] ?? "11") ||
+      11;
+    return fontPx * 0.6;
   }
 
   /** Space to reserve for an axis on a given side (vertical → width, else height). */
@@ -928,7 +984,10 @@ export class FacetViz {
     return base + (title ? 8 : 0) + rotExtra;
   }
 
-  private renderPanel(panel: PanelSpec): void {
+  private renderPanel(
+    panel: PanelSpec,
+    shared?: { x?: BaseSeries[]; y?: BaseSeries[] },
+  ): void {
     const visible = panel.series.filter((s) => s.visible && s.points.length);
     if (!visible.length) return;
 
@@ -961,6 +1020,7 @@ export class FacetViz {
     // inverted the category axis becomes vertical (left/right) and the value
     // axis horizontal (bottom/top) — so their options and reserved sides swap.
     const catOpts = firstAxis(this.options.xAxis) ?? {};
+    const catOpts2 = axisAt(this.options.xAxis, 1);
     const valOpts = axisAt(this.options.yAxis, 0);
     const catSide = inverted
       ? catOpts.opposite
@@ -978,16 +1038,16 @@ export class FacetViz {
         : "left";
 
     // Secondary y-axis: a series bound via `series.yAxis: 1` gets its own
-    // scale and a right-hand axis, instead of silently sharing the primary
-    // one. Only meaningful for the standard (non-inverted) layout; if the
-    // primary axis is already on the right (yAxis.opposite) there's nowhere
-    // left to put a second one, so it's skipped in that rare combination.
+    // scale on the side opposite the primary axis.
     const onSecondary = (s: BaseSeries) => (s.options.yAxis ?? 0) === 1;
-    const renderSecondary =
-      !inverted && valSide !== "right" && visible.some(onSecondary);
+    const renderSecondary = !inverted && visible.some(onSecondary);
+    const secondaryYSide = valSide === "right" ? "left" : "right";
     const valOpts2 = renderSecondary
       ? axisAt(this.options.yAxis, 1)
       : undefined;
+    const onSecondaryX = (s: BaseSeries) => (s.options.xAxis ?? 0) === 1;
+    const renderSecondaryX = !inverted && visible.some(onSecondaryX);
+    const secondaryXSide = catSide === "top" ? "bottom" : "top";
 
     const catReserve = this.axisReserve(
       catOpts,
@@ -1002,11 +1062,28 @@ export class FacetViz {
     const pad = { left: 8, right: 8, top: 6, bottom: 6 };
     pad[catSide] = catReserve;
     pad[valSide] = valReserve;
+    if (renderSecondaryX) {
+      pad[secondaryXSide] = Math.max(
+        pad[secondaryXSide],
+        this.axisReserve(
+          catOpts2,
+          secondaryXSide,
+          this.catLabelWidth(
+            visible.filter(onSecondaryX),
+            catOpts2,
+            1,
+          ),
+        ),
+      );
+    }
     if (renderSecondary && valOpts2) {
-      pad.right = this.axisReserve(
-        valOpts2,
-        "right",
-        this.valueLabelWidth(visible.filter(onSecondary), valOpts2),
+      pad[secondaryYSide] = Math.max(
+        pad[secondaryYSide],
+        this.axisReserve(
+          valOpts2,
+          secondaryYSide,
+          this.valueLabelWidth(visible.filter(onSecondary), valOpts2),
+        ),
       );
     }
     const axisPlot: Rect = {
@@ -1017,10 +1094,11 @@ export class FacetViz {
     };
 
     computeStacks(visible);
-    const { xScale, yScale, yScale2 } = this.buildScales(
+    const { xScale, xScale2, yScale, yScale2 } = this.buildScales(
       visible,
       axisPlot,
       inverted,
+      shared,
     );
     const group = this.groupInfo(visible);
     // Category scale is vertical (yScale) when inverted, else horizontal (xScale).
@@ -1057,6 +1135,21 @@ export class FacetViz {
       grid: isSlope ? true : !!catOpts.gridLineWidth,
     });
     catAxis.render(axisLayer);
+    let catAxis2: Axis | undefined;
+    if (renderSecondaryX && xScale2) {
+      catAxis2 = new Axis({
+        renderer: this.renderer,
+        scale: xScale2,
+        position: secondaryXSide,
+        plot: axisPlot,
+        options: {
+          ...catOpts2,
+          opposite: secondaryXSide === "top",
+        },
+        grid: false,
+      });
+      catAxis2.render(axisLayer);
+    }
     const valAxis = new Axis({
       renderer: this.renderer,
       scale: valScale,
@@ -1071,7 +1164,7 @@ export class FacetViz {
       valAxis2 = new Axis({
         renderer: this.renderer,
         scale: yScale2,
-        position: "right",
+        position: secondaryYSide,
         plot: axisPlot,
         options: valOpts2,
         grid: false,
@@ -1080,7 +1173,7 @@ export class FacetViz {
     }
 
     // Remember the plot + scales for drag-zoom and crosshair (single-panel).
-    this.plotCtx = { plot: axisPlot, xScale, yScale, inverted };
+    this.plotCtx = { plot: axisPlot, xScale, xScale2, yScale, inverted };
     this.zoomState = !inverted ? { plot: axisPlot, xScale, yScale } : undefined;
 
     // Series. High-volume point/line series are drawn to a canvas overlay.
@@ -1088,19 +1181,22 @@ export class FacetViz {
     // positioning and boost rendering.
     const yScaleFor = (s: BaseSeries) =>
       yScale2 && onSecondary(s) ? yScale2 : yScale;
+    const xScaleFor = (s: BaseSeries) =>
+      xScale2 && onSecondaryX(s) ? xScale2 : xScale;
     const boost = !inverted && this.boostEnabled(visible);
     const cctx = boost ? this.createBoostCanvas(axisPlot) : null;
     const hits: BoostHit[] = [];
     const existing = new Set(this.renderer.root.children);
     for (const s of visible) {
+      const sx = xScaleFor(s);
       const sy = yScaleFor(s);
       if (cctx && this.isBoostable(s)) {
-        this.drawBoostSeries(s, cctx, xScale, sy, hits);
+        this.drawBoostSeries(s, cctx, sx, sy, hits);
       } else {
         const ctx = this.seriesContext(
           s,
           axisPlot,
-          xScale,
+          sx,
           sy,
           group,
           inverted,
@@ -1121,6 +1217,7 @@ export class FacetViz {
       this.renderer.root,
     );
     catAxis.renderAbove(aboveLayer);
+    catAxis2?.renderAbove(aboveLayer);
     valAxis.renderAbove(aboveLayer);
     valAxis2?.renderAbove(aboveLayer);
   }
@@ -1240,15 +1337,26 @@ export class FacetViz {
           c.lineTo(pts[pts.length - 1].x, zeroY);
           c.lineTo(pts[0].x, zeroY);
           c.closePath();
-          c.fillStyle = alpha(color, 0.25);
+          c.fillStyle = alpha(color, s.options.fillOpacity ?? 0.35);
           c.fill();
         }
         c.strokeStyle = color;
-        c.lineWidth = s.options.lineWidth ?? 2;
+        c.lineWidth = s.options.lineWidth ?? s.options.size ?? 2;
         c.lineJoin = "round";
         c.stroke();
-        for (const p of raw)
+        for (const p of raw) {
           hits.push({ x: p.x, y: p.y, point: p.point, series: s });
+          if (s.options.marker?.enabled === true) {
+            const marker = s.options.marker;
+            this.drawCanvasMarker(c, p.x, p.y, {
+              marker,
+              radius: p.point.options.radius ?? marker.radius ?? 4,
+              fill: p.point.color ?? marker.fillColor ?? color,
+              stroke: marker.lineColor ?? "#ffffff",
+              strokeWidth: marker.lineWidth ?? 1,
+            });
+          }
+        }
         raw = [];
       };
       for (const point of s.points) {
@@ -1270,19 +1378,24 @@ export class FacetViz {
           ? s.points.map((p) => (p.options.z as number) ?? 1)
           : [];
       const [zMin, zMax] = extent(zs);
-      const [rMin, rMax] = s.options.sizeRange ?? [3, 22];
+      const [rMin, rMax] = s.options.sizeRange ?? [6, 34];
       const rng = seededRandom(s.index * 7919 + s.points.length + 1);
       const jitterBand =
         xScale instanceof CategoryScale ? xScale.bandwidth() : 0;
       const jitterSpread = (s.options.jitter ?? 0.5) * jitterBand;
-      c.fillStyle = alpha(color, 0.6);
+      const marker = s.options.marker ?? {};
       for (const p of s.points) {
         if (p.y === undefined) continue;
         let px = xScale.scale(p.x);
         const py = yScale.scale(p.y);
         if (s.type === "jitter" && jitterBand > 0)
           px += (rng() - 0.5) * jitterSpread;
-        let r = s.options.marker?.radius ?? 3;
+        let r =
+          p.options.radius ??
+          s.options.radius ??
+          s.options.size ??
+          marker.radius ??
+          5;
         if (s.type === "bubble") {
           const t =
             zMax === zMin
@@ -1290,11 +1403,70 @@ export class FacetViz {
               : (((p.options.z as number) ?? 1) - zMin) / (zMax - zMin);
           r = Math.sqrt(rMin * rMin + t * (rMax * rMax - rMin * rMin));
         }
-        c.beginPath();
-        c.arc(px, py, r, 0, Math.PI * 2);
-        c.fill();
+        if (marker.enabled !== false) {
+          const base = p.color ?? color;
+          this.drawCanvasMarker(c, px, py, {
+            marker,
+            radius: r,
+            fill:
+              marker.fillColor ??
+              (s.type === "bubble" ? alpha(base, 0.55) : base),
+            stroke: marker.lineColor ?? (s.type === "bubble" ? base : "#ffffff"),
+            strokeWidth: marker.lineWidth ?? 1,
+          });
+        }
         hits.push({ x: px, y: py, point: p, series: s });
       }
+    }
+  }
+
+  /** Canvas equivalent of the shared SVG marker renderer used in boost mode. */
+  private drawCanvasMarker(
+    c: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    spec: {
+      marker: MarkerOptions;
+      radius: number;
+      fill: string;
+      stroke: string;
+      strokeWidth: number;
+    },
+  ): void {
+    const { marker, radius: r } = spec;
+    c.beginPath();
+    switch (marker.symbol ?? "circle") {
+      case "square":
+        c.rect(x - r, y - r, r * 2, r * 2);
+        break;
+      case "diamond":
+        c.moveTo(x, y - r);
+        c.lineTo(x + r, y);
+        c.lineTo(x, y + r);
+        c.lineTo(x - r, y);
+        c.closePath();
+        break;
+      case "triangle":
+        c.moveTo(x, y - r);
+        c.lineTo(x + r, y + r);
+        c.lineTo(x - r, y + r);
+        c.closePath();
+        break;
+      case "rectangle": {
+        const width = marker.width ?? r * 2;
+        const height = marker.height ?? r * 2;
+        c.rect(x - width / 2, y - height / 2, width, height);
+        break;
+      }
+      default:
+        c.arc(x, y, r, 0, Math.PI * 2);
+    }
+    c.fillStyle = spec.fill;
+    c.fill();
+    if (spec.strokeWidth > 0) {
+      c.strokeStyle = spec.stroke;
+      c.lineWidth = spec.strokeWidth;
+      c.stroke();
     }
   }
 
@@ -1985,7 +2157,11 @@ export class FacetViz {
           (yOpts1.title?.text ? 18 : 0)
         : 8;
       const bottomReserve = catVisible
-        ? LAYOUT.tickLength + (split ? 1 : dims.length) * rowH + 12 + rotExtra
+        ? LAYOUT.tickLength +
+          (split ? 1 : dims.length) * rowH +
+          12 +
+          rotExtra +
+          (xOpts.title?.text ? 22 : 0)
         : 6;
       const topReserve =
         catVisible && split
@@ -2044,7 +2220,10 @@ export class FacetViz {
           keys,
           position: split ? "split" : "bottom",
           labels: xOpts.labels,
+          title: xOpts.title,
+          lineColor: xOpts.lineColor,
           lineWidth: xOpts.lineWidth,
+          gridLineColor: xOpts.gridLineColor,
           gridLineWidth: xOpts.gridLineWidth,
         }).render(axisLayer);
       }
@@ -2057,7 +2236,10 @@ export class FacetViz {
       const outerW = colWidths.slice(0, -1).reduce((a, b) => a + b, 0);
       const totalW = colWidths.reduce((a, b) => a + b, 0);
       const leftReserve = catVisible
-        ? LAYOUT.tickLength + 8 + (split ? innerW : totalW)
+        ? LAYOUT.tickLength +
+          8 +
+          (split ? innerW : totalW) +
+          (xOpts.title?.text ? 22 : 0)
         : 6;
       const rightReserve =
         catVisible && split ? LAYOUT.tickLength + 8 + outerW : 8;
@@ -2104,7 +2286,10 @@ export class FacetViz {
           position: split ? "split" : "bottom",
           vertical: true,
           labels: xOpts.labels,
+          title: xOpts.title,
+          lineColor: xOpts.lineColor,
           lineWidth: xOpts.lineWidth,
+          gridLineColor: xOpts.gridLineColor,
           gridLineWidth: xOpts.gridLineWidth,
         }).render(axisLayer);
       }
@@ -2455,33 +2640,76 @@ export class FacetViz {
           points: poly,
           fill: alpha(s.color, fillOp),
           stroke: s.color,
-          "stroke-width": 2,
+          "stroke-width": s.options.lineWidth ?? s.options.size ?? 2,
         },
         g,
       );
+      const marker = s.options.marker ?? {};
+      const labelData: Array<{ pt: { x: number; y: number }; p: Point }> = [];
       pts.forEach((p, i) => {
         const point =
           s.points.find((pp) => String(pp.x) === String(cats[i])) ??
           s.points[i];
         if (!point) return;
-        const el = this.renderer.create(
-          "circle",
-          {
-            cx: p.x,
-            cy: p.y,
-            r: 3.5,
-            fill: s.color,
-            stroke: "#fff",
-            "stroke-width": 1,
-            class: "facet-point",
-          },
-          g,
-        );
+        const radius = point.options.radius ?? marker.radius ?? 3.5;
+        const el = marker.enabled === false
+          ? this.renderer.create(
+              "circle",
+              {
+                cx: p.x,
+                cy: p.y,
+                r: Math.max(8, radius),
+                fill: "transparent",
+                "pointer-events": "all",
+                class: "facet-point-hit",
+              },
+              g,
+            )
+          : drawMarker(this.renderer, g, p.x, p.y, {
+              symbol: marker.symbol ?? "circle",
+              radius,
+              fill: point.color ?? marker.fillColor ?? s.color,
+              stroke: marker.lineColor ?? "#fff",
+              strokeWidth: marker.lineWidth ?? 1,
+              width: marker.width,
+              height: marker.height,
+            });
         this.bindPointInteraction(el, s, point);
         el.addEventListener("click", (e) =>
           this.handlePointEvent("click", s, point, e),
         );
+        el.addEventListener("mouseover", (e) =>
+          this.handlePointEvent("mouseOver", s, point, e),
+        );
+        el.addEventListener("mouseout", (e) =>
+          this.handlePointEvent("mouseOut", s, point, e),
+        );
+        labelData.push({ pt: p, p: point });
       });
+      const dl = s.options.dataLabels;
+      if (dl?.enabled) {
+        const total = s.points.reduce((sum, point) => sum + (point.y ?? 0), 0);
+        for (const { pt: labelPoint, p: point } of labelData) {
+          const text = labelString(dl, {
+            x: point.x,
+            y: point.y,
+            point: point.options,
+            series: s.name,
+            name: point.name ?? point.x,
+            index: point.index,
+            color: point.color ?? s.color,
+            total,
+            percentage: total ? ((point.y ?? 0) / total) * 100 : undefined,
+          });
+          drawDataLabel(
+            this.renderer,
+            g,
+            text,
+            { x: labelPoint.x, y: labelPoint.y - 8 - (dl.distance ?? 0), anchor: "middle" },
+            dl,
+          );
+        }
+      }
     }
   }
 
@@ -2539,22 +2767,51 @@ export class FacetViz {
           el.addEventListener("click", (e) =>
             this.handlePointEvent("click", s, p, e),
           );
-        }
-        // Percentage label in roomy segments.
-        if (h > 16 && w > 26 && val > 0) {
-          this.renderer.text(
-            `${Math.round((val / colTotal[ci]) * 100)}%`,
-            x + w / 2,
-            y + h / 2,
-            {
-              "text-anchor": "middle",
-              "dominant-baseline": "middle",
-              ...FONTS.dataLabel,
-              fill: "#fff",
-              "font-weight": "600",
-            },
-            this.renderer.root,
+          el.addEventListener("mouseover", (e) =>
+            this.handlePointEvent("mouseOver", s, p, e),
           );
+          el.addEventListener("mouseout", (e) =>
+            this.handlePointEvent("mouseOut", s, p, e),
+          );
+        }
+        // Percentage label in roomy segments. Supplying dataLabels turns this
+        // into the standard configurable label path; enabled:false hides it.
+        const dl = s.options.dataLabels;
+        if (h > 16 && w > 26 && val > 0 && dl?.enabled !== false) {
+          const percentage = (val / colTotal[ci]) * 100;
+          if (dl?.enabled) {
+            drawDataLabel(
+              this.renderer,
+              this.renderer.root,
+              labelString(dl, {
+                x: cat,
+                y: val,
+                point: p?.options ?? {},
+                series: s.name,
+                name: p?.name ?? cat,
+                index: p?.index,
+                color: p?.color ?? s.color,
+                total: colTotal[ci],
+                percentage,
+              }),
+              { x: x + w / 2, y: y + h / 2 + 4, anchor: "middle" },
+              { ...dl, color: dl.color ?? "#fff", fontWeight: dl.fontWeight ?? "600" },
+            );
+          } else {
+            this.renderer.text(
+              `${Math.round(percentage)}%`,
+              x + w / 2,
+              y + h / 2,
+              {
+                "text-anchor": "middle",
+                "dominant-baseline": "middle",
+                ...FONTS.dataLabel,
+                fill: "#fff",
+                "font-weight": "600",
+              },
+              this.renderer.root,
+            );
+          }
         }
         y += h;
       });
@@ -2678,9 +2935,18 @@ export class FacetViz {
     visible: BaseSeries[],
     plot: Rect,
     inverted: boolean,
-  ): { xScale: Scale; yScale: Scale; yScale2?: Scale } {
-    const categories = this.currentCategories(visible);
-    const xAxisOpts = firstAxis(this.options.xAxis) ?? {};
+    shared?: { x?: BaseSeries[]; y?: BaseSeries[] },
+  ): { xScale: Scale; xScale2?: Scale; yScale: Scale; yScale2?: Scale } {
+    const xSource = shared?.x ?? visible;
+    const ySource = shared?.y ?? visible;
+    const primaryXSource = xSource.filter((s) => (s.options.xAxis ?? 0) === 0);
+    const secondaryXSource = xSource.filter((s) => (s.options.xAxis ?? 0) === 1);
+    const categories = this.currentCategories(
+      primaryXSource.length ? primaryXSource : xSource,
+      0,
+    );
+    const xAxisOpts = axisAt(this.options.xAxis, 0);
+    const xAxisOpts2 = axisAt(this.options.xAxis, 1);
     const yAxisOpts = axisAt(this.options.yAxis, 0);
 
     // Secondary y-axis: series bound via `series.yAxis: 1` get their own
@@ -2689,25 +2955,28 @@ export class FacetViz {
     // Only supported for the standard (non-inverted) cartesian layout, same
     // as the nested-axis combo path this mirrors.
     const onSecondary = (s: BaseSeries) => (s.options.yAxis ?? 0) === 1;
-    const hasSecondary = !inverted && visible.some(onSecondary);
+    const hasSecondary = !inverted && ySource.some(onSecondary);
     const primaryVisible = hasSecondary
-      ? visible.filter((s) => !onSecondary(s))
-      : visible;
+      ? ySource.filter((s) => !onSecondary(s))
+      : ySource;
 
     // Value domain across the primary axis's series only (falls back to all
     // visible series when nothing besides the secondary axis is present, so
     // this can't produce an empty domain). Error bars are typically overlaid
     // on (and read like) a column series, so they share its zero baseline.
     let [vMin, vMax] = this.valueDomain(
-      primaryVisible.length ? primaryVisible : visible,
+      primaryVisible.length ? primaryVisible : ySource,
     );
     const includeZero = primaryVisible.some((s) =>
       ["column", "bar", "area", "areaspline", "errorbar", "lollipop"].includes(
         s.type,
       ),
     );
-    const primaryValueAxis = inverted ? xAxisOpts : yAxisOpts;
-    if (includeZero && primaryValueAxis.type !== "log") {
+    const primaryValueAxis = yAxisOpts;
+    if (
+      (includeZero || primaryValueAxis.startOnZero === true) &&
+      primaryValueAxis.type !== "log"
+    ) {
       vMin = Math.min(vMin, 0);
       vMax = Math.max(vMax, 0);
     }
@@ -2742,7 +3011,7 @@ export class FacetViz {
       0,
     );
     if (markerR) {
-      const valueAxisOpts = inverted ? xAxisOpts : yAxisOpts;
+      const valueAxisOpts = yAxisOpts;
       const valuePx = inverted ? plot.width : plot.height;
       const padY = (markerR / Math.max(1, valuePx)) * (vMax - vMin || 1);
       if (valueAxisOpts.min === undefined) vMin -= padY;
@@ -2764,24 +3033,39 @@ export class FacetViz {
       );
     });
     if (hasOutsideLabel) {
-      const valueAxisOpts = inverted ? xAxisOpts : yAxisOpts;
+      const valueAxisOpts = yAxisOpts;
       const valuePx = inverted ? plot.width : plot.height;
       const padY = (18 / Math.max(1, valuePx)) * (vMax - vMin || 1);
       if (valueAxisOpts.max === undefined) vMax += padY;
     }
 
-    // Datetime x: nice date ticks + auto date label format.
-    const datetime = xAxisOpts.type === "datetime" && !categories;
-    const xNumeric = (range: [number, number], reversed?: boolean): Scale => {
-      const [dmin, dmax] = this.xNumericDomain(visible);
-      let min = xAxisOpts.min ?? dmin,
-        max = xAxisOpts.max ?? dmax;
+    // Numeric/datetime/log x scales.
+    const numericScale = (
+      list: BaseSeries[],
+      opts: AxisOptions,
+      range: [number, number],
+      reversed?: boolean,
+    ): Scale => {
+      const [dmin, dmax] = this.xNumericDomain(list);
+      let min = opts.min ?? dmin,
+        max = opts.max ?? dmax;
       if (markerR) {
         const padX = (markerR / Math.max(1, plot.width)) * (max - min || 1);
-        if (xAxisOpts.min === undefined) min -= padX;
-        if (xAxisOpts.max === undefined) max += padX;
+        if (opts.min === undefined) min -= padX;
+        if (opts.max === undefined) max += padX;
       }
-      if (datetime) {
+      if (opts.startOnZero === true && opts.type !== "log") {
+        min = Math.min(min, 0);
+        max = Math.max(max, 0);
+      }
+      if (opts.type === "log") {
+        return new LogScale({
+          domain: [min, max],
+          range,
+          reversed,
+        });
+      }
+      if (opts.type === "datetime") {
         const { ticks, format } = niceDateTicks(min, max);
         return new LinearScale({
           domain: [min, max],
@@ -2789,26 +3073,32 @@ export class FacetViz {
           reversed,
           ticks,
           format: (v) => formatDate(v, format),
-          nice: xAxisOpts.min === undefined && xAxisOpts.max === undefined,
+          nice: opts.min === undefined && opts.max === undefined,
         });
       }
       return new LinearScale({
         domain: [min, max],
         range,
+        tickCount: opts.tickCount,
         ...(reversed ? { reversed } : {}),
-        nice: xAxisOpts.min === undefined && xAxisOpts.max === undefined,
+        nice: opts.min === undefined && opts.max === undefined,
       });
     };
 
-    const catScale = (range: [number, number], reversed?: boolean) =>
-      categories
-        ? new CategoryScale({ categories, range, reversed })
-        : xNumeric(range, reversed);
+    const horizontalScale = (
+      list: BaseSeries[],
+      opts: AxisOptions,
+      cats: string[] | undefined,
+      range: [number, number],
+    ) =>
+      cats
+        ? new CategoryScale({ categories: cats, range, reversed: opts.reversed })
+        : numericScale(list, opts, range, opts.reversed);
 
     if (inverted) {
       // Horizontal bars: value on x (bottom), categories on y (left).
       const xScale = this.valueScale(
-        xAxisOpts,
+        yAxisOpts,
         [vMin, vMax],
         [plot.x, plot.x + plot.width],
       );
@@ -2816,15 +3106,28 @@ export class FacetViz {
         ? new CategoryScale({
             categories,
             range: [plot.y, plot.y + plot.height],
+            reversed: xAxisOpts.reversed,
           })
-        : new LinearScale({
-            domain: this.xNumericDomain(visible),
-            range: [plot.y + plot.height, plot.y],
-          });
+        : numericScale(
+            primaryXSource.length ? primaryXSource : xSource,
+            xAxisOpts,
+            [plot.y, plot.y + plot.height],
+            xAxisOpts.reversed,
+          );
       return { xScale, yScale };
     }
 
-    const xScale = catScale([plot.x, plot.x + plot.width], xAxisOpts.reversed);
+    const xRange: [number, number] = [plot.x, plot.x + plot.width];
+    const primaryX = primaryXSource.length ? primaryXSource : xSource;
+    const xScale = horizontalScale(primaryX, xAxisOpts, categories, xRange);
+    const xScale2 = secondaryXSource.length
+      ? horizontalScale(
+          secondaryXSource,
+          xAxisOpts2,
+          this.currentCategories(secondaryXSource, 1),
+          xRange,
+        )
+      : undefined;
     const yScale = this.valueScale(
       yAxisOpts,
       [vMin, vMax],
@@ -2833,7 +3136,7 @@ export class FacetViz {
 
     let yScale2: Scale | undefined;
     if (hasSecondary) {
-      const secondaryVisible = visible.filter(onSecondary);
+      const secondaryVisible = ySource.filter(onSecondary);
       let [vMin2, vMax2] = this.valueDomain(secondaryVisible);
       const includeZero2 = secondaryVisible.some((s) =>
         [
@@ -2845,7 +3148,11 @@ export class FacetViz {
           "lollipop",
         ].includes(s.type),
       );
-      if (includeZero2 && axisAt(this.options.yAxis, 1).type !== "log") {
+      const secondaryOpts = axisAt(this.options.yAxis, 1);
+      if (
+        (includeZero2 || secondaryOpts.startOnZero === true) &&
+        secondaryOpts.type !== "log"
+      ) {
         vMin2 = Math.min(vMin2, 0);
         vMax2 = Math.max(vMax2, 0);
       }
@@ -2855,7 +3162,7 @@ export class FacetViz {
         [plot.y + plot.height, plot.y],
       );
     }
-    return { xScale, yScale, yScale2 };
+    return { xScale, xScale2, yScale, yScale2 };
   }
 
   private valueScale(
@@ -2865,7 +3172,12 @@ export class FacetViz {
   ): Scale {
     const min = opts.min ?? domain[0];
     const max = opts.max ?? domain[1];
-    if (opts.type === "log") return new LogScale({ domain: [min, max], range });
+    if (opts.type === "log")
+      return new LogScale({
+        domain: [min, max],
+        range,
+        reversed: opts.reversed,
+      });
     // Fewer ticks on a short/cramped axis — the default of 6 was sized for a
     // full-width chart, not a small card, and produces label clutter there.
     const span = Math.abs(range[1] - range[0]);
@@ -2874,6 +3186,7 @@ export class FacetViz {
       domain: [min, max],
       range,
       tickCount,
+      reversed: opts.reversed,
       nice: opts.min === undefined && opts.max === undefined,
     });
   }
@@ -2916,13 +3229,17 @@ export class FacetViz {
     "lollipop",
   ]);
 
-  private currentCategories(visible: BaseSeries[]): string[] | undefined {
-    const xAxis = firstAxis(this.options.xAxis);
+  private currentCategories(
+    visible: BaseSeries[],
+    axisIndex = 0,
+  ): string[] | undefined {
+    const xAxis = axisAt(this.options.xAxis, axisIndex);
     if (xAxis?.categories) return xAxis.categories;
     // A datetime/continuous x-axis stays numeric even for bar-family series.
     const banded =
-      xAxis?.type !== "datetime" &&
-      visible.some((s) => FacetViz.BANDED.has(s.type));
+      xAxis?.type === "category" ||
+      (xAxis?.type !== "datetime" &&
+        visible.some((s) => FacetViz.BANDED.has(s.type)));
     const allNumeric = visible.every((s) =>
       s.points.every((p) => typeof p.x === "number"),
     );
@@ -3017,7 +3334,7 @@ export class FacetViz {
     };
     el.addEventListener("mouseenter", () => {
       this.tooltip!.show(build(), s.options.tooltip);
-      this.showCrosshair(p);
+      this.showCrosshair(s, p);
     });
     el.addEventListener("mousemove", (e) =>
       this.tooltip!.move(e.clientX, e.clientY),
@@ -3034,7 +3351,7 @@ export class FacetViz {
         this.tooltip!.show(build(), s.options.tooltip);
         const rect = el.getBoundingClientRect();
         this.tooltip!.move(rect.left + rect.width / 2, rect.top + rect.height / 2);
-        this.showCrosshair(p);
+        this.showCrosshair(s, p);
       });
       el.addEventListener("blur", () => {
         this.tooltip!.hide();
@@ -3141,12 +3458,16 @@ export class FacetViz {
   }
 
   /** Draw a guide line at the hovered point when `xAxis.crosshair` is on. */
-  private showCrosshair(p: Point): void {
+  private showCrosshair(s: BaseSeries, p: Point): void {
     const ctx = this.plotCtx;
-    if (!firstAxis(this.options.xAxis)?.crosshair || !ctx || ctx.inverted)
+    const axisIndex = s.options.xAxis ?? 0;
+    const axis = axisAt(this.options.xAxis, axisIndex);
+    if (!axis.crosshair || !ctx || ctx.inverted)
       return;
     this.hideCrosshair();
-    const x = ctx.xScale.scale(p.x);
+    const scale = axisIndex === 1 ? ctx.xScale2 : ctx.xScale;
+    if (!scale) return;
+    const x = scale.scale(p.x);
     this.crosshairEl = this.renderer.create(
       "line",
       {
@@ -3373,6 +3694,13 @@ export class FacetViz {
       first.legendItems(this.colors)
     ) {
       first.onLegendToggle(index);
+      const toggled = first.legendItems(this.colors)?.[index];
+      if (toggled) {
+        this.options.seriesEvents?.legendItemClick?.({
+          series: toggled.label,
+          visible: toggled.visible,
+        });
+      }
       this.render();
       return;
     }

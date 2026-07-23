@@ -33,8 +33,8 @@ The root object passed to `new FacetViz(container, options)`.
 | `chart`        | [`ChartConfig`](#chartoptions-chart)             | `{}`          | Chart-wide settings (type, size, background, events).        |
 | `title`        | [`TitleOptions`](#title--subtitle)               | –             | Main heading. Omit `text` to hide.                           |
 | `subtitle`     | [`TitleOptions`](#title--subtitle)               | –             | Secondary heading under the title.                           |
-| `xAxis`        | [`AxisOptions`](#axisoptions) \| `AxisOptions[]` | `{}`          | X-axis config (array for multiple axes / combo charts).      |
-| `yAxis`        | [`AxisOptions`](#axisoptions) \| `AxisOptions[]` | `{}`          | Y-axis config (array for multiple axes).                     |
+| `xAxis`        | [`AxisOptions`](#axisoptions) \| `AxisOptions[]` | `{}`          | X-axis config; arrays support a primary axis plus one secondary axis. |
+| `yAxis`        | [`AxisOptions`](#axisoptions) \| `AxisOptions[]` | `{}`          | Y-axis config; arrays support a primary axis plus one secondary axis. |
 | `tooltip`      | [`TooltipOptions`](#tooltipoptions)              | enabled       | Hover tooltip config.                                        |
 | `legend`       | [`LegendOptions`](#legendoptions)                | enabled       | Legend config and placement.                                 |
 | `plotOptions`  | [`PlotOptions`](#plotoptions)                    | –             | Defaults applied to all series or per type.                  |
@@ -88,7 +88,7 @@ Applies to both `xAxis` and `yAxis`. A **category axis** is used when
 | `visible`       | `boolean`                                          | `true`      | When `false`, nothing is drawn and **no space is reserved** for the axis.                                                                          |
 | `opposite`      | `boolean`                                          | `false`     | Move the axis to the opposite side: **y → right**, **x → top**. For a nested x-axis this triggers the [split layout](#nested-hierarchical-x-axis). |
 | `categories`    | `string[]`                                         | –           | Category labels; makes this a categorical axis.                                                                                                    |
-| `type`          | `'linear' \| 'log' \| 'category'`                  | inferred    | Scale type.                                                                                                                                        |
+| `type`          | `'linear' \| 'log' \| 'category' \| 'datetime'`    | inferred    | Scale type.                                                                                                                                        |
 | `title`         | `{ text?: string; style?: Record<string,string> }` | –           | Axis title. Omit `text` to hide.                                                                                                                   |
 | `min`           | `number`                                           | data min    | Force the axis minimum (value axes).                                                                                                               |
 | `max`           | `number`                                           | data max    | Force the axis maximum (value axes).                                                                                                               |
@@ -186,10 +186,11 @@ One object per series in the `series` array.
 | `showInLegend`   | `boolean`                                                 | `true`        | Set to `false` to omit this series from the chart legend.                                                                                                                                                                                       |
 | `stack`          | `string \| number`                                        | –             | Series sharing a stack id pile together.                                                                                                                                                                                                        |
 | `stacking`       | `'normal' \| 'percent'`                                   | –             | Enable stacking (`percent` = 100% stacked).                                                                                                                                                                                                     |
-| `xAxis`          | `number`                                                  | `0`           | Index of the bound x-axis.                                                                                                                                                                                                                      |
-| `yAxis`          | `number`                                                  | `0`           | Index of the bound y-axis. `1` = secondary axis, drawn on the right with its own scale — pass `yAxis` (top-level) as a 2-element array to configure it. Works with a plain categorical x-axis or a [nested one](#nested-hierarchical-x-axis).   |
+| `xAxis`          | `0 \| 1`                                                  | `0`           | Bound x-axis. `1` uses the secondary x-axis, drawn at the top with its own categories/domain.                                                                                                                      |
+| `yAxis`          | `0 \| 1`                                                  | `0`           | Bound y-axis. `1` = secondary axis, drawn on the right with its own scale — pass `yAxis` (top-level) as a 2-element array to configure it. Works with a plain categorical x-axis or a [nested one](#nested-hierarchical-x-axis).   |
 | `lineWidth`      | `number`                                                  | `2`           | Stroke width (line/area/range).                                                                                                                                                                                                                 |
 | `innerSize`      | `string`                                                  | –             | Pie inner radius, e.g. `'60%'` (makes a donut).                                                                                                                                                                                                 |
+| `centerLabel`    | [`PieCenterLabelOptions`](#piecenterlabeloptions)         | enabled       | Hovered slice value displayed in the hollow centre of a donut or pie with `innerSize`.                                                                                                                                                          |
 | `dimensions`     | `string[]`                                                | –             | Pie/donut **two-dimension** rings — see [Multi-level pie](#multi-level-two-dimension-pie).                                                                                                                                                      |
 | `marker`         | [`MarkerOptions`](#markeroptions)                         | –             | Point markers (line/area/scatter/arearange). Range series (`arearange`/`areasplinerange`) show them at both the low and high end by default — set `enabled: false` to hide them (points stay hoverable via an invisible hit target either way). |
 | `dataLabels`     | [`DataLabelOptions`](#datalabeloptions)                   | disabled      | On-chart value labels.                                                                                                                                                                                                                          |
@@ -340,6 +341,21 @@ scatter/jitter, pie/donut and butterfly.
 | pie / donut           | `outside`, `inside`                                                                                                                                                                              |
 
 `LabelContext` (passed to `formatter`): `{ x, y, point, series }`.
+
+### PieCenterLabelOptions
+
+Controls the value shown in the hollow centre while a donut sector is hovered
+or keyboard-focused. It also applies to pie series configured with `innerSize`.
+
+| Key          | Type                            | Default  | Description                                                              |
+| ------------ | ------------------------------- | -------- | ------------------------------------------------------------------------ |
+| `enabled`    | `boolean`                       | `true`   | Show the centre value when the chart has a hollow centre.                |
+| `format`     | `string`                        | `'{y}'`  | Supports `{name}`, `{y}`, `{percentage}`, `{total}`, and format specs.    |
+| `formatter`  | `(ctx: LabelContext) => string` | –        | Custom text callback; overrides `format`.                                |
+| `color`      | `string`                        | theme    | Text colour.                                                             |
+| `fontSize`   | `string`                        | adaptive | CSS font size such as `'20px'`.                                          |
+| `fontWeight` | `string`                        | `'600'`  | CSS font weight.                                                         |
+| `fontFamily` | `string`                        | theme    | CSS font family.                                                         |
 
 ### Multi-level (two-dimension) pie
 

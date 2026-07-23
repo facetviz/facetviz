@@ -155,8 +155,8 @@ export interface SeriesOptions
   stack?: string | number;
   stacking?: StackingMode;
   /** Which axis (by index) this series binds to. Enables combo charts. */
-  xAxis?: number;
-  yAxis?: number;
+  xAxis?: 0 | 1;
+  yAxis?: 0 | 1;
   visible?: boolean;
   /** Whether this series contributes an item to the chart legend. */
   showInLegend?: boolean;

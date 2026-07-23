@@ -6,13 +6,35 @@
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext, LegendEntry } from './base.js';
 import { paletteColor, shade } from '../core/colors.js';
 import { FONTS } from '../core/defaults.js';
-import { formatString, sum } from '../core/utils.js';
+import { formatNumber, formatString, sum } from '../core/utils.js';
 import type { Point } from '../core/point.js';
+import type { LabelContext } from '../core/options.js';
+import { drawDataLabel } from './data-label.js';
+
+/** Hovered-value label drawn inside a pie/donut's hollow centre. */
+export interface PieCenterLabelOptions {
+  /** Show the hovered value in the centre. Defaults to true when a hole exists. */
+  enabled?: boolean;
+  /** Token string, e.g. '{name}: {y:,.1f}' or '{percentage:.0f}%'. */
+  format?: string;
+  /** Custom text callback. Overrides `format`. */
+  formatter?: (ctx: LabelContext) => string;
+  /** Text colour. */
+  color?: string;
+  /** CSS font size, e.g. '20px'. */
+  fontSize?: string;
+  /** CSS font weight, e.g. '600'. */
+  fontWeight?: string;
+  /** CSS font family. */
+  fontFamily?: string;
+}
 
 /** Pie/donut's series-level fields. */
 export interface PieSeriesOptions {
   /** Inner radius as a percentage string, e.g. '60%' (makes a donut). */
   innerSize?: string;
+  /** Hovered-value label displayed inside the hollow centre. */
+  centerLabel?: PieCenterLabelOptions;
   /**
    * Multi-level (two-dimension) rings: field names read from each point. The
    * first is the inner ring (grouped totals), the second the outer ring
@@ -85,6 +107,7 @@ export class PieSeries extends BaseSeries {
 
     const layout: LabelLayout = { lastY: {} };
     const innerR = c.radius * this.innerRatio();
+    const centerValue = this.drawCenterValue(ctx, g, c, innerR);
     // Only draw visible slices; total is over visible points so hiding a slice
     // via the legend redistributes the remaining ones.
     const points = this.visiblePoints();
@@ -116,6 +139,7 @@ export class PieSeries extends BaseSeries {
       const path = this.slicePath(c.cx, c.cy, rr, innerR, angle, end);
       const el = renderer.create('path', { d: path, fill: color, stroke: '#ffffff', 'stroke-width': 1, class: 'facet-point' }, g);
       ctx.registerHover(el, p);
+      this.bindCenterValue(el, p, centerValue, total, color);
       el.addEventListener('click', (e: Event) => ctx.onPointEvent('click', p, e));
       el.addEventListener('mouseover', (e: Event) => ctx.onPointEvent('mouseOver', p, e));
       el.addEventListener('mouseout', (e: Event) => ctx.onPointEvent('mouseOut', p, e));
@@ -132,6 +156,7 @@ export class PieSeries extends BaseSeries {
     const { renderer } = ctx;
     const holeR = c.radius * this.innerRatio();
     const midR = holeR + (c.radius - holeR) * 0.55; // inner ring outer edge
+    const centerValue = this.drawCenterValue(ctx, g, c, holeR);
 
     // Group visible points by the inner dimension (encounter order).
     const order = this.groups();
@@ -182,6 +207,7 @@ export class PieSeries extends BaseSeries {
         const outerPath = this.slicePath(c.cx, c.cy, c.radius, midR, a2, e2);
         const el = renderer.create('path', { d: outerPath, fill: color, stroke: '#ffffff', 'stroke-width': 1, class: 'facet-point' }, g);
         ctx.registerHover(el, p);
+        this.bindCenterValue(el, p, centerValue, total, color);
         el.addEventListener('click', (e: Event) => ctx.onPointEvent('click', p, e));
         el.addEventListener('mouseover', (e: Event) => ctx.onPointEvent('mouseOver', p, e));
         el.addEventListener('mouseout', (e: Event) => ctx.onPointEvent('mouseOut', p, e));
@@ -231,6 +257,69 @@ export class PieSeries extends BaseSeries {
     return text.slice(0, maxChars - 1) + '…';
   }
 
+  /** Draw the initially-empty value readout used by charts with a centre hole. */
+  private drawCenterValue(
+    ctx: SeriesRenderContext,
+    g: SVGGElement,
+    c: PieCenter,
+    innerR: number,
+  ): SVGTextElement | undefined {
+    const options = this.options.centerLabel;
+    if (innerR <= 0 || options?.enabled === false) return undefined;
+    return ctx.renderer.text('', c.cx, c.cy, {
+      class: 'facet-donut-center-value',
+      'text-anchor': 'middle',
+      'dominant-baseline': 'middle',
+      'pointer-events': 'none',
+      'aria-hidden': 'true',
+      ...FONTS.dataLabel,
+      fill: options?.color ?? FONTS.dataLabel.fill,
+      'font-size': options?.fontSize ?? `${Math.max(12, Math.min(24, innerR * 0.38))}px`,
+      'font-weight': options?.fontWeight ?? '600',
+      'font-family': options?.fontFamily,
+    }, g);
+  }
+
+  /** Keep the centre readout in sync with pointer and keyboard hover state. */
+  private bindCenterValue(
+    el: SVGElement,
+    p: Point,
+    centerValue: SVGTextElement | undefined,
+    total: number,
+    color: string,
+  ): void {
+    if (!centerValue) return;
+    const show = () => {
+      const value = p.y ?? 0;
+      const context: LabelContext = {
+        x: p.x,
+        y: value,
+        point: p.options,
+        series: this.name,
+        name: p.name ?? p.x,
+        index: p.index,
+        color,
+        percentage: total ? (value / total) * 100 : 0,
+        total,
+      };
+      const options = this.options.centerLabel;
+      centerValue.textContent = options?.formatter
+        ? options.formatter(context)
+        : options?.format
+          ? formatString(options.format, { ...context })
+          : formatNumber(value, {
+              decimals: this.options.tooltip?.valueDecimals,
+              prefix: this.options.tooltip?.valuePrefix,
+              suffix: this.options.tooltip?.valueSuffix,
+            });
+    };
+    const hide = () => { centerValue.textContent = ''; };
+    el.addEventListener('mouseenter', show);
+    el.addEventListener('mouseleave', hide);
+    el.addEventListener('focus', show);
+    el.addEventListener('blur', hide);
+  }
+
   /** Build the label string for a slice from the series' dataLabels config. */
   private labelText(p: Point, name: string | number | undefined, value: number, total: number): string {
     const dl = this.options.dataLabels;
@@ -278,10 +367,17 @@ export class PieSeries extends BaseSeries {
       // "Other: 0.8%" just smears text across its neighbours otherwise.
       const chord = 2 * lr * Math.sin(Math.min(Math.PI, a1 - a0) / 2);
       if (text.length * fontPx * 0.62 > chord) return;
-      renderer.text(text, c.cx + lr * Math.cos(mid), c.cy + lr * Math.sin(mid), {
-        'text-anchor': 'middle', 'dominant-baseline': 'middle', ...FONTS.dataLabel,
-        fill: dl.color ?? '#ffffff', ...(dl.fontSize ? { 'font-size': dl.fontSize } : {}),
-      }, g);
+      drawDataLabel(
+        renderer,
+        g,
+        text,
+        {
+          x: c.cx + lr * Math.cos(mid),
+          y: c.cy + lr * Math.sin(mid) + fontPx * 0.35,
+          anchor: 'middle',
+        },
+        { ...dl, color: dl.color ?? '#ffffff' },
+      );
       return;
     }
 
@@ -307,11 +403,17 @@ export class PieSeries extends BaseSeries {
       fill: 'none', stroke: dl.color ?? sliceColor, 'stroke-width': 1,
     }, g);
 
-    renderer.text(text, stubX + dir * 4, elbowY, {
-      'text-anchor': dir > 0 ? 'start' : 'end', 'dominant-baseline': 'middle',
-      ...FONTS.dataLabel, fill: dl.color ?? FONTS.dataLabel.fill,
-      ...(dl.fontSize ? { 'font-size': dl.fontSize } : {}),
-    }, g);
+    drawDataLabel(
+      renderer,
+      g,
+      text,
+      {
+        x: stubX + dir * 4,
+        y: elbowY + fontPx * 0.35,
+        anchor: dir > 0 ? 'start' : 'end',
+      },
+      dl,
+    );
   }
 
   private slicePath(cx: number, cy: number, r: number, ir: number, a0: number, a1: number): string {

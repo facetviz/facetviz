@@ -39,7 +39,7 @@ export class AreaSeries extends LineSeries {
       const bottomD = line([...bottom].reverse()).replace(/^M/, 'L');
       renderer.create('path', {
         d: `${topD} ${bottomD} Z`,
-        fill: alpha(this.color, 0.35),
+        fill: alpha(this.color, this.options.fillOpacity ?? 0.35),
         stroke: 'none',
       }, g);
       renderer.create('path', {

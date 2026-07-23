@@ -107,6 +107,8 @@ export class SankeySeries extends BaseSeries {
       }, g);
       ctx.registerHover(path, l.point);
       path.addEventListener('click', (e: Event) => ctx.onPointEvent('click', l.point, e));
+      path.addEventListener('mouseover', (e: Event) => ctx.onPointEvent('mouseOver', l.point, e));
+      path.addEventListener('mouseout', (e: Event) => ctx.onPointEvent('mouseOut', l.point, e));
       outOff.set(s.id, so + th); inOff.set(t.id, to + th);
     }
 

@@ -49,6 +49,8 @@ export class GanttSeries extends BaseSeries {
       }, g);
       ctx.registerHover(bar, t.point);
       bar.addEventListener('click', (e: Event) => ctx.onPointEvent('click', t.point, e));
+      bar.addEventListener('mouseover', (e: Event) => ctx.onPointEvent('mouseOver', t.point, e));
+      bar.addEventListener('mouseout', (e: Event) => ctx.onPointEvent('mouseOut', t.point, e));
       renderer.text(t.name, gx - 6, y + rowH / 2, { 'text-anchor': 'end', 'dominant-baseline': 'middle', ...FONTS.axisLabel }, g);
     });
 

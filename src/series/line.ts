@@ -91,6 +91,8 @@ export class LineSeries extends BaseSeries {
           fill: marker!.fillColor ?? this.color,
           stroke: marker!.lineColor ?? '#fff',
           strokeWidth: marker!.lineWidth ?? 1,
+          width: marker!.width,
+          height: marker!.height,
         });
       } else {
         // Invisible hit target so tooltips/events work even without markers

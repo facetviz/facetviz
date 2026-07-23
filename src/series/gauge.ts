@@ -76,6 +76,8 @@ export class GaugeSeries extends BaseSeries {
 
     ctx.registerHover(needle, p);
     needle.addEventListener('click', (e: Event) => ctx.onPointEvent('click', p, e));
+    needle.addEventListener('mouseover', (e: Event) => ctx.onPointEvent('mouseOver', p, e));
+    needle.addEventListener('mouseout', (e: Event) => ctx.onPointEvent('mouseOut', p, e));
   }
 
   /** SVG arc path from startDeg to endDeg on a circle. */

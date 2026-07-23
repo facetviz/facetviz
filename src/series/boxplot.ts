@@ -143,16 +143,20 @@ export class BoxplotSeries extends BaseSeries {
       // drifting to the shared category centre.
       const om: MarkerOptions = { ...this.options.outlierMarker, ...p.options.outlierMarker };
       const outlierR = om.radius ?? Math.min(4, half * 0.5);
-      for (const val of box.outliers ?? []) {
-        const pos = v(val);
-        const oc = inverted ? { x: pos, y: c } : { x: c, y: pos };
-        drawMarker(renderer, g, oc.x, oc.y, {
-          symbol: om.symbol ?? 'circle',
-          radius: outlierR,
-          fill: om.fillColor ?? THEME.backgroundColor,
-          stroke: om.lineColor ?? stroke,
-          strokeWidth: om.lineWidth ?? 1.5,
-        });
+      if (om.enabled !== false) {
+        for (const val of box.outliers ?? []) {
+          const pos = v(val);
+          const oc = inverted ? { x: pos, y: c } : { x: c, y: pos };
+          drawMarker(renderer, g, oc.x, oc.y, {
+            symbol: om.symbol ?? 'circle',
+            radius: outlierR,
+            fill: om.fillColor ?? THEME.backgroundColor,
+            stroke: om.lineColor ?? stroke,
+            strokeWidth: om.lineWidth ?? 1.5,
+            width: om.width,
+            height: om.height,
+          });
+        }
       }
 
       ctx.registerHover(g, p);

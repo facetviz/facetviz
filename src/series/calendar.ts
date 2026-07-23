@@ -72,6 +72,8 @@ export class CalendarSeries extends BaseSeries {
       }, g);
       ctx.registerHover(el, d.point);
       el.addEventListener('click', (e: Event) => ctx.onPointEvent('click', d.point, e));
+      el.addEventListener('mouseover', (e: Event) => ctx.onPointEvent('mouseOver', d.point, e));
+      el.addEventListener('mouseout', (e: Event) => ctx.onPointEvent('mouseOut', d.point, e));
       // Month label at each month's first appearance.
       if (d.date.getMonth() !== lastMonth) {
         lastMonth = d.date.getMonth();

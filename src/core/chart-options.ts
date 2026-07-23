@@ -69,6 +69,21 @@ export function resolveCategories(
 ): string[] | undefined {
   const axis = firstAxis(xAxis);
   if (axis?.categories) return axis.categories;
+  if (axis?.type === "category") {
+    const seen = new Set<string>();
+    const categories: string[] = [];
+    series.forEach((entry) =>
+      entry.data.forEach((datum, index) => {
+        const x = rawX(datum) ?? index;
+        const key = String(x);
+        if (!seen.has(key)) {
+          seen.add(key);
+          categories.push(key);
+        }
+      }),
+    );
+    return categories;
+  }
   const allNumeric = series.every((entry) =>
     entry.data.every(
       (datum) =>

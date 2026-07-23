@@ -203,7 +203,7 @@ interface SeriesOptions {
   color?: string;
   visible?: boolean; showInLegend?: boolean;
   stack?: string|number; stacking?: 'normal'|'percent';
-  xAxis?: number; yAxis?: number;
+  xAxis?: 0 | 1; yAxis?: 0 | 1;
   lineWidth?: number; size?: number;
   marker?: { enabled?: boolean; radius?: number;
     symbol?: 'circle'|'square'|'diamond'|'triangle'|'rectangle';

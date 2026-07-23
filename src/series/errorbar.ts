@@ -45,6 +45,8 @@ export class ErrorBarSeries extends BaseSeries {
       }
       ctx.registerHover(el, p);
       el.addEventListener('click', (e: Event) => ctx.onPointEvent('click', p, e));
+      el.addEventListener('mouseover', (e: Event) => ctx.onPointEvent('mouseOver', p, e));
+      el.addEventListener('mouseout', (e: Event) => ctx.onPointEvent('mouseOut', p, e));
     }
   }
 }
