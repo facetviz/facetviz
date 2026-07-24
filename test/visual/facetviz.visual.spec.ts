@@ -41,6 +41,14 @@ test('responsive compact layout', async ({ page }) => {
   await expect(page.locator('[data-fixture="responsive"]')).toHaveScreenshot('responsive-compact.png');
 });
 
+test('polar layout, titles, and annotation', async ({ page }) => {
+  await page.goto('/test/visual/fixtures.html?mode=layout-features');
+  await waitForFixture(page);
+  await expect(page.locator('[data-fixture="layout-features"]')).toHaveScreenshot(
+    'layout-features.png',
+  );
+});
+
 test('data update before and after', async ({ page }) => {
   await page.goto('/test/visual/fixtures.html?mode=update');
   await waitForFixture(page);

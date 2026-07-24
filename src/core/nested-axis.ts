@@ -161,13 +161,16 @@ export class NestedAxis {
 
   private drawTitle(g: SVGGElement): void {
     const title = this.cfg.title;
-    if (!title?.text) return;
+    if (!title?.text || title.enabled === false) return;
     const { plot, leaves, vertical, position } = this.cfg;
     const levels = leaves[0]?.length ?? 0;
+    const align = title.align ?? "center";
+    const along = align === "start" ? 0 : align === "end" ? 1 : 0.5;
     const style = {
       ...FONTS.axisTitle,
       ...sanitizeStyle(title.style),
-      "text-anchor": "middle",
+      "text-anchor":
+        align === "start" ? "start" : align === "end" ? "end" : "middle",
     };
     if (vertical) {
       const widths = nestedLevelWidths(leaves);
@@ -176,9 +179,18 @@ export class NestedAxis {
         ? widths[widths.length - 1] ?? 0
         : widths.reduce((sum, width) => sum + width, 0);
       const x = sideRight
-        ? plot.x + plot.width + LAYOUT.tickLength + extent + 16
-        : plot.x - LAYOUT.tickLength - extent - 16;
-      const y = plot.y + plot.height / 2;
+        ? plot.x +
+          plot.width +
+          LAYOUT.tickLength +
+          extent +
+          (title.margin ?? 16) +
+          (title.offset ?? 0)
+        : plot.x -
+          LAYOUT.tickLength -
+          extent -
+          (title.margin ?? 16) -
+          (title.offset ?? 0);
+      const y = plot.y + plot.height * along;
       const rotation = sideRight ? 90 : -90;
       this.cfg.renderer.text(title.text, x, y, {
         ...style,
@@ -190,10 +202,12 @@ export class NestedAxis {
     const rotExtra = nestedInnerRotationExtent(leaves, rotation);
     const top = position === "top";
     const tierCount = position === "split" ? 1 : levels;
-    const x = plot.x + plot.width / 2;
+    const x = plot.x + plot.width * along;
+    const margin = title.margin ?? (top ? 12 : 14);
+    const offset = title.offset ?? 0;
     const y = top
-      ? plot.y - LAYOUT.tickLength - tierCount * 18 - rotExtra - 12
-      : plot.y + plot.height + LAYOUT.tickLength + tierCount * 18 + rotExtra + 14;
+      ? plot.y - LAYOUT.tickLength - tierCount * 18 - rotExtra - margin - offset
+      : plot.y + plot.height + LAYOUT.tickLength + tierCount * 18 + rotExtra + margin + offset;
     this.cfg.renderer.text(title.text, x, y, style, g);
   }
 

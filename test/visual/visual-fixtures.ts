@@ -124,6 +124,38 @@ if (requestedTheme) {
     document.body.dataset.updated = 'true';
   });
   document.body.append(button);
+} else if (mode === 'layout-features') {
+  const item = fixture('column', {
+    chart: {
+      type: 'column',
+      polar: true,
+      polarInnerSize: '44%',
+      polarInnerBackgroundColor: '#ffffff',
+      polarGridLineMode: 'sector',
+      width: 418,
+      height: 330,
+    },
+    title: { text: 'Polar revenue', margin: 8 },
+    xAxis: {
+      categories: ['North', 'East', 'South', 'West'],
+      labels: { maxWidth: 70, position: 'inner', offset: 10 },
+      title: { text: 'Region', position: 'center' },
+    },
+    yAxis: { title: { text: 'Revenue', margin: 10 } },
+    annotations: [{
+      x: 'East',
+      y: 8,
+      text: 'Peak',
+      shape: 'callout',
+      dx: 14,
+      dy: -18,
+    }],
+    series: [
+      { name: 'Current', data: [5, 8, 6, 7] },
+      { name: 'Prior', data: [4, 6, 5, 6] },
+    ],
+  });
+  mount('layout-features', 'layout features', item);
 } else {
   const item = fixtures.find((candidate) => candidate.type === requestedType);
   if (!item) throw new Error(`Unknown chart fixture: ${requestedType}`);

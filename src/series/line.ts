@@ -5,6 +5,7 @@ import type { Point } from '../core/point.js';
 import { linePath, splinePath, stepPath, Pt } from './paths.js';
 import { drawMarker } from './marker.js';
 import { drawPointLabels } from './data-label.js';
+import { polarPoint } from "./polar.js";
 
 export class LineSeries extends BaseSeries {
   override capabilities(): SeriesCapabilities {
@@ -27,6 +28,10 @@ export class LineSeries extends BaseSeries {
       if (y === undefined) {
         if (current.length) segments.push(current);
         current = [];
+        continue;
+      }
+      if (ctx.polar) {
+        current.push({ pt: polarPoint(ctx, p.x, y), p });
         continue;
       }
       const catPx = catScale.scale(p.x);
@@ -61,8 +66,12 @@ export class LineSeries extends BaseSeries {
     const segments = this.pixelSegments(ctx);
     const data = segments.flat();
     for (const segment of segments) {
+      const points =
+        ctx.polar && segments.length === 1 && segment.length > 2
+          ? [...segment.map((d) => d.pt), segment[0].pt]
+          : segment.map((d) => d.pt);
       renderer.create('path', {
-        d: this.buildPath(segment.map((d) => d.pt)),
+        d: this.buildPath(points),
         fill: 'none',
         stroke: this.color,
         'stroke-width': this.options.lineWidth ?? this.options.size ?? 2,

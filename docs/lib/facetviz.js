@@ -192,7 +192,7 @@ function drawMarker(renderer, parent, cx, cy, spec) {
 var DEFAULT_OPTIONS = {
   chart: {
     type: "line",
-    spacing: [10, 10, 10, 10],
+    spacing: [16, 16, 16, 16],
     inverted: !1,
     polar: !1
     // `backgroundColor`, `colors`, `width`, and `height` are intentionally
@@ -498,6 +498,57 @@ function drawPointLabels(renderer, parent, dl, seriesName, data, seriesColor) {
   }
 }
 
+// src/series/polar.ts
+function polarCenter(ctx) {
+  return {
+    x: ctx.plot.x + ctx.plot.width / 2,
+    y: ctx.plot.y + ctx.plot.height / 2
+  };
+}
+function polarPoint(ctx, xValue, yValue) {
+  let angle = ctx.xScale.scale(xValue), radius = ctx.yScale.scale(yValue), center = polarCenter(ctx);
+  return {
+    x: center.x + Math.cos(angle) * radius,
+    y: center.y + Math.sin(angle) * radius
+  };
+}
+function projectPolar(plot, angle, radius) {
+  return {
+    x: plot.x + plot.width / 2 + Math.cos(angle) * radius,
+    y: plot.y + plot.height / 2 + Math.sin(angle) * radius
+  };
+}
+function annularSectorPath(cx, cy, innerRadius, outerRadius, startAngle, endAngle) {
+  let inner = Math.max(0, Math.min(innerRadius, outerRadius)), outer = Math.max(inner, outerRadius), large = endAngle - startAngle > Math.PI ? 1 : 0, outerStart = {
+    x: cx + Math.cos(startAngle) * outer,
+    y: cy + Math.sin(startAngle) * outer
+  }, outerEnd = {
+    x: cx + Math.cos(endAngle) * outer,
+    y: cy + Math.sin(endAngle) * outer
+  };
+  if (inner <= 0.5)
+    return [
+      `M ${cx} ${cy}`,
+      `L ${outerStart.x} ${outerStart.y}`,
+      `A ${outer} ${outer} 0 ${large} 1 ${outerEnd.x} ${outerEnd.y}`,
+      "Z"
+    ].join(" ");
+  let innerEnd = {
+    x: cx + Math.cos(endAngle) * inner,
+    y: cy + Math.sin(endAngle) * inner
+  }, innerStart = {
+    x: cx + Math.cos(startAngle) * inner,
+    y: cy + Math.sin(startAngle) * inner
+  };
+  return [
+    `M ${outerStart.x} ${outerStart.y}`,
+    `A ${outer} ${outer} 0 ${large} 1 ${outerEnd.x} ${outerEnd.y}`,
+    `L ${innerEnd.x} ${innerEnd.y}`,
+    `A ${inner} ${inner} 0 ${large} 0 ${innerStart.x} ${innerStart.y}`,
+    "Z"
+  ].join(" ");
+}
+
 // src/series/line.ts
 var LineSeries = class extends BaseSeries {
   capabilities() {
@@ -510,6 +561,10 @@ var LineSeries = class extends BaseSeries {
       let y = p.stackHigh !== void 0 ? p.stackHigh : p.y;
       if (y === void 0) {
         current.length && segments.push(current), current = [];
+        continue;
+      }
+      if (ctx.polar) {
+        current.push({ pt: polarPoint(ctx, p.x, y), p });
         continue;
       }
       let catPx = catScale.scale(p.x), valPx = valScale.scale(y);
@@ -535,15 +590,17 @@ var LineSeries = class extends BaseSeries {
   }
   render(ctx) {
     let { renderer } = ctx, g = renderer.group({ class: `facet-series facet-line ${this.name}` }, renderer.root), segments = this.pixelSegments(ctx), data = segments.flat();
-    for (let segment of segments)
+    for (let segment of segments) {
+      let points = ctx.polar && segments.length === 1 && segment.length > 2 ? [...segment.map((d) => d.pt), segment[0].pt] : segment.map((d) => d.pt);
       renderer.create("path", {
-        d: this.buildPath(segment.map((d) => d.pt)),
+        d: this.buildPath(points),
         fill: "none",
         stroke: this.color,
         "stroke-width": this.options.lineWidth ?? this.options.size ?? 2,
         "stroke-linejoin": "round",
         "stroke-linecap": "round"
       }, g);
+    }
     this.renderMarkers(ctx, g, data), drawPointLabels(ctx.renderer, g, this.options.dataLabels, this.name, data, this.color);
   }
   renderMarkers(ctx, g, data) {
@@ -622,13 +679,13 @@ var AreaSeries = class extends LineSeries {
   render(ctx) {
     let { renderer } = ctx, g = renderer.group({ class: `facet-series facet-area ${this.name}` }, renderer.root), top = [], bottom = [], hover = [], catScale = ctx.inverted ? ctx.yScale : ctx.xScale, valScale = ctx.inverted ? ctx.xScale : ctx.yScale, drawSegment = () => {
       if (!top.length) return;
-      let line = this.smooth() ? splinePath : linePath, topD = line(top), bottomD = line([...bottom].reverse()).replace(/^M/, "L");
+      let line = this.smooth() ? splinePath : linePath, reversedBottom = [...bottom].reverse(), topD = line(top), bottomD = line(reversedBottom).replace(/^M/, "L");
       renderer.create("path", {
         d: `${topD} ${bottomD} Z`,
         fill: alpha(this.color, this.options.fillOpacity ?? 0.35),
         stroke: "none"
       }, g), renderer.create("path", {
-        d: topD,
+        d: ctx.polar && top.length > 2 ? line([...top, top[0]]) : topD,
         fill: "none",
         stroke: this.color,
         "stroke-width": this.options.lineWidth ?? this.options.size ?? 2,
@@ -641,7 +698,7 @@ var AreaSeries = class extends LineSeries {
         drawSegment();
         continue;
       }
-      let lo = p.stackLow !== void 0 ? p.stackLow : 0, catPx = catScale.scale(p.x), topPt = ctx.inverted ? { x: valScale.scale(hi), y: catPx } : { x: catPx, y: valScale.scale(hi) }, botPt = ctx.inverted ? { x: valScale.scale(lo), y: catPx } : { x: catPx, y: valScale.scale(lo) };
+      let lo = p.stackLow !== void 0 ? p.stackLow : 0, catPx = catScale.scale(p.x), topPt = ctx.polar ? polarPoint(ctx, p.x, hi) : ctx.inverted ? { x: valScale.scale(hi), y: catPx } : { x: catPx, y: valScale.scale(hi) }, botPt = ctx.polar ? polarPoint(ctx, p.x, lo) : ctx.inverted ? { x: valScale.scale(lo), y: catPx } : { x: catPx, y: valScale.scale(lo) };
       top.push(topPt), bottom.push(botPt), hover.push({ pt: topPt, p });
     }
     drawSegment(), this.renderMarkers(ctx, g, hover), drawPointLabels(ctx.renderer, g, this.options.dataLabels, this.name, hover, this.color);
@@ -938,6 +995,10 @@ var ColumnSeries = class extends BaseSeries {
     return p.stackHigh !== void 0 ? [p.stackLow, p.stackHigh] : [0, p.y];
   }
   render(ctx) {
+    if (ctx.polar) {
+      this.renderPolar(ctx);
+      return;
+    }
     let { renderer, groupCount, groupIndex } = ctx, horizontal = this.type === "bar" || ctx.inverted, catScale = horizontal ? ctx.yScale : ctx.xScale, valScale = horizontal ? ctx.xScale : ctx.yScale, g = renderer.group({
       class: `facet-series facet-column ${this.name}`
     }), band = catScale.bandwidth(), subWidth = band / groupCount;
@@ -967,6 +1028,48 @@ var ColumnSeries = class extends BaseSeries {
         g
       );
       ctx.registerHover(el, p), this.wireEvents(el, p, ctx), this.drawDataLabel(ctx, p, rect, g);
+    }
+  }
+  renderPolar(ctx) {
+    let { renderer, groupCount, groupIndex } = ctx, group = renderer.group({
+      class: `facet-series facet-column facet-polar-column ${this.name}`
+    }), center = polarCenter(ctx), band = ctx.xScale.bandwidth() || Math.PI * 2 / Math.max(1, this.points.length), slot = band / groupCount;
+    for (let p of this.points) {
+      let [loValue, hiValue] = this.valuePair(p);
+      if (loValue === void 0 || hiValue === void 0) continue;
+      let start = ctx.xScale.scale(p.x) - band / 2 + groupIndex * slot + slot * 0.05, end = start + slot * 0.9, lo = ctx.yScale.scale(loValue), hi = ctx.yScale.scale(hiValue), inner = Math.min(lo, hi), outer = Math.max(lo, hi), el = renderer.create(
+        "path",
+        {
+          d: annularSectorPath(center.x, center.y, inner, outer, start, end),
+          fill: p.color ?? this.color,
+          class: "facet-point facet-polar-sector"
+        },
+        group
+      );
+      if (ctx.registerHover(el, p), this.wireEvents(el, p, ctx), this.options.dataLabels?.enabled) {
+        let mid = (start + end) / 2, point = projectPolar(ctx.plot, mid, outer + 8), total = this.points.reduce((sum2, item) => sum2 + (item.y ?? 0), 0);
+        drawDataLabel(
+          renderer,
+          group,
+          labelString(this.options.dataLabels, {
+            x: p.x,
+            y: p.y,
+            point: p.options,
+            series: this.name,
+            name: p.name ?? p.x,
+            index: p.index,
+            color: p.color ?? this.color,
+            total,
+            percentage: total ? (p.y ?? 0) / total * 100 : void 0
+          }),
+          {
+            x: point.x,
+            y: point.y,
+            anchor: Math.cos(mid) < -0.15 ? "end" : Math.cos(mid) > 0.15 ? "start" : "middle"
+          },
+          this.options.dataLabels
+        );
+      }
     }
   }
   /** The [low, high] value pair driving the rectangle for this point. */
@@ -1999,7 +2102,7 @@ var ScatterSeries = class extends BaseSeries {
       if (p.y === void 0) continue;
       let catPx = catScale.scale(p.x);
       this.isJitter && band > 0 && (catPx += (rng() - 0.5) * spread);
-      let valPx = valScale.scale(p.y), x = ctx.inverted ? valPx : catPx, y = ctx.inverted ? catPx : valPx;
+      let valPx = valScale.scale(p.y), projected = ctx.polar ? projectPolar(ctx.plot, catPx, valPx) : void 0, x = projected?.x ?? (ctx.inverted ? valPx : catPx), y = projected?.y ?? (ctx.inverted ? catPx : valPx);
       labelData.push({ pt: { x, y }, p });
       let radius = p.options.radius ?? this.options.radius ?? this.options.size ?? marker.radius ?? 5, el = marker.enabled === !1 ? renderer.create(
         "circle",
@@ -2393,6 +2496,26 @@ var SVG_NS = "http://www.w3.org/2000/svg", Renderer = class {
     let el = this.create("text", { x, y, ...attrs }, parent ?? this.root);
     return el.textContent = content, el;
   }
+  /**
+   * Measure SVG text using the live renderer when the DOM supports it, with a
+   * deterministic font-size fallback for headless and pre-mount environments.
+   */
+  measureText(content, attrs = {}) {
+    let fontSize = parseFloat(String(attrs["font-size"] ?? "11")) || 11, probe = this.text(content, -1e4, -1e4, {
+      visibility: "hidden",
+      ...attrs
+    }), width = 0, height = fontSize;
+    try {
+      width = probe.getComputedTextLength?.() ?? 0;
+      let box = probe.getBBox?.();
+      box && (width = width || box.width, height = box.height || height);
+    } catch {
+    }
+    return probe.remove(), {
+      width: width || content.length * fontSize * 0.6,
+      height
+    };
+  }
   /** Build an SVG path `d` string from segment tokens. */
   static path(segments) {
     return segments.map((s) => s.join(" ")).join(" ");
@@ -2427,18 +2550,35 @@ var Axis = class {
         "stroke-width": options.lineWidth ?? 1
       }, group);
     }
-    let labelsEnabled = options.labels?.enabled !== !1, gridColor = options.gridLineColor ?? THEME.axis.gridLineColor, gridWidth = options.gridLineWidth ?? 1, labelStep = 1;
-    if (isCategory && labelsEnabled && this.horizontal && !options.labels?.rotation) {
+    let labelsEnabled = options.labels?.enabled !== !1, gridColor = options.gridLineColor ?? THEME.axis.gridLineColor, gridWidth = options.gridLineWidth ?? 1, labelStep = Math.max(1, options.labels?.step ?? 1), labelRotation = options.labels?.rotation ?? 0;
+    if (isCategory && labelsEnabled && this.horizontal) {
       let band = scale.bandwidth();
       if (band > 0) {
-        let estW = ticks.reduce((m, t) => Math.max(m, this.labelText(scale, t).length), 0) * 6.2 + 6;
-        estW > band && (labelStep = Math.ceil(estW / band));
+        let style = this.labelStyle(), widest = ticks.reduce(
+          (m, t) => Math.max(m, renderer.measureText(this.labelText(scale, t), style).width),
+          0
+        );
+        if (options.labels?.rotation === void 0) {
+          let candidates = options.labels?.autoRotation ?? [0];
+          labelRotation = candidates.find((rotation) => {
+            let rad2 = Math.abs(rotation) * Math.PI / 180;
+            return Math.cos(rad2) * widest + Math.sin(rad2) * (parseFloat(style["font-size"] ?? "11") || 11) + 6 <= band * labelStep;
+          }) ?? candidates[candidates.length - 1] ?? 0;
+        }
+        let rad = Math.abs(labelRotation) * Math.PI / 180, projected = Math.cos(rad) * widest + Math.sin(rad) * (parseFloat(style["font-size"] ?? "11") || 11);
+        projected + 6 > band * labelStep && (labelStep = Math.ceil((projected + 6) / band));
       }
     }
     ticks.forEach((tick, i) => {
       let pos = scale.scale(tick);
-      this.cfg.grid && gridWidth > 0 && (!isCategory || options.gridLineWidth) && this.drawGridLine(group, pos, gridColor, gridWidth), options.ticks !== !1 && this.drawTick(group, pos, axisColor), labelsEnabled && i % labelStep === 0 && this.drawLabel(group, pos, this.labelText(scale, tick), options);
-    }), this.drawPlotLines(group, "below"), options.title?.text && this.drawTitle(group, options.title.text);
+      this.cfg.grid && gridWidth > 0 && (!isCategory || options.gridLineWidth) && this.drawGridLine(group, pos, gridColor, gridWidth), options.ticks !== !1 && this.drawTick(group, pos, axisColor), labelsEnabled && i % labelStep === 0 && this.drawLabel(
+        group,
+        pos,
+        this.labelText(scale, tick),
+        options,
+        labelRotation
+      );
+    }), this.drawPlotLines(group, "below"), options.title?.text && options.title.enabled !== !1 && this.drawTitle(group, options.title.text);
   }
   /**
    * Re-draws only the `zIndex: 'above'` plotLines, into a group the caller
@@ -2541,13 +2681,26 @@ var Axis = class {
         break;
     }
   }
-  drawLabel(g, pos, text, options) {
-    let { renderer, plot, position } = this.cfg, customStyle = sanitizeStyle(options.labels?.style), style = { ...FONTS.axisLabel, ...customStyle };
-    if (!customStyle["font-size"]) {
-      let shortSide = Math.min(plot.width, plot.height);
-      shortSide < 120 ? style["font-size"] = "9px" : shortSide < 220 && (style["font-size"] = "10px");
+  labelStyle() {
+    let customStyle = sanitizeStyle(this.cfg.options.labels?.style), style = { ...FONTS.axisLabel, ...customStyle }, shortSide = Math.min(this.cfg.plot.width, this.cfg.plot.height);
+    return customStyle["font-size"] || (shortSide < 120 ? style["font-size"] = "9px" : shortSide < 220 && (style["font-size"] = "10px")), style;
+  }
+  fitLabel(text, style) {
+    let maxWidth = this.cfg.options.labels?.maxWidth;
+    if (!maxWidth || this.cfg.renderer.measureText(text, style).width <= maxWidth)
+      return text;
+    if (this.cfg.options.labels?.overflow === "hide") return;
+    let lo = 0, hi = text.length;
+    for (; lo < hi; ) {
+      let mid = Math.ceil((lo + hi) / 2), candidate = `${text.slice(0, mid)}\u2026`;
+      this.cfg.renderer.measureText(candidate, style).width <= maxWidth ? lo = mid : hi = mid - 1;
     }
-    let rotation = options.labels?.rotation ?? 0, x = 0, y = 0, anchor = "middle", baseline = "middle";
+    return lo ? `${text.slice(0, lo)}\u2026` : void 0;
+  }
+  drawLabel(g, pos, rawText, options, resolvedRotation) {
+    let { renderer, plot, position } = this.cfg, style = this.labelStyle(), text = this.fitLabel(rawText, style);
+    if (text === void 0) return;
+    let rotation = resolvedRotation ?? options.labels?.rotation ?? 0, x = 0, y = 0, anchor = "middle", baseline = "middle";
     switch (position) {
       case "bottom":
         x = pos, y = plot.y + plot.height + LAYOUT.tickLength + (rotation ? 8 : 7), baseline = rotation ? "middle" : "hanging", anchor = rotation ? rotation < 0 ? "end" : "start" : "middle";
@@ -2573,13 +2726,20 @@ var Axis = class {
     let { renderer, plot, position } = this.cfg, style = {
       ...FONTS.axisTitle,
       ...sanitizeStyle(this.cfg.options.title?.style)
-    }, gap = this.cfg.options.labels?.enabled !== !1 ? this.labelExtent() : 0;
+    }, gap = this.cfg.options.labels?.enabled !== !1 ? this.labelExtent() : 0, margin = this.cfg.options.title?.margin ?? (this.horizontal ? 14 : 8), offset = this.cfg.options.title?.offset ?? 0, align = this.cfg.options.title?.align ?? "center", along = align === "start" ? 0 : align === "end" ? 1 : 0.5;
     if (this.horizontal) {
-      let x = plot.x + plot.width / 2, y = position === "bottom" ? plot.y + plot.height + LAYOUT.tickLength + gap + 22 : plot.y - LAYOUT.tickLength - gap - 18;
-      renderer.text(text, x, y, { "text-anchor": "middle", ...style }, g);
+      let x = plot.x + plot.width * along, y = position === "bottom" ? plot.y + plot.height + LAYOUT.tickLength + gap + margin + offset + 8 : plot.y - LAYOUT.tickLength - gap - margin - offset - 4;
+      renderer.text(text, x, y, {
+        "text-anchor": align === "start" ? "start" : align === "end" ? "end" : "middle",
+        ...style
+      }, g);
     } else {
-      let x = position === "left" ? plot.x - LAYOUT.tickLength - 4 - gap - 8 : plot.x + plot.width + LAYOUT.tickLength + 4 + gap + 8, y = plot.y + plot.height / 2, rot = position === "left" ? -90 : 90;
-      renderer.text(text, x, y, { "text-anchor": "middle", transform: `rotate(${rot} ${x} ${y})`, ...style }, g);
+      let x = position === "left" ? plot.x - LAYOUT.tickLength - 4 - gap - margin - offset : plot.x + plot.width + LAYOUT.tickLength + 4 + gap + margin + offset, y = plot.y + plot.height * along, rot = position === "left" ? -90 : 90;
+      renderer.text(text, x, y, {
+        "text-anchor": align === "start" ? "start" : align === "end" ? "end" : "middle",
+        transform: `rotate(${rot} ${x} ${y})`,
+        ...style
+      }, g);
     }
   }
   /**
@@ -2588,9 +2748,17 @@ var Axis = class {
    * axes. Used to offset the title clear of the labels.
    */
   labelExtent() {
-    let { scale, options } = this.cfg, labelStyle = sanitizeStyle(options.labels?.style), fontPx = parseFloat(labelStyle["font-size"] ?? FONTS.axisLabel["font-size"] ?? "11") || 11, charW = fontPx * 0.6, maxW = 0;
-    for (let t of scale.ticks())
-      maxW = Math.max(maxW, this.labelText(scale, t).length * charW);
+    let { scale, options } = this.cfg, labelStyle = sanitizeStyle(options.labels?.style), fontPx = parseFloat(labelStyle["font-size"] ?? FONTS.axisLabel["font-size"] ?? "11") || 11, maxW = 0;
+    for (let t of scale.ticks()) {
+      let measured = this.cfg.renderer.measureText(this.labelText(scale, t), {
+        ...FONTS.axisLabel,
+        ...labelStyle
+      }).width;
+      maxW = Math.max(
+        maxW,
+        options.labels?.maxWidth ? Math.min(measured, options.labels.maxWidth) : measured
+      );
+    }
     let rot = options.labels?.rotation ?? 0;
     return this.horizontal ? rot ? Math.abs(Math.sin(rot * Math.PI / 180)) * maxW + fontPx : fontPx + 2 : maxW;
   }
@@ -2647,21 +2815,21 @@ var NestedAxis = class {
   }
   drawTitle(g) {
     let title = this.cfg.title;
-    if (!title?.text) return;
-    let { plot, leaves, vertical, position } = this.cfg, levels = leaves[0]?.length ?? 0, style = {
+    if (!title?.text || title.enabled === !1) return;
+    let { plot, leaves, vertical, position } = this.cfg, levels = leaves[0]?.length ?? 0, align = title.align ?? "center", along = align === "start" ? 0 : align === "end" ? 1 : 0.5, style = {
       ...FONTS.axisTitle,
       ...sanitizeStyle(title.style),
-      "text-anchor": "middle"
+      "text-anchor": align === "start" ? "start" : align === "end" ? "end" : "middle"
     };
     if (vertical) {
-      let widths = nestedLevelWidths(leaves), sideRight = position === "top", extent2 = position === "split" ? widths[widths.length - 1] ?? 0 : widths.reduce((sum2, width) => sum2 + width, 0), x2 = sideRight ? plot.x + plot.width + LAYOUT.tickLength + extent2 + 16 : plot.x - LAYOUT.tickLength - extent2 - 16, y2 = plot.y + plot.height / 2, rotation2 = sideRight ? 90 : -90;
+      let widths = nestedLevelWidths(leaves), sideRight = position === "top", extent2 = position === "split" ? widths[widths.length - 1] ?? 0 : widths.reduce((sum2, width) => sum2 + width, 0), x2 = sideRight ? plot.x + plot.width + LAYOUT.tickLength + extent2 + (title.margin ?? 16) + (title.offset ?? 0) : plot.x - LAYOUT.tickLength - extent2 - (title.margin ?? 16) - (title.offset ?? 0), y2 = plot.y + plot.height * along, rotation2 = sideRight ? 90 : -90;
       this.cfg.renderer.text(title.text, x2, y2, {
         ...style,
         transform: `rotate(${rotation2} ${x2} ${y2})`
       }, g);
       return;
     }
-    let rotation = this.cfg.labels?.rotation ?? 0, rotExtra = nestedInnerRotationExtent(leaves, rotation), top = position === "top", tierCount = position === "split" ? 1 : levels, x = plot.x + plot.width / 2, y = top ? plot.y - LAYOUT.tickLength - tierCount * 18 - rotExtra - 12 : plot.y + plot.height + LAYOUT.tickLength + tierCount * 18 + rotExtra + 14;
+    let rotation = this.cfg.labels?.rotation ?? 0, rotExtra = nestedInnerRotationExtent(leaves, rotation), top = position === "top", tierCount = position === "split" ? 1 : levels, x = plot.x + plot.width * along, margin = title.margin ?? (top ? 12 : 14), offset = title.offset ?? 0, y = top ? plot.y - LAYOUT.tickLength - tierCount * 18 - rotExtra - margin - offset : plot.y + plot.height + LAYOUT.tickLength + tierCount * 18 + rotExtra + margin + offset;
     this.cfg.renderer.text(title.text, x, y, style, g);
   }
   /** A gridline through the plot at each leaf position, opt-in via `gridLineWidth`. */
@@ -3330,6 +3498,18 @@ function validateChartOptions(options) {
       `${dimension} must be a positive finite number.`
     );
   }
+  let polarInnerSize = chartRecord.polarInnerSize;
+  polarInnerSize !== void 0 && !(typeof polarInnerSize == "number" && Number.isFinite(polarInnerSize) && polarInnerSize >= 0 || typeof polarInnerSize == "string" && /^\s*(?:\d+(?:\.\d+)?|\.\d+)%\s*$/.test(polarInnerSize) && parseFloat(polarInnerSize) >= 0 && parseFloat(polarInnerSize) < 100) && add(
+    "chart.polar_inner_size.valid",
+    "error",
+    "chart.polarInnerSize",
+    "polarInnerSize must be a non-negative pixel number or a percentage below 100%."
+  ), chartRecord.polarGridLineMode !== void 0 && !["spoke", "sector"].includes(String(chartRecord.polarGridLineMode)) && add(
+    "chart.polar_grid_line_mode.unknown",
+    "error",
+    "chart.polarGridLineMode",
+    "polarGridLineMode must be spoke or sector."
+  ), validateTitle(options.title, "title", add), validateTitle(options.subtitle, "subtitle", add), validateAnnotations(options.annotations, add), validateResponsive(options.responsive, add);
   for (let [path, palette] of [
     ["colors", options.colors],
     ["chart.colors", chartRecord.colors]
@@ -3359,6 +3539,15 @@ function validateChartOptions(options) {
       );
       return;
     }
+    chartRecord.polar === !0 && !["line", "spline", "step", "area", "areaspline", "scatter", "jitter", "column"].includes(
+      String(type)
+    ) && add(
+      "chart.polar.series.unsupported",
+      "warning",
+      `${base}.type`,
+      `${type} does not support chart.polar and will not be rendered in the polar frame.`,
+      "Use line, spline, step, area, areaspline, scatter, jitter, or column."
+    );
     let data = entry.data;
     if (!Array.isArray(data)) {
       add("series.data.required", "error", `${base}.data`, "Series data must be an array.");
@@ -3396,8 +3585,114 @@ function validateAxes(value, path, add) {
     "Keep a primary axis at index 0 and an optional secondary axis at index 1."
   ), axes.map((axis, index) => {
     let axisPath = Array.isArray(value) ? `${path}[${index}]` : path;
-    return isRecord(axis) ? (axis.min !== void 0 && typeof axis.min != "number" && add("axis.min.number", "error", `${axisPath}.min`, "Axis min must be a number."), axis.max !== void 0 && typeof axis.max != "number" && add("axis.max.number", "error", `${axisPath}.max`, "Axis max must be a number."), typeof axis.min == "number" && typeof axis.max == "number" && axis.min >= axis.max && add("axis.range.order", "error", axisPath, "Axis min must be smaller than max."), axis.type !== void 0 && !["linear", "log", "category", "datetime"].includes(String(axis.type)) && add("axis.type.unknown", "error", `${axisPath}.type`, `Unknown axis type ${describe(axis.type)}.`), axis) : (add("axis.object", "error", axisPath, "Axis configuration must be an object."), {});
+    return isRecord(axis) ? (axis.min !== void 0 && typeof axis.min != "number" && add("axis.min.number", "error", `${axisPath}.min`, "Axis min must be a number."), axis.max !== void 0 && typeof axis.max != "number" && add("axis.max.number", "error", `${axisPath}.max`, "Axis max must be a number."), typeof axis.min == "number" && typeof axis.max == "number" && axis.min >= axis.max && add("axis.range.order", "error", axisPath, "Axis min must be smaller than max."), axis.type !== void 0 && !["linear", "log", "category", "datetime"].includes(String(axis.type)) && add("axis.type.unknown", "error", `${axisPath}.type`, `Unknown axis type ${describe(axis.type)}.`), validateTitle(axis.title, `${axisPath}.title`, add, !0), isRecord(axis.labels) && (axis.labels.position !== void 0 && !["outer", "inner"].includes(String(axis.labels.position)) && add(
+      "axis.labels.position.unknown",
+      "error",
+      `${axisPath}.labels.position`,
+      "Polar label position must be outer or inner."
+    ), axis.labels.offset !== void 0 && (typeof axis.labels.offset != "number" || !Number.isFinite(axis.labels.offset) || axis.labels.offset < 0) && add(
+      "axis.labels.offset.non_negative",
+      "error",
+      `${axisPath}.labels.offset`,
+      "Polar label offset must be a non-negative number."
+    ), axis.labels.step !== void 0 && (typeof axis.labels.step != "number" || !Number.isSafeInteger(axis.labels.step) || axis.labels.step <= 0) && add(
+      "axis.labels.step.positive_integer",
+      "error",
+      `${axisPath}.labels.step`,
+      "Label step must be a positive integer."
+    ), axis.labels.maxWidth !== void 0 && (typeof axis.labels.maxWidth != "number" || axis.labels.maxWidth <= 0) && add(
+      "axis.labels.max_width.positive",
+      "error",
+      `${axisPath}.labels.maxWidth`,
+      "Label maxWidth must be a positive number."
+    ), axis.labels.autoRotation !== void 0 && (!Array.isArray(axis.labels.autoRotation) || axis.labels.autoRotation.some((value2) => typeof value2 != "number")) && add(
+      "axis.labels.auto_rotation.numbers",
+      "error",
+      `${axisPath}.labels.autoRotation`,
+      "autoRotation must be an array of numeric angles."
+    )), axis) : (add("axis.object", "error", axisPath, "Axis configuration must be an object."), {});
   });
+}
+function validateTitle(value, path, add, axis = !1) {
+  if (value !== void 0) {
+    if (!isRecord(value)) {
+      add("title.object", "error", path, "Title configuration must be an object.");
+      return;
+    }
+    value.enabled !== void 0 && typeof value.enabled != "boolean" && add("title.enabled.boolean", "error", `${path}.enabled`, "enabled must be a boolean."), axis && value.position !== void 0 && !["outer", "center"].includes(String(value.position)) && add(
+      "axis.title.position.unknown",
+      "error",
+      `${path}.position`,
+      "Polar axis-title position must be outer or center."
+    );
+    for (let key of axis ? ["margin", "offset"] : ["margin", "offsetY"]) {
+      let item = value[key];
+      item !== void 0 && (typeof item != "number" || !Number.isFinite(item)) ? add("title.offset.number", "error", `${path}.${key}`, `${key} must be a finite number.`) : key === "margin" && typeof item == "number" && item < 0 && add(
+        "title.margin.non_negative",
+        "error",
+        `${path}.${key}`,
+        "margin must be non-negative."
+      );
+    }
+  }
+}
+function validateAnnotations(value, add) {
+  if (value !== void 0) {
+    if (!Array.isArray(value)) {
+      add("annotations.array", "error", "annotations", "annotations must be an array.");
+      return;
+    }
+    value.forEach((annotation, index) => {
+      let path = `annotations[${index}]`;
+      if (!isRecord(annotation)) {
+        add("annotation.object", "error", path, "Each annotation must be an object.");
+        return;
+      }
+      annotation.shape !== void 0 && !["label", "callout", "circle"].includes(String(annotation.shape)) && add("annotation.shape.unknown", "error", `${path}.shape`, "Unknown annotation shape."), annotation.x !== void 0 && typeof annotation.x != "number" && typeof annotation.x != "string" && add("annotation.x.value", "error", `${path}.x`, "Annotation x must be a number or string."), annotation.y !== void 0 && typeof annotation.y != "number" && add("annotation.y.number", "error", `${path}.y`, "Annotation y must be a number.");
+      for (let axis of ["xAxis", "yAxis"])
+        annotation[axis] !== void 0 && annotation[axis] !== 0 && annotation[axis] !== 1 && add(
+          "annotation.axis.index",
+          "error",
+          `${path}.${axis}`,
+          `${axis} must be 0 or 1.`
+        );
+    });
+  }
+}
+function validateResponsive(value, add) {
+  if (value !== void 0) {
+    if (!Array.isArray(value)) {
+      add("responsive.array", "error", "responsive", "responsive must be an array.");
+      return;
+    }
+    value.forEach((rule, index) => {
+      let path = `responsive[${index}]`;
+      if (!isRecord(rule)) {
+        add("responsive.rule.object", "error", path, "Each responsive rule must be an object.");
+        return;
+      }
+      if (isRecord(rule.condition) || add(
+        "responsive.condition.object",
+        "error",
+        `${path}.condition`,
+        "Responsive rules require a condition object."
+      ), isRecord(rule.options) || add(
+        "responsive.options.object",
+        "error",
+        `${path}.options`,
+        "Responsive rules require an options object."
+      ), isRecord(rule.condition))
+        for (let key of ["minWidth", "maxWidth", "minHeight", "maxHeight"]) {
+          let limit = rule.condition[key];
+          limit !== void 0 && (typeof limit != "number" || !Number.isFinite(limit) || limit < 0) && add(
+            "responsive.condition.non_negative",
+            "error",
+            `${path}.condition.${key}`,
+            `${key} must be a non-negative finite number.`
+          );
+        }
+    });
+  }
 }
 function validateRanges(data, base, add) {
   data.forEach((point, index) => {
@@ -3474,6 +3769,96 @@ function enforceConfiguredValidation(options) {
   if (mode === "warn")
     for (let issue of validation.issues)
       console.warn(`[FacetViz:${issue.code}] ${issue.path}: ${issue.message}`);
+}
+
+// src/core/annotations.ts
+function renderAnnotations(ctx) {
+  let items = ctx.annotations.filter(
+    (annotation) => (annotation.zIndex ?? "above") === ctx.layer
+  );
+  if (!items.length) return;
+  let group = ctx.renderer.group(
+    { class: `facet-annotations facet-annotations-${ctx.layer}` },
+    ctx.renderer.root
+  );
+  for (let annotation of items) {
+    let xScale = annotation.xAxis === 1 && ctx.xScale2 ? ctx.xScale2 : ctx.xScale, yScale = annotation.yAxis === 1 && ctx.yScale2 ? ctx.yScale2 : ctx.yScale, anchor = {
+      x: annotation.x === void 0 ? ctx.plot.x + ctx.plot.width / 2 : xScale.scale(annotation.x),
+      y: annotation.y === void 0 ? ctx.plot.y + ctx.plot.height / 2 : yScale.scale(annotation.y)
+    };
+    ctx.project && annotation.x !== void 0 && annotation.y !== void 0 && (anchor = ctx.project(xScale.scale(annotation.x), yScale.scale(annotation.y)));
+    let color = annotation.color ?? "#334155", radius = annotation.radius ?? 4, shape = annotation.shape ?? (annotation.text ? "callout" : "circle"), labelX = anchor.x + (annotation.dx ?? 16), labelY = anchor.y + (annotation.dy ?? -16);
+    if (shape === "circle" ? ctx.renderer.create(
+      "circle",
+      {
+        cx: anchor.x,
+        cy: anchor.y,
+        r: radius,
+        fill: annotation.backgroundColor ?? "none",
+        stroke: annotation.borderColor ?? color,
+        "stroke-width": annotation.borderWidth ?? 2,
+        class: "facet-annotation-anchor"
+      },
+      group
+    ) : ctx.renderer.create(
+      "circle",
+      {
+        cx: anchor.x,
+        cy: anchor.y,
+        r: radius,
+        fill: color,
+        stroke: "#fff",
+        "stroke-width": 1,
+        class: "facet-annotation-anchor"
+      },
+      group
+    ), !annotation.text) continue;
+    shape === "callout" && ctx.renderer.create(
+      "line",
+      {
+        x1: anchor.x,
+        y1: anchor.y,
+        x2: labelX,
+        y2: labelY,
+        stroke: annotation.borderColor ?? color,
+        "stroke-width": annotation.borderWidth ?? 1,
+        class: "facet-annotation-connector"
+      },
+      group
+    );
+    let style = {
+      ...FONTS.axisLabel,
+      fill: color,
+      ...sanitizeStyle(annotation.style)
+    }, padding = annotation.padding ?? 5, metrics = ctx.renderer.measureText(annotation.text, style), box = {
+      x: labelX - padding,
+      y: labelY - metrics.height + 1 - padding,
+      width: metrics.width + padding * 2,
+      height: metrics.height + padding * 2
+    };
+    ctx.renderer.create(
+      "rect",
+      {
+        ...box,
+        rx: 4,
+        fill: annotation.backgroundColor ?? "rgba(255,255,255,0.92)",
+        stroke: annotation.borderColor ?? color,
+        "stroke-width": annotation.borderWidth ?? 1,
+        class: "facet-annotation-label-box"
+      },
+      group
+    ), ctx.renderer.text(
+      annotation.text,
+      labelX,
+      labelY,
+      {
+        ...style,
+        "dominant-baseline": "auto",
+        class: "facet-annotation-label"
+      },
+      group
+    );
+  }
 }
 
 // src/core/chart.ts
@@ -3580,14 +3965,21 @@ var FacetViz = class _FacetViz {
    * returns a function that restores the originals.
    */
   applyResponsiveOverrides() {
-    if (this.options.chart?.responsive === !1) return () => {
+    let originals = /* @__PURE__ */ new Map(), target = this.options, remember = (key) => {
+      originals.has(key) || originals.set(key, target[key]);
     };
-    if (!(Math.min(this.width, this.height) < 110)) return () => {
+    for (let rule of this.options.responsive ?? []) {
+      let condition = rule.condition ?? {};
+      if ((condition.minWidth === void 0 || this.width >= condition.minWidth) && (condition.maxWidth === void 0 || this.width <= condition.maxWidth) && (condition.minHeight === void 0 || this.height >= condition.minHeight) && (condition.maxHeight === void 0 || this.height <= condition.maxHeight))
+        for (let [key, value] of Object.entries(rule.options ?? {}))
+          value === void 0 || key === "series" || key === "responsive" || (remember(key), target[key] = merge(target[key], value));
+    }
+    let restore = () => {
+      for (let [key, value] of originals) target[key] = value;
     };
-    let patch = { lineWidth: 0 }, overrideAxis = (a) => Array.isArray(a) ? a.map((ax) => ({ ...ax, ...patch })) : { ...a ?? {}, ...patch }, originalX = this.options.xAxis, originalY = this.options.yAxis;
-    return this.options.xAxis = overrideAxis(originalX), this.options.yAxis = overrideAxis(originalY), () => {
-      this.options.xAxis = originalX, this.options.yAxis = originalY;
-    };
+    if (this.options.chart?.responsive === !1 || !(Math.min(this.width, this.height) < 110)) return restore;
+    let patch = { lineWidth: 0 }, overrideAxis = (a) => Array.isArray(a) ? a.map((ax) => ({ ...ax, ...patch })) : { ...a ?? {}, ...patch };
+    return remember("xAxis"), remember("yAxis"), this.options.xAxis = overrideAxis(this.options.xAxis), this.options.yAxis = overrideAxis(this.options.yAxis), restore;
   }
   render() {
     if (this.destroyed) return;
@@ -3856,34 +4248,38 @@ var FacetViz = class _FacetViz {
   }
   renderTitles(top) {
     let used = 0, title = this.options.title;
-    if (title?.text) {
-      let x = this.titleX(title.align);
+    if (title?.text && title.enabled !== !1) {
+      let x = this.titleX(title.align), style = {
+        ...FONTS.title,
+        ...sanitizeStyle(title.style)
+      }, baseline = (parseFloat(style["font-size"] ?? "18") || 18) + 2;
       this.renderer.text(
         title.text,
         x,
-        top + 20,
+        top + baseline + (title.offsetY ?? 0),
         {
           "text-anchor": this.anchor(title.align),
-          ...FONTS.title,
-          ...sanitizeStyle(title.style)
+          ...style
         },
         this.renderer.root
-      ), used += LAYOUT.titleHeight;
+      ), used += title.margin === void 0 ? LAYOUT.titleHeight : baseline + title.margin + Math.max(0, title.offsetY ?? 0);
     }
     let sub = this.options.subtitle;
-    if (sub?.text) {
-      let x = this.titleX(sub.align);
+    if (sub?.text && sub.enabled !== !1) {
+      let x = this.titleX(sub.align), style = {
+        ...FONTS.subtitle,
+        ...sanitizeStyle(sub.style)
+      }, baseline = (parseFloat(style["font-size"] ?? "13") || 13) + 3;
       this.renderer.text(
         sub.text,
         x,
-        top + used + 16,
+        top + used + baseline + (sub.offsetY ?? 0),
         {
           "text-anchor": this.anchor(sub.align),
-          ...FONTS.subtitle,
-          ...sanitizeStyle(sub.style)
+          ...style
         },
         this.renderer.root
-      ), used += LAYOUT.subtitleHeight;
+      ), used += sub.margin === void 0 ? LAYOUT.subtitleHeight : baseline + sub.margin + Math.max(0, sub.offsetY ?? 0);
     }
     return used;
   }
@@ -3925,8 +4321,17 @@ var FacetViz = class _FacetViz {
   }
   /** Estimated px width of the widest category-axis label. */
   catLabelWidth(visible, opts = axisAt(this.options.xAxis, 0), axisIndex = 0) {
-    let cats = this.currentCategories(visible, axisIndex) ?? [], label = (value) => opts.labels?.formatter ? String(opts.labels.formatter(value)) : opts.labels?.format ? formatString(opts.labels.format, { value }) : value;
-    return cats.reduce((m, c) => Math.max(m, label(String(c)).length), 0) * this.axisLabelCharWidth(opts);
+    let cats = this.currentCategories(visible, axisIndex) ?? [], label = (value) => opts.labels?.formatter ? String(opts.labels.formatter(value)) : opts.labels?.format ? formatString(opts.labels.format, { value }) : value, style = {
+      ...FONTS.axisLabel,
+      ...sanitizeStyle(opts.labels?.style)
+    }, measured = cats.reduce(
+      (max, category) => Math.max(
+        max,
+        this.renderer.measureText(label(String(category)), style).width
+      ),
+      0
+    );
+    return opts.labels?.maxWidth ? Math.min(measured, opts.labels.maxWidth) : measured;
   }
   /** Estimated px width of the widest value-axis label. */
   valueLabelWidth(visible, valOpts) {
@@ -3934,16 +4339,15 @@ var FacetViz = class _FacetViz {
       if (valOpts.labels?.formatter) return String(valOpts.labels.formatter(v));
       let r = Math.abs(v) >= 100 ? Math.round(v) : Math.round(v * 100) / 100;
       return valOpts.labels?.format ? formatString(valOpts.labels.format, { value: r }) : String(r);
-    };
-    return Math.max(
-      fmt(dmin).length,
-      fmt(dmax).length,
-      fmt((dmin + dmax) / 2).length
-    ) * this.axisLabelCharWidth(valOpts);
-  }
-  axisLabelCharWidth(opts) {
-    let style = sanitizeStyle(opts.labels?.style);
-    return (parseFloat(style["font-size"] ?? FONTS.axisLabel["font-size"] ?? "11") || 11) * 0.6;
+    }, style = {
+      ...FONTS.axisLabel,
+      ...sanitizeStyle(valOpts.labels?.style)
+    }, measured = Math.max(
+      this.renderer.measureText(fmt(dmin), style).width,
+      this.renderer.measureText(fmt(dmax), style).width,
+      this.renderer.measureText(fmt((dmin + dmax) / 2), style).width
+    );
+    return valOpts.labels?.maxWidth ? Math.min(measured, valOpts.labels.maxWidth) : measured;
   }
   /** Space to reserve for an axis on a given side (vertical → width, else height). */
   /**
@@ -3960,14 +4364,14 @@ var FacetViz = class _FacetViz {
   }
   axisReserve(opts, side, labelW) {
     if (opts.visible === !1) return 6;
-    let title = opts.title?.text ? 1 : 0, labelsOn = opts.labels?.enabled !== !1;
+    let title = opts.title?.text && opts.title.enabled !== !1 ? 1 : 0, titleExtra = title ? 10 + (opts.title?.margin ?? 8) + Math.max(0, opts.title?.offset ?? 0) : 0, horizontalTitleDelta = title ? Math.max(0, (opts.title?.margin ?? 14) - 14) + Math.max(0, opts.title?.offset ?? 0) : 0, labelsOn = opts.labels?.enabled !== !1;
     if (side === "left" || side === "right") {
-      if (!labelsOn) return LAYOUT.tickLength + 6 + (title ? 18 : 0);
+      if (!labelsOn) return LAYOUT.tickLength + 6 + titleExtra;
       let floor = title ? LAYOUT.defaultLeftAxisWidth : LAYOUT.defaultLeftAxisWidth - this.smallChartTaper(14);
-      return Math.max(floor, LAYOUT.tickLength + 8 + labelW + (title ? 18 : 0));
+      return Math.max(floor, LAYOUT.tickLength + 8 + labelW + titleExtra);
     }
-    let rot = opts.labels?.rotation ?? 0, rotExtra = rot ? Math.abs(Math.sin(rot * Math.PI / 180)) * labelW : 0;
-    return labelsOn ? (title ? LAYOUT.defaultBottomAxisHeight : LAYOUT.defaultBottomAxisHeight - this.smallChartTaper(10)) + (title ? 8 : 0) + rotExtra : title ? LAYOUT.tickLength + 22 + 8 : LAYOUT.tickLength + 6;
+    let rot = opts.labels?.rotation ?? (opts.labels?.autoRotation?.length ? Math.max(...opts.labels.autoRotation.map((value) => Math.abs(value))) : 0), rotExtra = rot ? Math.abs(Math.sin(rot * Math.PI / 180)) * labelW : 0;
+    return labelsOn ? (title ? LAYOUT.defaultBottomAxisHeight : LAYOUT.defaultBottomAxisHeight - this.smallChartTaper(10)) + (title ? 8 : 0) + horizontalTitleDelta + rotExtra : title ? LAYOUT.tickLength + 22 + 8 + horizontalTitleDelta : LAYOUT.tickLength + 6;
   }
   renderPanel(panel, shared) {
     let visible = panel.series.filter((s) => s.visible && s.points.length);
@@ -3983,11 +4387,15 @@ var FacetViz = class _FacetViz {
         "font-weight": "600"
       },
       this.renderer.root
-    ), plot = { ...plot, y: plot.y + 20, height: plot.height - 20 }), !cartesian) {
+    ), plot = { ...plot, y: plot.y + 20, height: plot.height - 20 }), cartesian && this.options.chart?.polar) {
+      this.renderCartesianPolarPanel(plot, visible);
+      return;
+    }
+    if (!cartesian) {
       this.renderPolarPanel(plot, visible);
       return;
     }
-    let catOpts = firstAxis(this.options.xAxis) ?? {}, catOpts2 = axisAt(this.options.xAxis, 1), valOpts = axisAt(this.options.yAxis, 0), catSide = inverted ? catOpts.opposite ? "right" : "left" : catOpts.opposite ? "top" : "bottom", valSide = inverted ? valOpts.opposite ? "top" : "bottom" : valOpts.opposite ? "right" : "left", onSecondary = (s) => (s.options.yAxis ?? 0) === 1, renderSecondary = !inverted && visible.some(onSecondary), secondaryYSide = valSide === "right" ? "left" : "right", valOpts2 = renderSecondary ? axisAt(this.options.yAxis, 1) : void 0, onSecondaryX = (s) => (s.options.xAxis ?? 0) === 1, renderSecondaryX = !inverted && visible.some(onSecondaryX), secondaryXSide = catSide === "top" ? "bottom" : "top", catReserve = this.axisReserve(
+    let catOpts = firstAxis(this.options.xAxis) ?? {}, catOpts2 = axisAt(this.options.xAxis, 1), valOpts = axisAt(this.options.yAxis, 0), catSide = inverted ? catOpts.opposite ? "right" : "left" : catOpts.opposite ? "top" : "bottom", valSide = inverted ? valOpts.opposite ? "top" : "bottom" : valOpts.opposite ? "right" : "left", onSecondary = (s) => (s.options.yAxis ?? 0) === 1, renderSecondary = !inverted && visible.some(onSecondary), valOpts2 = renderSecondary ? axisAt(this.options.yAxis, 1) : void 0, secondaryYSide = valOpts2?.opposite === void 0 ? valSide === "right" ? "left" : "right" : valOpts2.opposite ? "right" : "left", onSecondaryX = (s) => (s.options.xAxis ?? 0) === 1, renderSecondaryX = !inverted && visible.some(onSecondaryX), secondaryXSide = catOpts2.opposite === void 0 ? catSide === "top" ? "bottom" : "top" : catOpts2.opposite ? "top" : "bottom", catReserve = this.axisReserve(
       catOpts,
       catSide,
       this.catLabelWidth(visible)
@@ -4077,7 +4485,18 @@ var FacetViz = class _FacetViz {
       options: valOpts2,
       grid: !1
     }), valAxis2.render(axisLayer)), this.plotCtx = { plot: axisPlot, xScale, xScale2, yScale, inverted }, this.zoomState = inverted ? void 0 : { plot: axisPlot, xScale, yScale };
-    let yScaleFor = (s) => yScale2 && onSecondary(s) ? yScale2 : yScale, xScaleFor = (s) => xScale2 && onSecondaryX(s) ? xScale2 : xScale, cctx = !inverted && this.boostEnabled(visible) ? this.createBoostCanvas(axisPlot) : null, hits = [], existing = new Set(this.renderer.root.children);
+    let yScaleFor = (s) => yScale2 && onSecondary(s) ? yScale2 : yScale, xScaleFor = (s) => xScale2 && onSecondaryX(s) ? xScale2 : xScale, cctx = !inverted && this.boostEnabled(visible) ? this.createBoostCanvas(axisPlot) : null, hits = [];
+    renderAnnotations({
+      renderer: this.renderer,
+      plot: axisPlot,
+      annotations: this.options.annotations ?? [],
+      xScale,
+      xScale2,
+      yScale,
+      yScale2,
+      layer: "below"
+    });
+    let existing = new Set(this.renderer.root.children);
     for (let s of visible) {
       let sx = xScaleFor(s), sy = yScaleFor(s);
       if (cctx && this.isBoostable(s))
@@ -4095,7 +4514,16 @@ var FacetViz = class _FacetViz {
         s.render(ctx);
       }
     }
-    this.clipToPlot(axisPlot, existing), cctx && this.installBoostHover(axisPlot, hits);
+    this.clipToPlot(axisPlot, existing), cctx && this.installBoostHover(axisPlot, hits), renderAnnotations({
+      renderer: this.renderer,
+      plot: axisPlot,
+      annotations: this.options.annotations ?? [],
+      xScale,
+      xScale2,
+      yScale,
+      yScale2,
+      layer: "above"
+    });
     let aboveLayer = this.renderer.group(
       { class: "facet-axes-above" },
       this.renderer.root
@@ -4333,10 +4761,10 @@ var FacetViz = class _FacetViz {
         ...rowVals.filter((v) => v !== void 0).map((v) => String(v).length),
         0
       ) * 6.6 + 4
-    ) : 0, titleReserveLeft = (inverted ? xOpts.title?.text : yOpts0.title?.text) ? 18 : 0, tickLabelW = LAYOUT.tickLength + 8 + (inverted ? this.catLabelWidth(allVisible) : this.valueLabelWidth(
+    ) : 0, leftTitle = inverted ? xOpts.title : yOpts0.title, titleReserveLeft = leftTitle?.text && leftTitle.enabled !== !1 ? 18 + Math.max(0, (leftTitle.margin ?? 8) - 8) + Math.max(0, leftTitle.offset ?? 0) : 0, tickLabelW = LAYOUT.tickLength + 8 + (inverted ? this.catLabelWidth(allVisible) : this.valueLabelWidth(
       primaryVisible.length ? primaryVisible : allVisible,
       yOpts0
-    )), colHeaderH = colDim ? dimNameRowH + 20 : rowDim ? dimNameRowH : 0, rowHeaderW = rowDim ? rowValueColW : 0, leftReserve = rowHeaderW + tickLabelW + titleReserveLeft, titleReserveRight = hasSecondary && yOpts1?.title?.text ? 18 : 0, rightReserve = hasSecondary && yOpts1 ? LAYOUT.tickLength + 8 + this.valueLabelWidth(secondaryVisible, yOpts1) + titleReserveRight : 0, bottomReserve = LAYOUT.defaultBottomAxisHeight, gridX = outer.x + leftReserve, gridY = outer.y + colHeaderH, gridW = outer.width - leftReserve - rightReserve, gridH = outer.height - colHeaderH - bottomReserve, cellW = (gridW - gap * (colVals.length - 1)) / colVals.length, cellH = (gridH - gap * (rowVals.length - 1)) / rowVals.length, lineColor = THEME.axis.lineColor, headerLayer = this.renderer.group(
+    )), colHeaderH = colDim ? dimNameRowH + 20 : rowDim ? dimNameRowH : 0, rowHeaderW = rowDim ? rowValueColW : 0, leftReserve = rowHeaderW + tickLabelW + titleReserveLeft, titleReserveRight = hasSecondary && yOpts1?.title?.text && yOpts1.title.enabled !== !1 ? 18 + Math.max(0, (yOpts1.title.margin ?? 8) - 8) + Math.max(0, yOpts1.title.offset ?? 0) : 0, rightReserve = hasSecondary && yOpts1 ? LAYOUT.tickLength + 8 + this.valueLabelWidth(secondaryVisible, yOpts1) + titleReserveRight : 0, bottomReserve = LAYOUT.defaultBottomAxisHeight, gridX = outer.x + leftReserve, gridY = outer.y + colHeaderH, gridW = outer.width - leftReserve - rightReserve, gridH = outer.height - colHeaderH - bottomReserve, cellW = (gridW - gap * (colVals.length - 1)) / colVals.length, cellH = (gridH - gap * (rowVals.length - 1)) / rowVals.length, lineColor = THEME.axis.lineColor, headerLayer = this.renderer.group(
       { class: "facet-trellis-headers" },
       this.renderer.root
     ), dividerBottom = gridY + gridH + LAYOUT.tickLength + 12;
@@ -4568,6 +4996,266 @@ var FacetViz = class _FacetViz {
       s.render(ctx);
     }
   }
+  /**
+   * Project ordinary category/value series into a shared polar coordinate
+   * system. Supported renderers opt into polar geometry through their normal
+   * SeriesRenderContext, so tooltip, events, labels, stacking, and legends keep
+   * the same behavior as their Cartesian equivalents.
+   */
+  renderCartesianPolarPanel(plot, visible) {
+    let supported = /* @__PURE__ */ new Set([
+      "line",
+      "spline",
+      "step",
+      "area",
+      "areaspline",
+      "scatter",
+      "jitter",
+      "column"
+    ]), series = visible.filter((item) => supported.has(item.type));
+    if (!series.length) return;
+    computeStacks(series);
+    let xOptions = axisAt(this.options.xAxis, 0), yOptions = axisAt(this.options.yAxis, 0), labelStyle = {
+      ...FONTS.axisLabel,
+      ...sanitizeStyle(xOptions.labels?.style)
+    }, framePadding = xOptions.labels?.enabled === !1 ? 12 : Math.max(
+      24,
+      ...series.flatMap(
+        (item) => item.points.map(
+          (point) => this.renderer.measureText(String(point.x), labelStyle).width / 2 + 8
+        )
+      )
+    ), radius = Math.max(
+      1,
+      Math.min(plot.width, plot.height) / 2 - Math.min(framePadding, 54)
+    ), innerRadius = this.resolvePolarInnerRadius(radius), polarPlot = {
+      x: plot.x + plot.width / 2 - radius,
+      y: plot.y + plot.height / 2 - radius,
+      width: radius * 2,
+      height: radius * 2
+    }, center = {
+      x: polarPlot.x + polarPlot.width / 2,
+      y: polarPlot.y + polarPlot.height / 2
+    }, categories = this.currentCategories(series), categoryOffset = categories?.length ? Math.PI / categories.length : 0, xScale = categories ? new CategoryScale({
+      categories,
+      range: [
+        -Math.PI / 2 - categoryOffset,
+        Math.PI * 1.5 - categoryOffset
+      ],
+      padding: 0.12,
+      reversed: xOptions.reversed
+    }) : this.valueScale(
+      xOptions,
+      this.xNumericDomain(series),
+      [-Math.PI / 2, Math.PI * 1.5]
+    ), onSecondary = (item) => (item.options.yAxis ?? 0) === 1, primary = series.filter((item) => !onSecondary(item)), secondary = series.filter(onSecondary), radialScale = (items, options) => {
+      let domain = this.valueDomain(items.length ? items : series);
+      return items.some(
+        (item) => ["column", "area", "areaspline"].includes(item.type)
+      ) && options.type !== "log" && (domain = [Math.min(0, domain[0]), Math.max(0, domain[1])]), this.valueScale(options, domain, [innerRadius, radius]);
+    }, yScale = radialScale(primary, yOptions), yScale2 = secondary.length ? radialScale(secondary, axisAt(this.options.yAxis, 1)) : void 0, project = (angle, radial) => ({
+      x: center.x + Math.cos(angle) * radial,
+      y: center.y + Math.sin(angle) * radial
+    }), xTicks = xScale.ticks(), holeColor = this.options.chart?.polarInnerBackgroundColor ?? this.options.chart?.backgroundColor ?? this.theme.backgroundColor, drawCategoryLabels = (parent) => {
+      if (xOptions.visible === !1 || xOptions.labels?.enabled === !1)
+        return;
+      if (xOptions.labels?.position === "inner" && innerRadius > 0 && !!categories?.length) {
+        let definitions = this.renderer.create("defs", {}, parent), textRadius = Math.max(
+          10,
+          innerRadius - (xOptions.labels?.offset ?? 7)
+        ), arcSpan = Math.min(
+          Math.PI * 0.9,
+          Math.PI * 2 / categories.length * 0.78
+        );
+        for (let tick of xTicks) {
+          let angle = xScale.scale(tick), flipped = Math.sin(angle) > 0.05, start = flipped ? angle + arcSpan / 2 : angle - arcSpan / 2, end = flipped ? angle - arcSpan / 2 : angle + arcSpan / 2, from = project(start, textRadius), to = project(end, textRadius), pathId = `facet-polar-label-path-${++this.clipSeq}`;
+          this.renderer.create(
+            "path",
+            {
+              id: pathId,
+              d: `M ${from.x} ${from.y} A ${textRadius} ${textRadius} 0 0 ${flipped ? 0 : 1} ${to.x} ${to.y}`,
+              fill: "none",
+              stroke: "none"
+            },
+            definitions
+          );
+          let text = this.renderer.create(
+            "text",
+            {
+              ...labelStyle,
+              fill: THEME.axis.labelColor,
+              class: "facet-polar-category-label facet-polar-curved-label"
+            },
+            parent
+          ), textPath = this.renderer.create(
+            "textPath",
+            {
+              href: `#${pathId}`,
+              startOffset: "50%",
+              "text-anchor": "middle"
+            },
+            text
+          );
+          textPath.textContent = xScale.tickLabel(tick);
+        }
+        return;
+      }
+      let labelRadius = radius + (xOptions.labels?.offset ?? 10);
+      for (let tick of xTicks) {
+        let angle = xScale.scale(tick), label = project(angle, labelRadius), cosine = Math.cos(angle);
+        this.renderer.text(
+          xScale.tickLabel(tick),
+          label.x,
+          label.y,
+          {
+            ...labelStyle,
+            fill: THEME.axis.labelColor,
+            "text-anchor": cosine < -0.15 ? "end" : cosine > 0.15 ? "start" : "middle",
+            "dominant-baseline": "middle",
+            class: "facet-polar-category-label"
+          },
+          parent
+        );
+      }
+    }, axes = this.renderer.group(
+      { class: "facet-polar-axes" },
+      this.renderer.root
+    );
+    innerRadius > 0 && this.renderer.create(
+      "circle",
+      {
+        cx: center.x,
+        cy: center.y,
+        r: innerRadius,
+        fill: holeColor,
+        stroke: "none",
+        class: "facet-polar-hole"
+      },
+      axes
+    );
+    let gridColor = yOptions.gridLineColor ?? THEME.axis.gridLineColor;
+    if (yOptions.visible !== !1)
+      for (let tick of yScale.ticks()) {
+        let radial = yScale.scale(tick);
+        radial < 0 || radial > radius + 0.5 || (this.renderer.create(
+          "circle",
+          {
+            cx: center.x,
+            cy: center.y,
+            r: radial,
+            fill: "none",
+            stroke: gridColor,
+            "stroke-width": yOptions.gridLineWidth ?? 1,
+            class: "facet-polar-ring"
+          },
+          axes
+        ), yOptions.labels?.enabled !== !1 && this.renderer.text(
+          yScale.tickLabel(tick),
+          center.x + 4,
+          center.y - radial - 3,
+          {
+            ...FONTS.axisLabel,
+            ...sanitizeStyle(yOptions.labels?.style),
+            fill: THEME.axis.labelColor,
+            class: "facet-polar-value-label"
+          },
+          axes
+        ));
+      }
+    if (xOptions.visible !== !1) {
+      let sectorMode = this.options.chart?.polarGridLineMode === "sector" && !!categories?.length, gridAngles = sectorMode ? categories.map(
+        (_, index) => -Math.PI / 2 - categoryOffset + index * Math.PI * 2 / categories.length
+      ) : xTicks.map((tick) => xScale.scale(tick));
+      for (let angle of gridAngles) {
+        let innerEdge = project(angle, innerRadius), edge = project(angle, radius);
+        this.renderer.create(
+          "line",
+          {
+            x1: innerEdge.x,
+            y1: innerEdge.y,
+            x2: edge.x,
+            y2: edge.y,
+            stroke: xOptions.gridLineColor ?? THEME.axis.gridLineColor,
+            "stroke-width": xOptions.gridLineWidth ?? 1,
+            class: sectorMode ? "facet-polar-sector-line" : "facet-polar-spoke"
+          },
+          axes
+        );
+      }
+      drawCategoryLabels(axes);
+    }
+    if (xOptions.title?.text && xOptions.title.enabled !== !1) {
+      let centered = xOptions.title.position === "center";
+      this.renderer.text(
+        xOptions.title.text,
+        center.x,
+        centered ? center.y : plot.y + plot.height - (xOptions.title.offset ?? 0),
+        {
+          ...FONTS.axisTitle,
+          ...sanitizeStyle(xOptions.title.style),
+          "text-anchor": "middle",
+          "dominant-baseline": centered ? "middle" : void 0,
+          class: "facet-polar-axis-title facet-polar-x-title"
+        },
+        axes
+      );
+    }
+    if (yOptions.title?.text && yOptions.title.enabled !== !1) {
+      let align = yOptions.title.align ?? "center", along = align === "start" ? 0.2 : align === "end" ? 0.8 : 0.5, x = plot.x + (yOptions.title.margin ?? 8) + (yOptions.title.offset ?? 0) + 6, y = plot.y + plot.height * along;
+      this.renderer.text(
+        yOptions.title.text,
+        x,
+        y,
+        {
+          ...FONTS.axisTitle,
+          ...sanitizeStyle(yOptions.title.style),
+          "text-anchor": align === "start" ? "start" : align === "end" ? "end" : "middle",
+          transform: `rotate(-90 ${x} ${y})`,
+          class: "facet-polar-axis-title facet-polar-y-title"
+        },
+        axes
+      );
+    }
+    renderAnnotations({
+      renderer: this.renderer,
+      plot: polarPlot,
+      annotations: this.options.annotations ?? [],
+      xScale,
+      yScale,
+      yScale2,
+      layer: "below",
+      project
+    });
+    let group = this.groupInfo(series);
+    for (let item of series)
+      item.render(
+        this.seriesContext(
+          item,
+          polarPlot,
+          xScale,
+          yScale2 && onSecondary(item) ? yScale2 : yScale,
+          group,
+          !1,
+          !0
+        )
+      );
+    renderAnnotations({
+      renderer: this.renderer,
+      plot: polarPlot,
+      annotations: this.options.annotations ?? [],
+      xScale,
+      yScale,
+      yScale2,
+      layer: "above",
+      project
+    });
+  }
+  resolvePolarInnerRadius(outerRadius) {
+    let value = this.options.chart?.polarInnerSize;
+    if (value === void 0) return 0;
+    let pixels = typeof value == "string" ? outerRadius * (parseFloat(value) / 100) : value;
+    return Math.max(0, Math.min(outerRadius * 0.95, pixels));
+  }
   // -- Nested (hierarchical x-axis) ------------------------------
   renderNestedPanel(outer, visible, dims) {
     if (!visible.length) return;
@@ -4580,7 +5268,7 @@ var FacetViz = class _FacetViz {
       this.renderer.root
     ), valAxis0, valAxis1;
     if (inverted) {
-      let colWidths = nestedLevelWidths(leaves), innerW = colWidths[colWidths.length - 1] ?? 0, outerW = colWidths.slice(0, -1).reduce((a, b) => a + b, 0), totalW = colWidths.reduce((a, b) => a + b, 0), leftReserve = catVisible ? LAYOUT.tickLength + 8 + (split ? innerW : totalW) + (xOpts.title?.text ? 22 : 0) : 6, rightReserve = catVisible && split ? LAYOUT.tickLength + 8 + outerW : 8, bottomReserve = LAYOUT.defaultBottomAxisHeight + (yOpts0.title?.text ? 32 : 0), topReserve = 6;
+      let colWidths = nestedLevelWidths(leaves), innerW = colWidths[colWidths.length - 1] ?? 0, outerW = colWidths.slice(0, -1).reduce((a, b) => a + b, 0), totalW = colWidths.reduce((a, b) => a + b, 0), leftReserve = catVisible ? LAYOUT.tickLength + 8 + (split ? innerW : totalW) + (xOpts.title?.text && xOpts.title.enabled !== !1 ? 22 + Math.max(0, (xOpts.title.margin ?? 14) - 14) + Math.max(0, xOpts.title.offset ?? 0) : 0) : 6, rightReserve = catVisible && split ? LAYOUT.tickLength + 8 + outerW : 8, bottomReserve = LAYOUT.defaultBottomAxisHeight + (yOpts0.title?.text && yOpts0.title.enabled !== !1 ? 32 + Math.max(0, (yOpts0.title.margin ?? 14) - 14) + Math.max(0, yOpts0.title.offset ?? 0) : 0), topReserve = 6;
       plot = {
         x: outer.x + leftReserve,
         y: outer.y + topReserve,
@@ -4621,7 +5309,7 @@ var FacetViz = class _FacetViz {
       let leftReserve = LAYOUT.tickLength + 8 + this.valueLabelWidth(
         aggSeries.filter((s) => onAxis(s, 0)),
         yOpts0
-      ) + (yOpts0.title?.text ? 18 : 0), rightReserve = hasSecondary ? LAYOUT.tickLength + 8 + this.valueLabelWidth(secondary, yOpts1) + (yOpts1.title?.text ? 18 : 0) : 8, bottomReserve = catVisible ? LAYOUT.tickLength + (split ? 1 : dims.length) * rowH + 12 + rotExtra + (xOpts.title?.text ? 22 : 0) : 6, topReserve = catVisible && split ? LAYOUT.tickLength + (dims.length - 1) * rowH + 8 : 6;
+      ) + (yOpts0.title?.text && yOpts0.title.enabled !== !1 ? 18 + Math.max(0, (yOpts0.title.margin ?? 8) - 8) + Math.max(0, yOpts0.title.offset ?? 0) : 0), rightReserve = hasSecondary ? LAYOUT.tickLength + 8 + this.valueLabelWidth(secondary, yOpts1) + (yOpts1.title?.text && yOpts1.title.enabled !== !1 ? 18 + Math.max(0, (yOpts1.title.margin ?? 8) - 8) + Math.max(0, yOpts1.title.offset ?? 0) : 0) : 8, bottomReserve = catVisible ? LAYOUT.tickLength + (split ? 1 : dims.length) * rowH + 12 + rotExtra + (xOpts.title?.text && xOpts.title.enabled !== !1 ? 22 + Math.max(0, (xOpts.title.margin ?? 14) - 14) + Math.max(0, xOpts.title.offset ?? 0) : 0) : 6, topReserve = catVisible && split ? LAYOUT.tickLength + (dims.length - 1) * rowH + 8 : 6;
       plot = {
         x: outer.x + leftReserve,
         y: outer.y + topReserve,

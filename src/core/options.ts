@@ -247,8 +247,58 @@ export interface LabelContext {
 
 export interface TitleOptions {
   text?: string;
+  /** Render the title. Default `true` when text is present. */
+  enabled?: boolean;
   align?: "left" | "center" | "right";
+  /** Space below the title block in pixels. */
+  margin?: number;
+  /** Additional vertical offset applied to the rendered title. */
+  offsetY?: number;
   style?: Partial<CSSStyleDeclaration> | Record<string, string>;
+}
+
+export interface AxisTitleOptions {
+  text?: string;
+  /** Render the axis title. Default `true` when text is present. */
+  enabled?: boolean;
+  /** Position along the axis. */
+  align?: "start" | "center" | "end";
+  /** Gap between the tick labels and title in pixels. */
+  margin?: number;
+  /** Additional offset away from the plot in pixels. */
+  offset?: number;
+  /** Polar x-axis placement. Ignored by Cartesian axes. */
+  position?: "outer" | "center";
+  style?: Record<string, string>;
+}
+
+export interface AxisLabelOptions {
+  enabled?: boolean;
+  format?: string; // '{value}'
+  formatter?: (value: number | string) => string;
+  rotation?: number;
+  /**
+   * Candidate rotations used when horizontal category labels overlap.
+   * The first rotation that fits is selected before labels are thinned.
+   */
+  autoRotation?: number[];
+  /** Draw every Nth label. Automatic collision handling may choose a larger step. */
+  step?: number;
+  /** Maximum rendered width of one label in pixels. */
+  maxWidth?: number;
+  /** What to do when a label exceeds `maxWidth`. Default `'ellipsis'`. */
+  overflow?: "ellipsis" | "hide";
+  /**
+   * Polar x-axis placement. `inner` curves category labels around the centre
+   * hole; ignored by Cartesian axes.
+   */
+  position?: "outer" | "inner";
+  /**
+   * Gap in pixels from the polar x-axis circle. Positive values move inner
+   * labels toward the centre and outer labels away from the plot.
+   */
+  offset?: number;
+  style?: Record<string, string>;
 }
 
 export interface AxisOptions {
@@ -262,18 +312,12 @@ export interface AxisOptions {
   type?: "linear" | "log" | "category" | "datetime";
   /** Draw a vertical/horizontal guide line at the hovered position. */
   crosshair?: boolean;
-  title?: { text?: string; style?: Record<string, string> };
+  title?: AxisTitleOptions;
   min?: number;
   max?: number;
   /** Approximate number of ticks (linear axes). */
   tickCount?: number;
-  labels?: {
-    enabled?: boolean;
-    format?: string; // '{value}'
-    formatter?: (value: number | string) => string;
-    rotation?: number;
-    style?: Record<string, string>;
-  };
+  labels?: AxisLabelOptions;
   gridLineWidth?: number;
   gridLineColor?: string;
   lineColor?: string;
@@ -442,6 +486,62 @@ export interface TrellisOptions {
   table?: boolean;
 }
 
+export interface AnnotationOptions {
+  /** X-axis value. Omit to anchor the annotation to the plot centre. */
+  x?: number | string;
+  /** Y-axis value. Omit to anchor the annotation to the plot centre. */
+  y?: number;
+  text?: string;
+  /** Visual form. `callout` draws a connector from the data point to the label. */
+  shape?: "label" | "callout" | "circle";
+  /** Horizontal label offset from the data anchor. */
+  dx?: number;
+  /** Vertical label offset from the data anchor. */
+  dy?: number;
+  /** Radius for the anchor marker or circle annotation. */
+  radius?: number;
+  color?: string;
+  backgroundColor?: string;
+  borderColor?: string;
+  borderWidth?: number;
+  padding?: number;
+  style?: Record<string, string>;
+  /** Axis indices used to resolve the data position. */
+  xAxis?: 0 | 1;
+  yAxis?: 0 | 1;
+  /** Draw below or above the series. Default `'above'`. */
+  zIndex?: "below" | "above";
+}
+
+export interface ResponsiveCondition {
+  minWidth?: number;
+  maxWidth?: number;
+  minHeight?: number;
+  maxHeight?: number;
+}
+
+export type ResponsiveChartOptions = Partial<
+  Pick<
+    ChartOptions,
+    | "chart"
+    | "title"
+    | "subtitle"
+    | "xAxis"
+    | "yAxis"
+    | "tooltip"
+    | "legend"
+    | "trellis"
+    | "annotations"
+    | "accessibility"
+  >
+>;
+
+export interface ResponsiveRule {
+  condition: ResponsiveCondition;
+  /** Options deep-merged for the duration of a matching render. */
+  options: ResponsiveChartOptions;
+}
+
 /** Chart-wide events. Individual point events are wired through series. */
 export interface ChartEvents {
   load?: (chart: unknown) => void;
@@ -564,6 +664,18 @@ export interface ChartOptions {
     spacing?: [number, number, number, number]; // top right bottom left
     inverted?: boolean;
     polar?: boolean;
+    /**
+     * Donut-style hole in a general polar chart. A number is pixels; a
+     * percentage string is relative to the outer radius, e.g. `'35%'`.
+     */
+    polarInnerSize?: number | string;
+    /** Fill of the polar centre hole. Defaults to the chart background. */
+    polarInnerBackgroundColor?: string;
+    /**
+     * Angular grid dividers. `spoke` draws through category centres;
+     * `sector` draws category boundaries so each wedge is outlined.
+     */
+    polarGridLineMode?: "spoke" | "sector";
     events?: ChartEvents;
     /** Colours cycled through by series without an explicit colour. */
     colors?: string[];
@@ -599,6 +711,10 @@ export interface ChartOptions {
   series: SeriesOptions[];
   colors?: string[];
   trellis?: TrellisOptions;
+  /** Labels, callouts, and point highlights anchored to chart values. */
+  annotations?: AnnotationOptions[];
+  /** Conditional option overrides matched against the rendered chart size. */
+  responsive?: ResponsiveRule[];
   /** Drill-down series revealed by clicking points that reference them. */
   drilldown?: DrilldownOptions;
   /** Accessibility hints for the root SVG. */

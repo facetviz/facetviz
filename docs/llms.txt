@@ -121,6 +121,10 @@ interface ChartOptions {
     backgroundColor?: string;
     spacing?: [number, number, number, number]; // top right bottom left
     inverted?: boolean;
+    polar?: boolean;                          // line/area/scatter/column families
+    polarInnerSize?: number|string;           // pixels or e.g. '35%'
+    polarInnerBackgroundColor?: string;       // e.g. '#fff'
+    polarGridLineMode?: 'spoke'|'sector';     // category centres or boundaries
     colors?: string[];
     animation?: boolean | { enabled?: boolean; duration?: number; easing?: string };
     zoom?: 'x' | 'y' | 'xy' | false | { type?: 'x'|'y'|'xy'|false };
@@ -129,8 +133,10 @@ interface ChartOptions {
     boost?: boolean | { enabled?: boolean; threshold?: number };
     events?: { render?; click? };
   };
-  title?: { text?: string; align?: 'left'|'center'|'right'; style?: Record<string,string> };
-  subtitle?: { text?: string; align?: 'left'|'center'|'right' };
+  title?: { text?: string; enabled?: boolean; align?: 'left'|'center'|'right';
+            margin?: number; offsetY?: number; style?: Record<string,string> };
+  subtitle?: { text?: string; enabled?: boolean; align?: 'left'|'center'|'right';
+               margin?: number; offsetY?: number; style?: Record<string,string> };
   xAxis?: AxisOptions | AxisOptions[];
   yAxis?: AxisOptions | AxisOptions[];
   tooltip?: TooltipOptions;
@@ -141,6 +147,14 @@ interface ChartOptions {
   theme?: 'light'|'dark'|'high-contrast'|'pastel'|ThemeObject;
   trellis?: { columns?: string; rows?: string; gap?: number;
               sharedX?: boolean; sharedY?: boolean; table?: boolean };
+  annotations?: Array<{ x?: number|string; y?: number; text?: string;
+    shape?: 'label'|'callout'|'circle'; dx?: number; dy?: number;
+    xAxis?: 0|1; yAxis?: 0|1; zIndex?: 'above'|'below' }>;
+  responsive?: Array<{
+    condition: { minWidth?: number; maxWidth?: number;
+                 minHeight?: number; maxHeight?: number };
+    options: Partial<ChartOptions>;            // layout options; no series replacement
+  }>;
   drilldown?: { series: Array<SeriesOptions & { id: string }> };
   accessibility?: {
     enabled?: boolean;
@@ -168,13 +182,22 @@ interface AxisOptions {
   opposite?: boolean;                        // x→top, y→right
   categories?: string[];
   type?: 'linear'|'log'|'category'|'datetime';
-  title?: { text?: string; style?: Record<string,string> };
+  title?: { text?: string; enabled?: boolean;
+    align?: 'start'|'center'|'end'; margin?: number; offset?: number;
+    position?: 'outer'|'center';             // polar x-axis only
+    style?: Record<string,string> };
   min?: number; max?: number; tickCount?: number;
   labels?: {
     enabled?: boolean;
     format?: string;
     formatter?: (value: number|string) => string;
     rotation?: number;
+    autoRotation?: number[];
+    step?: number;
+    maxWidth?: number;
+    overflow?: 'ellipsis'|'hide';
+    position?: 'outer'|'inner';              // polar x-axis; inner follows hole radius
+    offset?: number;                         // gap from polar circle in pixels
     style?: Record<string,string>;
   };
   crosshair?: boolean;
@@ -420,6 +443,9 @@ Formatting tokens for labels/tooltips: `{x}`, `{y}`, `{name}`, `{series}`,
 ### Performance and responsiveness
 
 - Leave `chart.reflow:true` for normal responsive layouts.
+- Use root `responsive` rules for size-specific legend, title, axis, tooltip,
+  trellis, annotation, or accessibility overrides. Rules match the rendered
+  width/height and do not mutate the stored options.
 - Call `chart.reflow()` after a hidden tab, grid, or resizable panel becomes
   visible or finishes layout.
 - Boost auto-enables beyond 1500 points for supported cartesian line/point
@@ -427,6 +453,22 @@ Formatting tokens for labels/tooltips: `{x}`, `{y}`, `{name}`, `{series}`,
 - Boosted canvas pixels are embedded into SVG/PNG exports.
 - Disable animation in tests, server-generated screenshots, or rapid update
   loops: `chart:{animation:false}`.
+
+### General polar projection
+
+Set `chart.polar:true` to project `line`, `spline`, `step`, `area`,
+`areaspline`, `scatter`, `jitter`, or `column` series into a shared angular
+x-axis / radial y-axis. Tooltips, events, stacking, labels, annotations,
+legends, and a second y scale continue to work. Use dedicated `radar`,
+`radialbar`, and `gauge` types for their specialized semantics.
+Add `chart.polarInnerSize:'35%'` for a donut-style centre hole and
+`polarInnerBackgroundColor:'#fff'` for an explicitly white circle.
+Use `polarGridLineMode:'sector'` to outline category wedges with boundary
+dividers instead of drawing spokes through category centres.
+For a donut-style polar layout, use `xAxis.labels.position:'inner'` to curve
+category labels around the centre-hole radius. Add `xAxis.labels.offset` for
+the pixel gap from that circle, and use
+`xAxis.title.position:'center'` to put the x-axis title in the middle.
 
 ## Composition patterns
 

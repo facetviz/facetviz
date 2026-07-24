@@ -60,6 +60,7 @@ import { BaseSeries, SeriesRenderContext } from "../series/base.js";
 import { createSeries } from "../series/registry.js";
 import { drawDataLabel, labelString } from "../series/data-label.js";
 import { drawMarker } from "../series/marker.js";
+import { renderAnnotations } from "./annotations.js";
 import type { Point } from "./point.js";
 
 export class FacetViz {
@@ -313,10 +314,35 @@ export class FacetViz {
    * returns a function that restores the originals.
    */
   private applyResponsiveOverrides(): () => void {
-    if (this.options.chart?.responsive === false) return () => {};
+    const originals = new Map<string, unknown>();
+    const target = this.options as unknown as Record<string, unknown>;
+    const remember = (key: string) => {
+      if (!originals.has(key)) originals.set(key, target[key]);
+    };
+
+    for (const rule of this.options.responsive ?? []) {
+      const condition = rule.condition ?? {};
+      const matches =
+        (condition.minWidth === undefined || this.width >= condition.minWidth) &&
+        (condition.maxWidth === undefined || this.width <= condition.maxWidth) &&
+        (condition.minHeight === undefined || this.height >= condition.minHeight) &&
+        (condition.maxHeight === undefined || this.height <= condition.maxHeight);
+      if (!matches) continue;
+      for (const [key, value] of Object.entries(rule.options ?? {})) {
+        if (value === undefined || key === "series" || key === "responsive")
+          continue;
+        remember(key);
+        target[key] = merge(target[key] as never, value as never);
+      }
+    }
+
+    const restore = () => {
+      for (const [key, value] of originals) target[key] = value;
+    };
+    if (this.options.chart?.responsive === false) return restore;
     const shortSide = Math.min(this.width, this.height);
     const hideAxisLines = shortSide < 110;
-    if (!hideAxisLines) return () => {};
+    if (!hideAxisLines) return restore;
 
     const patch: Partial<AxisOptions> = { lineWidth: 0 };
     const overrideAxis = (
@@ -325,14 +351,11 @@ export class FacetViz {
       Array.isArray(a)
         ? a.map((ax) => ({ ...ax, ...patch }))
         : { ...(a ?? {}), ...patch };
-    const originalX = this.options.xAxis;
-    const originalY = this.options.yAxis;
-    this.options.xAxis = overrideAxis(originalX);
-    this.options.yAxis = overrideAxis(originalY);
-    return () => {
-      this.options.xAxis = originalX;
-      this.options.yAxis = originalY;
-    };
+    remember("xAxis");
+    remember("yAxis");
+    this.options.xAxis = overrideAxis(this.options.xAxis);
+    this.options.yAxis = overrideAxis(this.options.yAxis);
+    return restore;
   }
 
   render(): void {
@@ -788,36 +811,52 @@ export class FacetViz {
   private renderTitles(top: number): number {
     let used = 0;
     const title = this.options.title;
-    if (title?.text) {
+    if (title?.text && title.enabled !== false) {
       const x = this.titleX(title.align);
+      const style = {
+        ...FONTS.title,
+        ...sanitizeStyle(title.style as Record<string, string>),
+      };
+      const fontSize = parseFloat(style["font-size"] ?? "18") || 18;
+      const baseline = fontSize + 2;
       this.renderer.text(
         title.text,
         x,
-        top + 20,
+        top + baseline + (title.offsetY ?? 0),
         {
           "text-anchor": this.anchor(title.align),
-          ...FONTS.title,
-          ...sanitizeStyle(title.style as Record<string, string>),
+          ...style,
         },
         this.renderer.root,
       );
-      used += LAYOUT.titleHeight;
+      used +=
+        title.margin === undefined
+          ? LAYOUT.titleHeight
+          : baseline + title.margin + Math.max(0, title.offsetY ?? 0);
     }
     const sub = this.options.subtitle;
-    if (sub?.text) {
+    if (sub?.text && sub.enabled !== false) {
       const x = this.titleX(sub.align);
+      const style = {
+        ...FONTS.subtitle,
+        ...sanitizeStyle(sub.style as Record<string, string>),
+      };
+      const fontSize = parseFloat(style["font-size"] ?? "13") || 13;
+      const baseline = fontSize + 3;
       this.renderer.text(
         sub.text,
         x,
-        top + used + 16,
+        top + used + baseline + (sub.offsetY ?? 0),
         {
           "text-anchor": this.anchor(sub.align),
-          ...FONTS.subtitle,
-          ...sanitizeStyle(sub.style as Record<string, string>),
+          ...style,
         },
         this.renderer.root,
       );
-      used += LAYOUT.subtitleHeight;
+      used +=
+        sub.margin === undefined
+          ? LAYOUT.subtitleHeight
+          : baseline + sub.margin + Math.max(0, sub.offsetY ?? 0);
     }
     return used;
   }
@@ -896,8 +935,21 @@ export class FacetViz {
         ? formatString(opts.labels.format, { value })
         : value;
     };
-    return cats.reduce((m, c) => Math.max(m, label(String(c)).length), 0) *
-      this.axisLabelCharWidth(opts);
+    const style = {
+      ...FONTS.axisLabel,
+      ...sanitizeStyle(opts.labels?.style),
+    };
+    const measured = cats.reduce(
+      (max, category) =>
+        Math.max(
+          max,
+          this.renderer.measureText(label(String(category)), style).width,
+        ),
+      0,
+    );
+    return opts.labels?.maxWidth
+      ? Math.min(measured, opts.labels.maxWidth)
+      : measured;
   }
 
   /** Estimated px width of the widest value-axis label. */
@@ -910,21 +962,18 @@ export class FacetViz {
         ? formatString(valOpts.labels.format, { value: r })
         : String(r);
     };
-    return (
-      Math.max(
-        fmt(dmin).length,
-        fmt(dmax).length,
-        fmt((dmin + dmax) / 2).length,
-      ) * this.axisLabelCharWidth(valOpts)
+    const style = {
+      ...FONTS.axisLabel,
+      ...sanitizeStyle(valOpts.labels?.style),
+    };
+    const measured = Math.max(
+      this.renderer.measureText(fmt(dmin), style).width,
+      this.renderer.measureText(fmt(dmax), style).width,
+      this.renderer.measureText(fmt((dmin + dmax) / 2), style).width,
     );
-  }
-
-  private axisLabelCharWidth(opts: AxisOptions): number {
-    const style = sanitizeStyle(opts.labels?.style);
-    const fontPx =
-      parseFloat(style["font-size"] ?? FONTS.axisLabel["font-size"] ?? "11") ||
-      11;
-    return fontPx * 0.6;
+    return valOpts.labels?.maxWidth
+      ? Math.min(measured, valOpts.labels.maxWidth)
+      : measured;
   }
 
   /** Space to reserve for an axis on a given side (vertical → width, else height). */
@@ -948,18 +997,31 @@ export class FacetViz {
     labelW: number,
   ): number {
     if (opts.visible === false) return 6;
-    const title = opts.title?.text ? 1 : 0;
+    const title = opts.title?.text && opts.title.enabled !== false ? 1 : 0;
+    const titleExtra = title
+      ? 10 +
+        (opts.title?.margin ?? 8) +
+        Math.max(0, opts.title?.offset ?? 0)
+      : 0;
+    const horizontalTitleDelta = title
+      ? Math.max(0, (opts.title?.margin ?? 14) - 14) +
+        Math.max(0, opts.title?.offset ?? 0)
+      : 0;
     const labelsOn = opts.labels?.enabled !== false;
     if (side === "left" || side === "right") {
-      if (!labelsOn) return LAYOUT.tickLength + 6 + (title ? 18 : 0);
+      if (!labelsOn) return LAYOUT.tickLength + 6 + titleExtra;
       const floor = title
         ? LAYOUT.defaultLeftAxisWidth
         : LAYOUT.defaultLeftAxisWidth - this.smallChartTaper(14);
-      return Math.max(floor, LAYOUT.tickLength + 8 + labelW + (title ? 18 : 0));
+      return Math.max(floor, LAYOUT.tickLength + 8 + labelW + titleExtra);
     }
     // Horizontal axis: rotated labels project downward, so grow the band by the
     // label's vertical extent at that angle.
-    const rot = opts.labels?.rotation ?? 0;
+    const rot =
+      opts.labels?.rotation ??
+      (opts.labels?.autoRotation?.length
+        ? Math.max(...opts.labels.autoRotation.map((value) => Math.abs(value)))
+        : 0);
     const rotExtra = rot
       ? Math.abs(Math.sin((rot * Math.PI) / 180)) * labelW
       : 0;
@@ -968,7 +1030,9 @@ export class FacetViz {
       // with no labels (its own label-gap term collapses to 0 there) — a
       // title still needs that room. Only the label band itself collapses
       // to just the tick mark.
-      return title ? LAYOUT.tickLength + 22 + 8 : LAYOUT.tickLength + 6;
+      return title
+        ? LAYOUT.tickLength + 22 + 8 + horizontalTitleDelta
+        : LAYOUT.tickLength + 6;
     }
     // The title's own placement (see Axis#drawTitle) already reaches past
     // the tick + label band via `tickLength + labelExtent + 14`, which is
@@ -981,7 +1045,7 @@ export class FacetViz {
     const base = title
       ? LAYOUT.defaultBottomAxisHeight
       : LAYOUT.defaultBottomAxisHeight - this.smallChartTaper(10);
-    return base + (title ? 8 : 0) + rotExtra;
+    return base + (title ? 8 : 0) + horizontalTitleDelta + rotExtra;
   }
 
   private renderPanel(
@@ -1009,6 +1073,11 @@ export class FacetViz {
         this.renderer.root,
       );
       plot = { ...plot, y: plot.y + 20, height: plot.height - 20 };
+    }
+
+    if (cartesian && this.options.chart?.polar) {
+      this.renderCartesianPolarPanel(plot, visible);
+      return;
     }
 
     if (!cartesian) {
@@ -1041,13 +1110,27 @@ export class FacetViz {
     // scale on the side opposite the primary axis.
     const onSecondary = (s: BaseSeries) => (s.options.yAxis ?? 0) === 1;
     const renderSecondary = !inverted && visible.some(onSecondary);
-    const secondaryYSide = valSide === "right" ? "left" : "right";
     const valOpts2 = renderSecondary
       ? axisAt(this.options.yAxis, 1)
       : undefined;
+    const secondaryYSide =
+      valOpts2?.opposite === undefined
+        ? valSide === "right"
+          ? "left"
+          : "right"
+        : valOpts2.opposite
+          ? "right"
+          : "left";
     const onSecondaryX = (s: BaseSeries) => (s.options.xAxis ?? 0) === 1;
     const renderSecondaryX = !inverted && visible.some(onSecondaryX);
-    const secondaryXSide = catSide === "top" ? "bottom" : "top";
+    const secondaryXSide =
+      catOpts2.opposite === undefined
+        ? catSide === "top"
+          ? "bottom"
+          : "top"
+        : catOpts2.opposite
+          ? "top"
+          : "bottom";
 
     const catReserve = this.axisReserve(
       catOpts,
@@ -1186,6 +1269,16 @@ export class FacetViz {
     const boost = !inverted && this.boostEnabled(visible);
     const cctx = boost ? this.createBoostCanvas(axisPlot) : null;
     const hits: BoostHit[] = [];
+    renderAnnotations({
+      renderer: this.renderer,
+      plot: axisPlot,
+      annotations: this.options.annotations ?? [],
+      xScale,
+      xScale2,
+      yScale,
+      yScale2,
+      layer: "below",
+    });
     const existing = new Set(this.renderer.root.children);
     for (const s of visible) {
       const sx = xScaleFor(s);
@@ -1209,6 +1302,17 @@ export class FacetViz {
     // spill past the axes.
     this.clipToPlot(axisPlot, existing);
     if (cctx) this.installBoostHover(axisPlot, hits);
+
+    renderAnnotations({
+      renderer: this.renderer,
+      plot: axisPlot,
+      annotations: this.options.annotations ?? [],
+      xScale,
+      xScale2,
+      yScale,
+      yScale2,
+      layer: "above",
+    });
 
     // Plot lines flagged `zIndex: 'above'` paint on top of the series just
     // rendered (a fresh, later-in-DOM group, so it wins the SVG paint order).
@@ -1697,9 +1801,13 @@ export class FacetViz {
     // Tight tick-label width for these actual values, rather than the fixed
     // generic axis width — keeps the left gutter close to the numbers.
     // Inverted: the left axis carries categories (text), not values.
-    const titleReserveLeft = (inverted ? xOpts.title?.text : yOpts0.title?.text)
-      ? 18
-      : 0;
+    const leftTitle = inverted ? xOpts.title : yOpts0.title;
+    const titleReserveLeft =
+      leftTitle?.text && leftTitle.enabled !== false
+        ? 18 +
+          Math.max(0, (leftTitle.margin ?? 8) - 8) +
+          Math.max(0, leftTitle.offset ?? 0)
+        : 0;
     const tickLabelW =
       LAYOUT.tickLength +
       8 +
@@ -1712,7 +1820,12 @@ export class FacetViz {
     const colHeaderH = colDim ? dimNameRowH + 20 : rowDim ? dimNameRowH : 0;
     const rowHeaderW = rowDim ? rowValueColW : 0;
     const leftReserve = rowHeaderW + tickLabelW + titleReserveLeft;
-    const titleReserveRight = hasSecondary && yOpts1?.title?.text ? 18 : 0;
+    const titleReserveRight =
+      hasSecondary && yOpts1?.title?.text && yOpts1.title.enabled !== false
+        ? 18 +
+          Math.max(0, (yOpts1.title.margin ?? 8) - 8) +
+          Math.max(0, yOpts1.title.offset ?? 0)
+        : 0;
     const rightReserve =
       hasSecondary && yOpts1
         ? LAYOUT.tickLength +
@@ -2086,6 +2199,364 @@ export class FacetViz {
     }
   }
 
+  /**
+   * Project ordinary category/value series into a shared polar coordinate
+   * system. Supported renderers opt into polar geometry through their normal
+   * SeriesRenderContext, so tooltip, events, labels, stacking, and legends keep
+   * the same behavior as their Cartesian equivalents.
+   */
+  private renderCartesianPolarPanel(plot: Rect, visible: BaseSeries[]): void {
+    const supported = new Set<ChartType>([
+      "line",
+      "spline",
+      "step",
+      "area",
+      "areaspline",
+      "scatter",
+      "jitter",
+      "column",
+    ]);
+    const series = visible.filter((item) => supported.has(item.type));
+    if (!series.length) return;
+    computeStacks(series);
+
+    const xOptions = axisAt(this.options.xAxis, 0);
+    const yOptions = axisAt(this.options.yAxis, 0);
+    const labelStyle = {
+      ...FONTS.axisLabel,
+      ...sanitizeStyle(xOptions.labels?.style),
+    };
+    const framePadding =
+      xOptions.labels?.enabled === false
+        ? 12
+        : Math.max(
+            24,
+            ...series.flatMap((item) =>
+              item.points.map(
+                (point) =>
+                  this.renderer.measureText(String(point.x), labelStyle).width / 2 + 8,
+              ),
+            ),
+          );
+    const radius = Math.max(
+      1,
+      Math.min(plot.width, plot.height) / 2 - Math.min(framePadding, 54),
+    );
+    const innerRadius = this.resolvePolarInnerRadius(radius);
+    const polarPlot: Rect = {
+      x: plot.x + plot.width / 2 - radius,
+      y: plot.y + plot.height / 2 - radius,
+      width: radius * 2,
+      height: radius * 2,
+    };
+    const center = {
+      x: polarPlot.x + polarPlot.width / 2,
+      y: polarPlot.y + polarPlot.height / 2,
+    };
+
+    const categories = this.currentCategories(series);
+    const categoryOffset = categories?.length ? Math.PI / categories.length : 0;
+    const xScale: Scale = categories
+      ? new CategoryScale({
+          categories,
+          range: [
+            -Math.PI / 2 - categoryOffset,
+            Math.PI * 1.5 - categoryOffset,
+          ],
+          padding: 0.12,
+          reversed: xOptions.reversed,
+        })
+      : this.valueScale(
+          xOptions,
+          this.xNumericDomain(series),
+          [-Math.PI / 2, Math.PI * 1.5],
+        );
+
+    const onSecondary = (item: BaseSeries) => (item.options.yAxis ?? 0) === 1;
+    const primary = series.filter((item) => !onSecondary(item));
+    const secondary = series.filter(onSecondary);
+    const radialScale = (items: BaseSeries[], options: AxisOptions) => {
+      let domain = this.valueDomain(items.length ? items : series);
+      if (
+        items.some((item) =>
+          ["column", "area", "areaspline"].includes(item.type),
+        ) &&
+        options.type !== "log"
+      )
+        domain = [Math.min(0, domain[0]), Math.max(0, domain[1])];
+      return this.valueScale(options, domain, [innerRadius, radius]);
+    };
+    const yScale = radialScale(primary, yOptions);
+    const yScale2 = secondary.length
+      ? radialScale(secondary, axisAt(this.options.yAxis, 1))
+      : undefined;
+
+    const project = (angle: number, radial: number) => ({
+      x: center.x + Math.cos(angle) * radial,
+      y: center.y + Math.sin(angle) * radial,
+    });
+    const xTicks = xScale.ticks();
+    const holeColor =
+      this.options.chart?.polarInnerBackgroundColor ??
+      this.options.chart?.backgroundColor ??
+      this.theme.backgroundColor;
+    const drawCategoryLabels = (parent: SVGElement) => {
+      if (
+        xOptions.visible === false ||
+        xOptions.labels?.enabled === false
+      )
+        return;
+      const curved =
+        xOptions.labels?.position === "inner" &&
+        innerRadius > 0 &&
+        !!categories?.length;
+      if (curved) {
+        const definitions = this.renderer.create("defs", {}, parent);
+        const textRadius = Math.max(
+          10,
+          innerRadius - (xOptions.labels?.offset ?? 7),
+        );
+        const arcSpan = Math.min(
+          Math.PI * 0.9,
+          ((Math.PI * 2) / categories!.length) * 0.78,
+        );
+        for (const tick of xTicks) {
+          const angle = xScale.scale(tick);
+          const flipped = Math.sin(angle) > 0.05;
+          const start = flipped ? angle + arcSpan / 2 : angle - arcSpan / 2;
+          const end = flipped ? angle - arcSpan / 2 : angle + arcSpan / 2;
+          const from = project(start, textRadius);
+          const to = project(end, textRadius);
+          const pathId = `facet-polar-label-path-${++this.clipSeq}`;
+          this.renderer.create(
+            "path",
+            {
+              id: pathId,
+              d: `M ${from.x} ${from.y} A ${textRadius} ${textRadius} 0 0 ${flipped ? 0 : 1} ${to.x} ${to.y}`,
+              fill: "none",
+              stroke: "none",
+            },
+            definitions,
+          );
+          const text = this.renderer.create(
+            "text",
+            {
+              ...labelStyle,
+              fill: THEME.axis.labelColor,
+              class:
+                "facet-polar-category-label facet-polar-curved-label",
+            },
+            parent,
+          );
+          const textPath = this.renderer.create(
+            "textPath",
+            {
+              href: `#${pathId}`,
+              startOffset: "50%",
+              "text-anchor": "middle",
+            },
+            text,
+          );
+          textPath.textContent = xScale.tickLabel(tick);
+        }
+        return;
+      }
+      const labelRadius = radius + (xOptions.labels?.offset ?? 10);
+      for (const tick of xTicks) {
+        const angle = xScale.scale(tick);
+        const label = project(angle, labelRadius);
+        const cosine = Math.cos(angle);
+        this.renderer.text(
+          xScale.tickLabel(tick),
+          label.x,
+          label.y,
+          {
+            ...labelStyle,
+            fill: THEME.axis.labelColor,
+            "text-anchor":
+              cosine < -0.15 ? "end" : cosine > 0.15 ? "start" : "middle",
+            "dominant-baseline": "middle",
+            class: "facet-polar-category-label",
+          },
+          parent,
+        );
+      }
+    };
+    const axes = this.renderer.group(
+      { class: "facet-polar-axes" },
+      this.renderer.root,
+    );
+    if (innerRadius > 0) {
+      this.renderer.create(
+        "circle",
+        {
+          cx: center.x,
+          cy: center.y,
+          r: innerRadius,
+          fill: holeColor,
+          stroke: "none",
+          class: "facet-polar-hole",
+        },
+        axes,
+      );
+    }
+    const gridColor = yOptions.gridLineColor ?? THEME.axis.gridLineColor;
+    if (yOptions.visible !== false) {
+      for (const tick of yScale.ticks()) {
+        const radial = yScale.scale(tick);
+        if (radial < 0 || radial > radius + 0.5) continue;
+        this.renderer.create(
+          "circle",
+          {
+            cx: center.x,
+            cy: center.y,
+            r: radial,
+            fill: "none",
+            stroke: gridColor,
+            "stroke-width": yOptions.gridLineWidth ?? 1,
+            class: "facet-polar-ring",
+          },
+          axes,
+        );
+        if (yOptions.labels?.enabled !== false) {
+          this.renderer.text(
+            yScale.tickLabel(tick),
+            center.x + 4,
+            center.y - radial - 3,
+            {
+              ...FONTS.axisLabel,
+              ...sanitizeStyle(yOptions.labels?.style),
+              fill: THEME.axis.labelColor,
+              class: "facet-polar-value-label",
+            },
+            axes,
+          );
+        }
+      }
+    }
+    if (xOptions.visible !== false) {
+      const sectorMode =
+        this.options.chart?.polarGridLineMode === "sector" &&
+        !!categories?.length;
+      const gridAngles = sectorMode
+        ? categories!.map(
+            (_, index) =>
+              -Math.PI / 2 -
+              categoryOffset +
+              (index * Math.PI * 2) / categories!.length,
+          )
+        : xTicks.map((tick) => xScale.scale(tick));
+      for (const angle of gridAngles) {
+        const innerEdge = project(angle, innerRadius);
+        const edge = project(angle, radius);
+        this.renderer.create(
+          "line",
+          {
+            x1: innerEdge.x,
+            y1: innerEdge.y,
+            x2: edge.x,
+            y2: edge.y,
+            stroke: xOptions.gridLineColor ?? THEME.axis.gridLineColor,
+            "stroke-width": xOptions.gridLineWidth ?? 1,
+            class: sectorMode
+              ? "facet-polar-sector-line"
+              : "facet-polar-spoke",
+          },
+          axes,
+        );
+      }
+      drawCategoryLabels(axes);
+    }
+    if (xOptions.title?.text && xOptions.title.enabled !== false) {
+      const centered = xOptions.title.position === "center";
+      this.renderer.text(
+        xOptions.title.text,
+        center.x,
+        centered
+          ? center.y
+          : plot.y + plot.height - (xOptions.title.offset ?? 0),
+        {
+          ...FONTS.axisTitle,
+          ...sanitizeStyle(xOptions.title.style),
+          "text-anchor": "middle",
+          "dominant-baseline": centered ? "middle" : undefined,
+          class: "facet-polar-axis-title facet-polar-x-title",
+        },
+        axes,
+      );
+    }
+    if (yOptions.title?.text && yOptions.title.enabled !== false)
+      {
+        const align = yOptions.title.align ?? "center";
+        const along = align === "start" ? 0.2 : align === "end" ? 0.8 : 0.5;
+        const x =
+          plot.x +
+          (yOptions.title.margin ?? 8) +
+          (yOptions.title.offset ?? 0) +
+          6;
+        const y = plot.y + plot.height * along;
+        this.renderer.text(
+          yOptions.title.text,
+          x,
+          y,
+          {
+            ...FONTS.axisTitle,
+            ...sanitizeStyle(yOptions.title.style),
+            "text-anchor":
+              align === "start" ? "start" : align === "end" ? "end" : "middle",
+            transform: `rotate(-90 ${x} ${y})`,
+            class: "facet-polar-axis-title facet-polar-y-title",
+          },
+          axes,
+        );
+      }
+
+    renderAnnotations({
+      renderer: this.renderer,
+      plot: polarPlot,
+      annotations: this.options.annotations ?? [],
+      xScale,
+      yScale,
+      yScale2,
+      layer: "below",
+      project,
+    });
+    const group = this.groupInfo(series);
+    for (const item of series) {
+      item.render(
+        this.seriesContext(
+          item,
+          polarPlot,
+          xScale,
+          yScale2 && onSecondary(item) ? yScale2 : yScale,
+          group,
+          false,
+          true,
+        ),
+      );
+    }
+    renderAnnotations({
+      renderer: this.renderer,
+      plot: polarPlot,
+      annotations: this.options.annotations ?? [],
+      xScale,
+      yScale,
+      yScale2,
+      layer: "above",
+      project,
+    });
+  }
+
+  private resolvePolarInnerRadius(outerRadius: number): number {
+    const value = this.options.chart?.polarInnerSize;
+    if (value === undefined) return 0;
+    const pixels =
+      typeof value === "string"
+        ? outerRadius * (parseFloat(value) / 100)
+        : value;
+    return Math.max(0, Math.min(outerRadius * 0.95, pixels));
+  }
+
   // -- Nested (hierarchical x-axis) ------------------------------
 
   private renderNestedPanel(
@@ -2149,19 +2620,31 @@ export class FacetViz {
           aggSeries.filter((s) => onAxis(s, 0)),
           yOpts0,
         ) +
-        (yOpts0.title?.text ? 18 : 0);
+        (yOpts0.title?.text && yOpts0.title.enabled !== false
+          ? 18 +
+            Math.max(0, (yOpts0.title.margin ?? 8) - 8) +
+            Math.max(0, yOpts0.title.offset ?? 0)
+          : 0);
       const rightReserve = hasSecondary
         ? LAYOUT.tickLength +
           8 +
           this.valueLabelWidth(secondary, yOpts1) +
-          (yOpts1.title?.text ? 18 : 0)
+          (yOpts1.title?.text && yOpts1.title.enabled !== false
+            ? 18 +
+              Math.max(0, (yOpts1.title.margin ?? 8) - 8) +
+              Math.max(0, yOpts1.title.offset ?? 0)
+            : 0)
         : 8;
       const bottomReserve = catVisible
         ? LAYOUT.tickLength +
           (split ? 1 : dims.length) * rowH +
           12 +
           rotExtra +
-          (xOpts.title?.text ? 22 : 0)
+          (xOpts.title?.text && xOpts.title.enabled !== false
+            ? 22 +
+              Math.max(0, (xOpts.title.margin ?? 14) - 14) +
+              Math.max(0, xOpts.title.offset ?? 0)
+            : 0)
         : 6;
       const topReserve =
         catVisible && split
@@ -2239,12 +2722,21 @@ export class FacetViz {
         ? LAYOUT.tickLength +
           8 +
           (split ? innerW : totalW) +
-          (xOpts.title?.text ? 22 : 0)
+          (xOpts.title?.text && xOpts.title.enabled !== false
+            ? 22 +
+              Math.max(0, (xOpts.title.margin ?? 14) - 14) +
+              Math.max(0, xOpts.title.offset ?? 0)
+            : 0)
         : 6;
       const rightReserve =
         catVisible && split ? LAYOUT.tickLength + 8 + outerW : 8;
       const bottomReserve =
-        LAYOUT.defaultBottomAxisHeight + (yOpts0.title?.text ? 32 : 0);
+        LAYOUT.defaultBottomAxisHeight +
+        (yOpts0.title?.text && yOpts0.title.enabled !== false
+          ? 32 +
+            Math.max(0, (yOpts0.title.margin ?? 14) - 14) +
+            Math.max(0, yOpts0.title.offset ?? 0)
+          : 0);
       const topReserve = 6;
       plot = {
         x: outer.x + leftReserve,

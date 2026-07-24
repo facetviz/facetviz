@@ -8,6 +8,7 @@ import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from "./base.js";
 import { CategoryScale, Scale } from "../core/scale.js";
 import type { Point } from "../core/point.js";
 import { drawDataLabel, labelString, LabelPlacement } from "./data-label.js";
+import { annularSectorPath, polarCenter, projectPolar } from "./polar.js";
 
 export interface ColumnOptions {
   columnWidth?: number;
@@ -24,6 +25,10 @@ export class ColumnSeries extends BaseSeries {
   }
 
   override render(ctx: SeriesRenderContext): void {
+    if (ctx.polar) {
+      this.renderPolar(ctx);
+      return;
+    }
     const { renderer, groupCount, groupIndex } = ctx;
     // `type: 'bar'` always means horizontal; `chart.inverted: true` swaps a
     // 'column' the same way (the caller already pre-swapped ctx.xScale/
@@ -85,6 +90,65 @@ export class ColumnSeries extends BaseSeries {
       this.wireEvents(el, p, ctx);
 
       this.drawDataLabel(ctx, p, rect, g);
+    }
+  }
+
+  private renderPolar(ctx: SeriesRenderContext): void {
+    const { renderer, groupCount, groupIndex } = ctx;
+    const group = renderer.group({
+      class: `facet-series facet-column facet-polar-column ${this.name}`,
+    });
+    const center = polarCenter(ctx);
+    const band = ctx.xScale.bandwidth() || (Math.PI * 2) / Math.max(1, this.points.length);
+    const slot = band / groupCount;
+    for (const p of this.points) {
+      const [loValue, hiValue] = this.valuePair(p);
+      if (loValue === undefined || hiValue === undefined) continue;
+      const angle = ctx.xScale.scale(p.x);
+      const start = angle - band / 2 + groupIndex * slot + slot * 0.05;
+      const end = start + slot * 0.9;
+      const lo = ctx.yScale.scale(loValue);
+      const hi = ctx.yScale.scale(hiValue);
+      const inner = Math.min(lo, hi);
+      const outer = Math.max(lo, hi);
+      const el = renderer.create(
+        "path",
+        {
+          d: annularSectorPath(center.x, center.y, inner, outer, start, end),
+          fill: p.color ?? this.color,
+          class: "facet-point facet-polar-sector",
+        },
+        group,
+      );
+      ctx.registerHover(el, p);
+      this.wireEvents(el, p, ctx);
+
+      if (this.options.dataLabels?.enabled) {
+        const mid = (start + end) / 2;
+        const point = projectPolar(ctx.plot, mid, outer + 8);
+        const total = this.points.reduce((sum, item) => sum + (item.y ?? 0), 0);
+        drawDataLabel(
+          renderer,
+          group,
+          labelString(this.options.dataLabels, {
+            x: p.x,
+            y: p.y,
+            point: p.options,
+            series: this.name,
+            name: p.name ?? p.x,
+            index: p.index,
+            color: p.color ?? this.color,
+            total,
+            percentage: total ? ((p.y ?? 0) / total) * 100 : undefined,
+          }),
+          {
+            x: point.x,
+            y: point.y,
+            anchor: Math.cos(mid) < -0.15 ? "end" : Math.cos(mid) > 0.15 ? "start" : "middle",
+          },
+          this.options.dataLabels,
+        );
+      }
     }
   }
 

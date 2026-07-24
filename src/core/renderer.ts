@@ -70,6 +70,35 @@ export class Renderer {
     return el;
   }
 
+  /**
+   * Measure SVG text using the live renderer when the DOM supports it, with a
+   * deterministic font-size fallback for headless and pre-mount environments.
+   */
+  measureText(content: string, attrs: Attrs = {}): { width: number; height: number } {
+    const fontSize = parseFloat(String(attrs['font-size'] ?? '11')) || 11;
+    const probe = this.text(content, -10000, -10000, {
+      visibility: 'hidden',
+      ...attrs,
+    });
+    let width = 0;
+    let height = fontSize;
+    try {
+      width = probe.getComputedTextLength?.() ?? 0;
+      const box = probe.getBBox?.();
+      if (box) {
+        width = width || box.width;
+        height = box.height || height;
+      }
+    } catch {
+      // Headless SVG implementations often omit text measurement APIs.
+    }
+    probe.remove();
+    return {
+      width: width || content.length * fontSize * 0.6,
+      height,
+    };
+  }
+
   /** Build an SVG path `d` string from segment tokens. */
   static path(segments: Array<(string | number)[]>): string {
     return segments.map((s) => s.join(' ')).join(' ');

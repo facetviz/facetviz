@@ -11,6 +11,7 @@ import { seededRandom } from "../core/utils.js";
 import { drawPointLabels } from "./data-label.js";
 import type { Pt } from "./paths.js";
 import type { Point } from "../core/point.js";
+import { projectPolar } from "./polar.js";
 
 export interface ScatterPointOptions {
   radius?: number;
@@ -54,12 +55,13 @@ export class ScatterSeries extends BaseSeries {
     for (const p of this.points) {
       if (p.y === undefined) continue;
       let catPx = catScale.scale(p.x);
-      if (this.isJitter && band > 0) {
-        catPx += (rng() - 0.5) * spread;
-      }
+      if (this.isJitter && band > 0) catPx += (rng() - 0.5) * spread;
       const valPx = valScale.scale(p.y);
-      const x = ctx.inverted ? valPx : catPx;
-      const y = ctx.inverted ? catPx : valPx;
+      const projected = ctx.polar
+        ? projectPolar(ctx.plot, catPx, valPx)
+        : undefined;
+      const x = projected?.x ?? (ctx.inverted ? valPx : catPx);
+      const y = projected?.y ?? (ctx.inverted ? catPx : valPx);
       labelData.push({ pt: { x, y }, p });
       const radius =
         p.options.radius ??

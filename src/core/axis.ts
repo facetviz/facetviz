@@ -68,13 +68,34 @@ export class Axis {
     // overlapping, thin them out (draw every Nth) instead — ticks/gridlines
     // still render for every value, only the label text skips. Left alone
     // when the caller already rotated labels to make room.
-    let labelStep = 1;
-    if (isCategory && labelsEnabled && this.horizontal && !options.labels?.rotation) {
+    let labelStep = Math.max(1, options.labels?.step ?? 1);
+    let labelRotation = options.labels?.rotation ?? 0;
+    if (isCategory && labelsEnabled && this.horizontal) {
       const band = scale.bandwidth();
       if (band > 0) {
-        const maxLen = ticks.reduce((m: number, t) => Math.max(m, this.labelText(scale, t).length), 0);
-        const estW = maxLen * 6.2 + 6;
-        if (estW > band) labelStep = Math.ceil(estW / band);
+        const style = this.labelStyle();
+        const widest = ticks.reduce(
+          (m: number, t) =>
+            Math.max(m, renderer.measureText(this.labelText(scale, t), style).width),
+          0,
+        );
+        if (options.labels?.rotation === undefined) {
+          const candidates = options.labels?.autoRotation ?? [0];
+          labelRotation =
+            candidates.find((rotation) => {
+              const rad = (Math.abs(rotation) * Math.PI) / 180;
+              const projected =
+                Math.cos(rad) * widest +
+                Math.sin(rad) * (parseFloat(style["font-size"] ?? "11") || 11);
+              return projected + 6 <= band * labelStep;
+            }) ?? candidates[candidates.length - 1] ?? 0;
+        }
+        const rad = (Math.abs(labelRotation) * Math.PI) / 180;
+        const projected =
+          Math.cos(rad) * widest +
+          Math.sin(rad) * (parseFloat(style["font-size"] ?? "11") || 11);
+        if (projected + 6 > band * labelStep)
+          labelStep = Math.ceil((projected + 6) / band);
       }
     }
 
@@ -97,7 +118,13 @@ export class Axis {
 
       // Label.
       if (labelsEnabled && i % labelStep === 0) {
-        this.drawLabel(group, pos, this.labelText(scale, tick), options);
+        this.drawLabel(
+          group,
+          pos,
+          this.labelText(scale, tick),
+          options,
+          labelRotation,
+        );
       }
     });
 
@@ -106,7 +133,8 @@ export class Axis {
     // `zIndex: 'above'` are skipped here; `renderAbove` draws those instead.
     this.drawPlotLines(group, 'below');
 
-    if (options.title?.text) this.drawTitle(group, options.title.text);
+    if (options.title?.text && options.title.enabled !== false)
+      this.drawTitle(group, options.title.text);
   }
 
   /**
@@ -277,19 +305,46 @@ export class Axis {
     }
   }
 
-  private drawLabel(g: SVGGElement, pos: number, text: string, options: AxisOptions): void {
-    const { renderer, plot, position } = this.cfg;
-    const customStyle = sanitizeStyle(options.labels?.style);
+  private labelStyle(): Record<string, string> {
+    const customStyle = sanitizeStyle(this.cfg.options.labels?.style);
     const style: Record<string, string> = { ...FONTS.axisLabel, ...customStyle };
-    // Shrink the label font slightly on a small/cramped plot (a dashboard
-    // card, a resizable panel) instead of using the same size as a
-    // full-width chart — skipped when the caller set an explicit font-size.
-    if (!customStyle['font-size']) {
-      const shortSide = Math.min(plot.width, plot.height);
-      if (shortSide < 120) style['font-size'] = '9px';
-      else if (shortSide < 220) style['font-size'] = '10px';
+    const shortSide = Math.min(this.cfg.plot.width, this.cfg.plot.height);
+    if (!customStyle["font-size"]) {
+      if (shortSide < 120) style["font-size"] = "9px";
+      else if (shortSide < 220) style["font-size"] = "10px";
     }
-    const rotation = options.labels?.rotation ?? 0;
+    return style;
+  }
+
+  private fitLabel(text: string, style: Record<string, string>): string | undefined {
+    const maxWidth = this.cfg.options.labels?.maxWidth;
+    if (!maxWidth || this.cfg.renderer.measureText(text, style).width <= maxWidth)
+      return text;
+    if (this.cfg.options.labels?.overflow === "hide") return undefined;
+    let lo = 0;
+    let hi = text.length;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      const candidate = `${text.slice(0, mid)}…`;
+      if (this.cfg.renderer.measureText(candidate, style).width <= maxWidth)
+        lo = mid;
+      else hi = mid - 1;
+    }
+    return lo ? `${text.slice(0, lo)}…` : undefined;
+  }
+
+  private drawLabel(
+    g: SVGGElement,
+    pos: number,
+    rawText: string,
+    options: AxisOptions,
+    resolvedRotation?: number,
+  ): void {
+    const { renderer, plot, position } = this.cfg;
+    const style = this.labelStyle();
+    const text = this.fitLabel(rawText, style);
+    if (text === undefined) return;
+    const rotation = resolvedRotation ?? options.labels?.rotation ?? 0;
     let x = 0;
     let y = 0;
     let anchor = 'middle';
@@ -340,19 +395,30 @@ export class Axis {
     // regardless of how wide/tall the labels are.
     const labelsEnabled = this.cfg.options.labels?.enabled !== false;
     const gap = labelsEnabled ? this.labelExtent() : 0;
+    const margin = this.cfg.options.title?.margin ?? (this.horizontal ? 14 : 8);
+    const offset = this.cfg.options.title?.offset ?? 0;
+    const align = this.cfg.options.title?.align ?? "center";
+    const along = align === "start" ? 0 : align === "end" ? 1 : 0.5;
     if (this.horizontal) {
-      const x = plot.x + plot.width / 2;
+      const x = plot.x + plot.width * along;
       const y = position === 'bottom'
-        ? plot.y + plot.height + LAYOUT.tickLength + gap + 22
-        : plot.y - LAYOUT.tickLength - gap - 18;
-      renderer.text(text, x, y, { 'text-anchor': 'middle', ...style }, g);
+        ? plot.y + plot.height + LAYOUT.tickLength + gap + margin + offset + 8
+        : plot.y - LAYOUT.tickLength - gap - margin - offset - 4;
+      renderer.text(text, x, y, {
+        'text-anchor': align === "start" ? "start" : align === "end" ? "end" : "middle",
+        ...style,
+      }, g);
     } else {
       const x = position === 'left'
-        ? plot.x - LAYOUT.tickLength - 4 - gap - 8
-        : plot.x + plot.width + LAYOUT.tickLength + 4 + gap + 8;
-      const y = plot.y + plot.height / 2;
+        ? plot.x - LAYOUT.tickLength - 4 - gap - margin - offset
+        : plot.x + plot.width + LAYOUT.tickLength + 4 + gap + margin + offset;
+      const y = plot.y + plot.height * along;
       const rot = position === 'left' ? -90 : 90;
-      renderer.text(text, x, y, { 'text-anchor': 'middle', transform: `rotate(${rot} ${x} ${y})`, ...style }, g);
+      renderer.text(text, x, y, {
+        'text-anchor': align === "start" ? "start" : align === "end" ? "end" : "middle",
+        transform: `rotate(${rot} ${x} ${y})`,
+        ...style,
+      }, g);
     }
   }
 
@@ -365,10 +431,18 @@ export class Axis {
     const { scale, options } = this.cfg;
     const labelStyle = sanitizeStyle(options.labels?.style);
     const fontPx = parseFloat(labelStyle['font-size'] ?? FONTS.axisLabel['font-size'] ?? '11') || 11;
-    const charW = fontPx * 0.6;
     let maxW = 0;
     for (const t of scale.ticks()) {
-      maxW = Math.max(maxW, this.labelText(scale, t).length * charW);
+      const measured = this.cfg.renderer.measureText(this.labelText(scale, t), {
+        ...FONTS.axisLabel,
+        ...labelStyle,
+      }).width;
+      maxW = Math.max(
+        maxW,
+        options.labels?.maxWidth
+          ? Math.min(measured, options.labels.maxWidth)
+          : measured,
+      );
     }
     const rot = options.labels?.rotation ?? 0;
     if (this.horizontal) {

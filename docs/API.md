@@ -42,6 +42,8 @@ The root object passed to `new FacetViz(container, options)`.
 | `colors`       | `string[]`                                       | theme palette | Colours cycled through by series lacking an explicit colour. |
 | `theme`        | `string \| ThemeInput`                           | `'light'`     | Visual theme — see [Theming](#theming).                      |
 | `trellis`      | [`TrellisOptions`](#trellisoptions)              | –             | Small-multiples / cross-tab table split.                     |
+| `annotations`  | [`AnnotationOptions[]`](#annotations)             | –             | Value-anchored labels, callouts, and highlights.             |
+| `responsive`   | [`ResponsiveRule[]`](#responsive-rules)           | –             | Size-matched option overrides.                               |
 | `seriesEvents` | [`SeriesEvents`](#events)                        | –             | Event callbacks applied to every series.                     |
 
 ---
@@ -56,7 +58,10 @@ The root object passed to `new FacetViz(container, options)`.
 | `backgroundColor` | `string`                           | `'#fff'`        | Plot background fill.                                                   |
 | `spacing`         | `[number, number, number, number]` | `[16,16,16,16]` | Outer padding `[top, right, bottom, left]`.                             |
 | `inverted`        | `boolean`                          | `false`         | Swap axes: makes column→bar, and renders boxplot/dumbbell horizontally. |
-| `polar`           | `boolean`                          | `false`         | Reserved for polar rendering.                                           |
+| `polar`           | `boolean`                          | `false`         | Project line, spline, step, area, scatter, jitter, and column series into a shared polar frame. |
+| `polarInnerSize`  | `number \| string`                 | `0`             | Donut-style centre hole: pixels or a percentage such as `'35%'`.       |
+| `polarInnerBackgroundColor` | `string`                  | chart background| Fill of the polar centre hole; use `'#fff'` for a white circle.         |
+| `polarGridLineMode` | `'spoke' \| 'sector'`             | `'spoke'`       | Draw angular grid lines through category centres or along sector boundaries. |
 | `colors`          | `string[]`                         | –               | Alias of top-level `colors`.                                            |
 | `events`          | [`ChartEvents`](#events)           | –               | Chart-level `load` / `render` / `click` callbacks.                      |
 
@@ -69,11 +74,14 @@ The root object passed to `new FacetViz(container, options)`.
 
 `TitleOptions` (used by both `title` and `subtitle`):
 
-| Key     | Type                            | Default    | Description                                             |
-| ------- | ------------------------------- | ---------- | ------------------------------------------------------- |
-| `text`  | `string`                        | –          | The text. **Omit to hide** the title/subtitle entirely. |
-| `align` | `'left' \| 'center' \| 'right'` | `'center'` | Horizontal alignment.                                   |
-| `style` | `Record<string, string>`        | –          | Extra SVG text attributes (e.g. `{ fill: '#333' }`).    |
+| Key       | Type                            | Default    | Description                                             |
+| --------- | ------------------------------- | ---------- | ------------------------------------------------------- |
+| `text`    | `string`                        | –          | Title text.                                             |
+| `enabled` | `boolean`                       | `true`     | Hide the title while preserving its configuration.      |
+| `align`   | `'left' \| 'center' \| 'right'` | `'center'` | Horizontal alignment.                                   |
+| `margin`  | `number`                        | auto       | Space below the title block.                            |
+| `offsetY` | `number`                        | `0`        | Additional vertical text offset.                        |
+| `style`   | `Record<string, string>`        | –          | Extra SVG text attributes (e.g. `{ fill: '#333' }`).    |
 
 ---
 
@@ -89,7 +97,7 @@ Applies to both `xAxis` and `yAxis`. A **category axis** is used when
 | `opposite`      | `boolean`                                          | `false`     | Move the axis to the opposite side: **y → right**, **x → top**. For a nested x-axis this triggers the [split layout](#nested-hierarchical-x-axis). |
 | `categories`    | `string[]`                                         | –           | Category labels; makes this a categorical axis.                                                                                                    |
 | `type`          | `'linear' \| 'log' \| 'category' \| 'datetime'`    | inferred    | Scale type.                                                                                                                                        |
-| `title`         | `{ text?: string; style?: Record<string,string> }` | –           | Axis title. Omit `text` to hide.                                                                                                                   |
+| `title`         | [`AxisTitleOptions`](#axis-titles)                 | –           | Axis title and its placement.                                                                                                                      |
 | `min`           | `number`                                           | data min    | Force the axis minimum (value axes).                                                                                                               |
 | `max`           | `number`                                           | data max    | Force the axis maximum (value axes).                                                                                                               |
 | `tickCount`     | `number`                                           | auto        | Approximate number of ticks (linear axes).                                                                                                         |
@@ -116,7 +124,29 @@ Applies to both `xAxis` and `yAxis`. A **category axis** is used when
 | `format`    | `string`                | `'{value}'` | Token string; `{value}` is the tick value. Accepts format specs / dates — see [Text & label formatting](#text--label-formatting).                                   |
 | `formatter` | `(value) => string`     | –           | Custom label function (overrides `format`).                                                                                                                         |
 | `rotation`  | `number`                | `0`         | Rotate tick labels by this angle (degrees), e.g. `-45` or `-90` for long/crowded categories. Labels are anchored to their tick and the axis band grows to fit them. |
+| `autoRotation` | `number[]`           | `[0]`       | Candidate rotations tried in order when horizontal category labels overlap.                                                                        |
+| `step`      | `number`                | auto        | Draw every Nth label; collision handling may increase it.                                                                                           |
+| `maxWidth`  | `number`                | –           | Maximum measured label width in pixels.                                                                                                             |
+| `overflow`  | `'ellipsis' \| 'hide'`  | `'ellipsis'`| Truncate or hide labels wider than `maxWidth`.                                                                                                       |
+| `position`  | `'outer' \| 'inner'`    | `'outer'`   | Polar x-axis only: place labels outside the plot or curve them around the centre-hole radius.                                                        |
+| `offset`    | `number`                | `7` / `10`  | Polar x-axis only: pixel gap from the circle; defaults to 7 for inner labels and 10 for outer labels.                                                |
 | `style`     | `Record<string,string>` | –           | Extra text attributes.                                                                                                                                              |
+
+### Axis titles
+
+`AxisOptions.title` supports `text`, `enabled`, `style`, and:
+
+| Key      | Type                              | Default    | Description                                      |
+| -------- | --------------------------------- | ---------- | ------------------------------------------------ |
+| `align`  | `'start' \| 'center' \| 'end'`   | `'center'` | Position along the axis.                         |
+| `margin` | `number`                          | auto       | Gap between tick labels and the title.           |
+| `offset` | `number`                          | `0`        | Additional distance away from the plot.          |
+| `position` | `'outer' \| 'center'`           | `'outer'`  | Polar x-axis only: place the title below the frame or in its centre. |
+
+For two axes, configure an array and bind the series by zero-based index.
+`yAxis[1].opposite: true` explicitly places the second axis on the right;
+`false` places it on the left. The same convention places an x-axis at the
+top (`true`) or bottom (`false`).
 
 ### PlotLineOptions
 
@@ -653,6 +683,88 @@ series: [
   { type: 'spline', name: 'Margin %', yAxis: 1, data: marginRows },  // → right axis, own scale
 ],
 ```
+
+---
+
+## Annotations
+
+Annotations use axis values, so they stay attached to the data across resizing,
+axis-domain changes, and polar projection:
+
+```ts
+annotations: [{
+  x: 'March',
+  y: 120,
+  text: 'Campaign launched',
+  shape: 'callout',
+  dx: 18,
+  dy: -24,
+}]
+```
+
+`shape` is `'label'`, `'callout'`, or `'circle'`. Use `xAxis` / `yAxis` (`0`
+or `1`) for a secondary scale, `zIndex: 'below'` to place an annotation under
+the series, and `color`, `backgroundColor`, `borderColor`, `borderWidth`,
+`padding`, `radius`, and `style` for appearance.
+
+## Responsive rules
+
+Rules are deep-merged for a matching render and restored afterwards, leaving
+`chart.options` unchanged:
+
+```ts
+responsive: [{
+  condition: { maxWidth: 480 },
+  options: {
+    legend: { enabled: false },
+    title: { margin: 4 },
+    xAxis: {
+      labels: { autoRotation: [0, -45, -90], maxWidth: 72 }
+    }
+  }
+}]
+```
+
+Conditions support `minWidth`, `maxWidth`, `minHeight`, and `maxHeight`.
+Responsive options cover chart layout, titles, axes, tooltip, legend, trellis,
+annotations, and accessibility. They intentionally do not replace series data
+or validation configuration.
+
+## General polar charts
+
+Set `chart.polar: true` on `line`, `spline`, `step`, `area`, `areaspline`,
+`scatter`, `jitter`, or `column` charts:
+
+```ts
+{
+  chart: {
+    type: 'column',
+    polar: true,
+    polarInnerSize: '44%',
+    polarInnerBackgroundColor: '#fff',
+    polarGridLineMode: 'sector'
+  },
+  xAxis: {
+    categories: ['North', 'East', 'South', 'West'],
+    labels: { position: 'inner', offset: 10 },
+    title: { text: 'Direction', position: 'center' }
+  },
+  yAxis: { title: { text: 'Revenue' } },
+  series: [{ data: [4, 7, 5, 8] }]
+}
+```
+
+These use a shared angular x-axis and radial y-axis. Existing tooltips, point
+events, stacking, grouping, labels, annotations, legends, and secondary radial
+scales continue to apply. `polarInnerSize` maps the radial scale outside the
+centre hole, so columns and areas begin at its edge and grid spokes do not cross
+it. Set `polarGridLineMode: 'sector'` to shift angular dividers from category
+centres to category boundaries, outlining each wedge while keeping its label
+centred. `xAxis.labels.position: 'inner'` curves category labels around the
+centre-hole radius, while `xAxis.title.position: 'center'` places the title in
+the middle of the hole.
+Dedicated `radar`, `radialbar`, and `gauge` types keep their specialized
+renderers and do not require `chart.polar`.
 
 ---
 

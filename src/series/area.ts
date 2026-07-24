@@ -10,6 +10,7 @@ import { alpha } from '../core/colors.js';
 import { linePath, splinePath, Pt } from './paths.js';
 import type { Point } from '../core/point.js';
 import { drawPointLabels } from './data-label.js';
+import { polarPoint } from "./polar.js";
 
 export class AreaSeries extends LineSeries {
   private smooth(): boolean {
@@ -35,15 +36,19 @@ export class AreaSeries extends LineSeries {
     const drawSegment = () => {
       if (!top.length) return;
       const line = this.smooth() ? splinePath : linePath;
+      const reversedBottom = [...bottom].reverse();
       const topD = line(top);
-      const bottomD = line([...bottom].reverse()).replace(/^M/, 'L');
+      const bottomD = line(reversedBottom).replace(/^M/, 'L');
       renderer.create('path', {
         d: `${topD} ${bottomD} Z`,
         fill: alpha(this.color, this.options.fillOpacity ?? 0.35),
         stroke: 'none',
       }, g);
       renderer.create('path', {
-        d: topD,
+        d:
+          ctx.polar && top.length > 2
+            ? line([...top, top[0]])
+            : topD,
         fill: 'none',
         stroke: this.color,
         'stroke-width': this.options.lineWidth ?? this.options.size ?? 2,
@@ -61,10 +66,14 @@ export class AreaSeries extends LineSeries {
       }
       const lo = p.stackLow !== undefined ? p.stackLow : 0;
       const catPx = catScale.scale(p.x);
-      const topPt = ctx.inverted
+      const topPt = ctx.polar
+        ? polarPoint(ctx, p.x, hi)
+        : ctx.inverted
         ? { x: valScale.scale(hi), y: catPx }
         : { x: catPx, y: valScale.scale(hi) };
-      const botPt = ctx.inverted
+      const botPt = ctx.polar
+        ? polarPoint(ctx, p.x, lo)
+        : ctx.inverted
         ? { x: valScale.scale(lo), y: catPx }
         : { x: catPx, y: valScale.scale(lo) };
       top.push(topPt);

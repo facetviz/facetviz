@@ -933,6 +933,55 @@ export const EXAMPLES = [
     },
   },
   {
+    cat: "Advanced",
+    title: "Polar projection with annotation",
+    desc: "Ordinary column series projected onto angular and radial axes.",
+    types: [],
+    cfg: {
+      chart: {
+        type: "column",
+        polar: true,
+        polarInnerSize: "44%",
+        polarInnerBackgroundColor: "#ffffff",
+        polarGridLineMode: "sector",
+        height: 350,
+      },
+      title: {
+        text: "Revenue by direction",
+        margin: 10,
+      },
+      xAxis: {
+        categories: ["North", "East", "South", "West"],
+        labels: { maxWidth: 70, position: "inner", offset: 10 },
+        title: { text: "Region", position: "center" },
+      },
+      yAxis: { title: { text: "Revenue", margin: 10 } },
+      annotations: [
+        {
+          x: "East",
+          y: 72,
+          text: "Strongest region",
+          shape: "callout",
+          dx: 18,
+          dy: -18,
+        },
+      ],
+      responsive: [
+        {
+          condition: { maxWidth: 440 },
+          options: {
+            legend: { enabled: false },
+            title: { margin: 4 },
+          },
+        },
+      ],
+      series: [
+        { name: "Current", data: [48, 72, 55, 61] },
+        { name: "Previous", data: [42, 64, 52, 57] },
+      ],
+    },
+  },
+  {
     cat: "Grid & hierarchy",
     title: "Radar",
     desc: "Line/area over categories on a polar grid.",

@@ -126,6 +126,40 @@ export function validateChartOptions(options: unknown): ChartValidationResult {
         `${dimension} must be a positive finite number.`,
       );
   }
+  const polarInnerSize = chartRecord.polarInnerSize;
+  if (
+    polarInnerSize !== undefined &&
+    !(
+      (typeof polarInnerSize === "number" &&
+        Number.isFinite(polarInnerSize) &&
+        polarInnerSize >= 0) ||
+      (typeof polarInnerSize === "string" &&
+        /^\s*(?:\d+(?:\.\d+)?|\.\d+)%\s*$/.test(polarInnerSize) &&
+        parseFloat(polarInnerSize) >= 0 &&
+        parseFloat(polarInnerSize) < 100)
+    )
+  )
+    add(
+      "chart.polar_inner_size.valid",
+      "error",
+      "chart.polarInnerSize",
+      "polarInnerSize must be a non-negative pixel number or a percentage below 100%.",
+    );
+  if (
+    chartRecord.polarGridLineMode !== undefined &&
+    !["spoke", "sector"].includes(String(chartRecord.polarGridLineMode))
+  )
+    add(
+      "chart.polar_grid_line_mode.unknown",
+      "error",
+      "chart.polarGridLineMode",
+      "polarGridLineMode must be spoke or sector.",
+    );
+
+  validateTitle(options.title, "title", add);
+  validateTitle(options.subtitle, "subtitle", add);
+  validateAnnotations(options.annotations, add);
+  validateResponsive(options.responsive, add);
 
   for (const [path, palette] of [
     ["colors", options.colors],
@@ -179,6 +213,19 @@ export function validateChartOptions(options: unknown): ChartValidationResult {
       );
       return;
     }
+    if (
+      chartRecord.polar === true &&
+      !["line", "spline", "step", "area", "areaspline", "scatter", "jitter", "column"].includes(
+        String(type),
+      )
+    )
+      add(
+        "chart.polar.series.unsupported",
+        "warning",
+        `${base}.type`,
+        `${type} does not support chart.polar and will not be rendered in the polar frame.`,
+        "Use line, spline, step, area, areaspline, scatter, jitter, or column.",
+      );
     const data = entry.data;
     if (!Array.isArray(data)) {
       add("series.data.required", "error", `${base}.data`, "Series data must be an array.");
@@ -289,7 +336,187 @@ function validateAxes(value: unknown, path: string, add: AddIssue): UnknownRecor
       add("axis.range.order", "error", axisPath, "Axis min must be smaller than max.");
     if (axis.type !== undefined && !["linear", "log", "category", "datetime"].includes(String(axis.type)))
       add("axis.type.unknown", "error", `${axisPath}.type`, `Unknown axis type ${describe(axis.type)}.`);
+    validateTitle(axis.title, `${axisPath}.title`, add, true);
+    if (isRecord(axis.labels)) {
+      if (
+        axis.labels.position !== undefined &&
+        !["outer", "inner"].includes(String(axis.labels.position))
+      )
+        add(
+          "axis.labels.position.unknown",
+          "error",
+          `${axisPath}.labels.position`,
+          "Polar label position must be outer or inner.",
+        );
+      if (
+        axis.labels.offset !== undefined &&
+        (typeof axis.labels.offset !== "number" ||
+          !Number.isFinite(axis.labels.offset) ||
+          axis.labels.offset < 0)
+      )
+        add(
+          "axis.labels.offset.non_negative",
+          "error",
+          `${axisPath}.labels.offset`,
+          "Polar label offset must be a non-negative number.",
+        );
+      if (
+        axis.labels.step !== undefined &&
+        (typeof axis.labels.step !== "number" ||
+          !Number.isSafeInteger(axis.labels.step) ||
+          axis.labels.step <= 0)
+      )
+        add(
+          "axis.labels.step.positive_integer",
+          "error",
+          `${axisPath}.labels.step`,
+          "Label step must be a positive integer.",
+        );
+      if (
+        axis.labels.maxWidth !== undefined &&
+        (typeof axis.labels.maxWidth !== "number" || axis.labels.maxWidth <= 0)
+      )
+        add(
+          "axis.labels.max_width.positive",
+          "error",
+          `${axisPath}.labels.maxWidth`,
+          "Label maxWidth must be a positive number.",
+        );
+      if (
+        axis.labels.autoRotation !== undefined &&
+        (!Array.isArray(axis.labels.autoRotation) ||
+          axis.labels.autoRotation.some((value) => typeof value !== "number"))
+      )
+        add(
+          "axis.labels.auto_rotation.numbers",
+          "error",
+          `${axisPath}.labels.autoRotation`,
+          "autoRotation must be an array of numeric angles.",
+        );
+    }
     return axis;
+  });
+}
+
+function validateTitle(
+  value: unknown,
+  path: string,
+  add: AddIssue,
+  axis = false,
+): void {
+  if (value === undefined) return;
+  if (!isRecord(value)) {
+    add("title.object", "error", path, "Title configuration must be an object.");
+    return;
+  }
+  if (value.enabled !== undefined && typeof value.enabled !== "boolean")
+    add("title.enabled.boolean", "error", `${path}.enabled`, "enabled must be a boolean.");
+  if (
+    axis &&
+    value.position !== undefined &&
+    !["outer", "center"].includes(String(value.position))
+  )
+    add(
+      "axis.title.position.unknown",
+      "error",
+      `${path}.position`,
+      "Polar axis-title position must be outer or center.",
+    );
+  for (const key of axis ? ["margin", "offset"] : ["margin", "offsetY"]) {
+    const item = value[key];
+    if (item !== undefined && (typeof item !== "number" || !Number.isFinite(item)))
+      add("title.offset.number", "error", `${path}.${key}`, `${key} must be a finite number.`);
+    else if (key === "margin" && typeof item === "number" && item < 0)
+      add(
+        "title.margin.non_negative",
+        "error",
+        `${path}.${key}`,
+        "margin must be non-negative.",
+      );
+  }
+}
+
+function validateAnnotations(value: unknown, add: AddIssue): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    add("annotations.array", "error", "annotations", "annotations must be an array.");
+    return;
+  }
+  value.forEach((annotation, index) => {
+    const path = `annotations[${index}]`;
+    if (!isRecord(annotation)) {
+      add("annotation.object", "error", path, "Each annotation must be an object.");
+      return;
+    }
+    if (
+      annotation.shape !== undefined &&
+      !["label", "callout", "circle"].includes(String(annotation.shape))
+    )
+      add("annotation.shape.unknown", "error", `${path}.shape`, "Unknown annotation shape.");
+    if (
+      annotation.x !== undefined &&
+      typeof annotation.x !== "number" &&
+      typeof annotation.x !== "string"
+    )
+      add("annotation.x.value", "error", `${path}.x`, "Annotation x must be a number or string.");
+    if (annotation.y !== undefined && typeof annotation.y !== "number")
+      add("annotation.y.number", "error", `${path}.y`, "Annotation y must be a number.");
+    for (const axis of ["xAxis", "yAxis"] as const)
+      if (
+        annotation[axis] !== undefined &&
+        annotation[axis] !== 0 &&
+        annotation[axis] !== 1
+      )
+        add(
+          "annotation.axis.index",
+          "error",
+          `${path}.${axis}`,
+          `${axis} must be 0 or 1.`,
+        );
+  });
+}
+
+function validateResponsive(value: unknown, add: AddIssue): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    add("responsive.array", "error", "responsive", "responsive must be an array.");
+    return;
+  }
+  value.forEach((rule, index) => {
+    const path = `responsive[${index}]`;
+    if (!isRecord(rule)) {
+      add("responsive.rule.object", "error", path, "Each responsive rule must be an object.");
+      return;
+    }
+    if (!isRecord(rule.condition))
+      add(
+        "responsive.condition.object",
+        "error",
+        `${path}.condition`,
+        "Responsive rules require a condition object.",
+      );
+    if (!isRecord(rule.options))
+      add(
+        "responsive.options.object",
+        "error",
+        `${path}.options`,
+        "Responsive rules require an options object.",
+      );
+    if (isRecord(rule.condition)) {
+      for (const key of ["minWidth", "maxWidth", "minHeight", "maxHeight"]) {
+        const limit = rule.condition[key];
+        if (
+          limit !== undefined &&
+          (typeof limit !== "number" || !Number.isFinite(limit) || limit < 0)
+        )
+          add(
+            "responsive.condition.non_negative",
+            "error",
+            `${path}.condition.${key}`,
+            `${key} must be a non-negative finite number.`,
+          );
+      }
+    }
   });
 }
 
