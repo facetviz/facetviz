@@ -294,8 +294,9 @@ export interface AxisLabelOptions {
    */
   position?: "outer" | "inner";
   /**
-   * Gap in pixels from the polar x-axis circle. Positive values move inner
-   * labels toward the centre and outer labels away from the plot.
+   * Polar x-label offset in pixels. Positive values move inner labels toward
+   * the centre, outer labels away from the plot, and inverted radial labels
+   * beside the vertical radius.
    */
   offset?: number;
   style?: Record<string, string>;
@@ -318,8 +319,22 @@ export interface AxisOptions {
   /** Approximate number of ticks (linear axes). */
   tickCount?: number;
   labels?: AxisLabelOptions;
+  /** SVG dash array for major grid lines, for example `'6 3'`. */
+  gridLineDashStyle?: string;
   gridLineWidth?: number;
   gridLineColor?: string;
+  /**
+   * Spacing between minor grid lines on continuous axes. A positive number
+   * uses data units; `'auto'` divides each major-tick interval into fifths.
+   * Minor grid lines are disabled when this option is omitted.
+   */
+  minorTickInterval?: number | "auto";
+  /** Minor grid line thickness. Default `1` when minor grid lines are enabled. */
+  minorGridLineWidth?: number;
+  /** Minor grid line colour. Defaults to `gridLineColor`. */
+  minorGridLineColor?: string;
+  /** SVG dash array for minor grid lines. Default `'2 2'`. */
+  minorGridLineDashStyle?: string;
   lineColor?: string;
   lineWidth?: number;
   /** Draw the small tick marks between the axis line and its labels. Default true. */

@@ -92,6 +92,31 @@ describe('configuration validation', () => {
     ]));
   });
 
+  it('validates minor-grid intervals, widths, and dash styles', () => {
+    const result = validateChartOptions({
+      yAxis: {
+        minorTickInterval: 0,
+        minorGridLineWidth: -1,
+        minorGridLineDashStyle: 3,
+      },
+      series: [{ data: [1, 2] }],
+    });
+    expect(result.errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'axis.minor_tick_interval.positive',
+        path: 'yAxis.minorTickInterval',
+      }),
+      expect.objectContaining({
+        code: 'axis.grid_line_width.non_negative',
+        path: 'yAxis.minorGridLineWidth',
+      }),
+      expect.objectContaining({
+        code: 'axis.grid_line_dash_style.string',
+        path: 'yAxis.minorGridLineDashStyle',
+      }),
+    ]));
+  });
+
   it('validates specialised statistical, financial, gantt, and gauge data', () => {
     const result = validateChartOptions({
       series: [

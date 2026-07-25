@@ -215,16 +215,24 @@ export function validateChartOptions(options: unknown): ChartValidationResult {
     }
     if (
       chartRecord.polar === true &&
-      !["line", "spline", "step", "area", "areaspline", "scatter", "jitter", "column"].includes(
-        String(type),
-      )
+      ![
+        "line",
+        "spline",
+        "step",
+        "area",
+        "areaspline",
+        "scatter",
+        "jitter",
+        "column",
+        "dumbbell",
+      ].includes(String(type))
     )
       add(
         "chart.polar.series.unsupported",
         "warning",
         `${base}.type`,
         `${type} does not support chart.polar and will not be rendered in the polar frame.`,
-        "Use line, spline, step, area, areaspline, scatter, jitter, or column.",
+        "Use line, spline, step, area, areaspline, scatter, jitter, column, or dumbbell.",
       );
     const data = entry.data;
     if (!Array.isArray(data)) {
@@ -336,6 +344,41 @@ function validateAxes(value: unknown, path: string, add: AddIssue): UnknownRecor
       add("axis.range.order", "error", axisPath, "Axis min must be smaller than max.");
     if (axis.type !== undefined && !["linear", "log", "category", "datetime"].includes(String(axis.type)))
       add("axis.type.unknown", "error", `${axisPath}.type`, `Unknown axis type ${describe(axis.type)}.`);
+    for (const key of ["gridLineWidth", "minorGridLineWidth"]) {
+      const width = axis[key];
+      if (
+        width !== undefined &&
+        (typeof width !== "number" || !Number.isFinite(width) || width < 0)
+      )
+        add(
+          "axis.grid_line_width.non_negative",
+          "error",
+          `${axisPath}.${key}`,
+          `${key} must be a non-negative finite number.`,
+        );
+    }
+    if (
+      axis.minorTickInterval !== undefined &&
+      axis.minorTickInterval !== "auto" &&
+      (typeof axis.minorTickInterval !== "number" ||
+        !Number.isFinite(axis.minorTickInterval) ||
+        axis.minorTickInterval <= 0)
+    )
+      add(
+        "axis.minor_tick_interval.positive",
+        "error",
+        `${axisPath}.minorTickInterval`,
+        "minorTickInterval must be 'auto' or a positive finite number.",
+      );
+    for (const key of ["gridLineDashStyle", "minorGridLineDashStyle"]) {
+      if (axis[key] !== undefined && typeof axis[key] !== "string")
+        add(
+          "axis.grid_line_dash_style.string",
+          "error",
+          `${axisPath}.${key}`,
+          `${key} must be an SVG dash-array string.`,
+        );
+    }
     validateTitle(axis.title, `${axisPath}.title`, add, true);
     if (isRecord(axis.labels)) {
       if (

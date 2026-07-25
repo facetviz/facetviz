@@ -44,8 +44,16 @@ export class ScatterSeries extends BaseSeries {
     // value axis (same convention as ColumnSeries.render / LineSeries) --
     // jitter's spread is a category-band offset, so it moves with catScale
     // too instead of always landing on the x pixel.
-    const catScale = ctx.inverted ? ctx.yScale : ctx.xScale;
-    const valScale = ctx.inverted ? ctx.xScale : ctx.yScale;
+    const catScale = ctx.polar
+      ? ctx.xScale
+      : ctx.inverted
+        ? ctx.yScale
+        : ctx.xScale;
+    const valScale = ctx.polar
+      ? ctx.yScale
+      : ctx.inverted
+        ? ctx.xScale
+        : ctx.yScale;
     const marker = this.options.marker ?? {};
     const rng = seededRandom(this.index * 7919 + this.points.length + 1);
     const band = catScale instanceof CategoryScale ? catScale.bandwidth() : 0;
@@ -58,7 +66,11 @@ export class ScatterSeries extends BaseSeries {
       if (this.isJitter && band > 0) catPx += (rng() - 0.5) * spread;
       const valPx = valScale.scale(p.y);
       const projected = ctx.polar
-        ? projectPolar(ctx.plot, catPx, valPx)
+        ? projectPolar(
+            ctx.plot,
+            ctx.inverted ? valPx : catPx,
+            ctx.inverted ? catPx : valPx,
+          )
         : undefined;
       const x = projected?.x ?? (ctx.inverted ? valPx : catPx);
       const y = projected?.y ?? (ctx.inverted ? catPx : valPx);

@@ -796,6 +796,43 @@ export const EXAMPLES = [
     },
   },
   {
+    cat: "Advanced",
+    title: "Inverted polar axes",
+    desc: "A radial x-axis and circular y-axis with concentric arc columns.",
+    types: [],
+    cfg: {
+      chart: {
+        type: "column",
+        polar: true,
+        inverted: true,
+        polarInnerSize: "18%",
+        polarInnerBackgroundColor: "#ffffff",
+        height: 350,
+      },
+      title: { text: "Completion by tier" },
+      xAxis: {
+        categories: ["Inner", "Middle", "Outer"],
+        title: { text: "Tier" },
+      },
+      yAxis: {
+        min: 0,
+        max: 100,
+        tickCount: 5,
+        title: { text: "Completion" },
+      },
+      series: [
+        {
+          name: "Progress",
+          data: [
+            { x: "Inner", y: 35, color: "#22c55e" },
+            { x: "Middle", y: 62, color: "#38bdf8" },
+            { x: "Outer", y: 84, color: "#7c3aed" },
+          ],
+        },
+      ],
+    },
+  },
+  {
     cat: "Grid & hierarchy",
     title: "Calendar heatmap",
     desc: "Day-grid by date.",

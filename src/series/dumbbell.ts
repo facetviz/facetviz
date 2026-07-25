@@ -13,6 +13,7 @@ import { drawMarker } from "./marker.js";
 import { drawDataLabel, labelString, LabelPlacement } from "./data-label.js";
 import { THEME } from "../core/theme.js";
 import type { Point } from "../core/point.js";
+import { circularArcPath, polarCenter, projectPolar } from "./polar.js";
 
 /**
  * Dumbbell's series-level fields. Its `low`/`high` point shape isn't listed
@@ -55,6 +56,10 @@ export class DumbbellSeries extends BaseSeries {
   }
 
   override render(ctx: SeriesRenderContext): void {
+    if (ctx.polar) {
+      this.renderPolar(ctx);
+      return;
+    }
     const { renderer, groupCount, groupIndex, inverted } = ctx;
     // Horizontal (inverted): category on y, value on x. Vertical: the reverse.
     const catScale = (inverted ? ctx.yScale : ctx.xScale) as CategoryScale;
@@ -152,6 +157,309 @@ export class DumbbellSeries extends BaseSeries {
       }
 
       this.drawEndLabels(ctx, p, cat, valScale, inverted, radius);
+    }
+  }
+
+  /** Draw each low/high pair along the category's radial spoke. */
+  private renderPolar(ctx: SeriesRenderContext): void {
+    if (ctx.inverted) {
+      this.renderInvertedPolar(ctx);
+      return;
+    }
+    const { renderer, groupCount, groupIndex } = ctx;
+    const catScale = ctx.xScale as CategoryScale;
+    const g = renderer.group(
+      {
+        class: `facet-series facet-dumbbell facet-polar-dumbbell ${this.name}`,
+      },
+      renderer.root,
+    );
+    const band = catScale.bandwidth ? catScale.bandwidth() : 0;
+    const subWidth = band / groupCount;
+    const radius = this.options.marker?.radius ?? 5;
+    const rectWidth = this.options.marker?.width ?? 5;
+    const rectHeight = this.options.marker?.height ?? 5;
+
+    for (const p of this.points) {
+      if (p.low === undefined || p.high === undefined) continue;
+      const lowColor =
+        p.options.lowColor ?? this.options.lowColor ?? this.color;
+      const highColor =
+        p.options.highColor ?? this.options.highColor ?? this.color;
+      const connColor =
+        p.options.connectorColor ??
+        this.options.connectorColor ??
+        THEME.neutralColor;
+      const connWidth =
+        p.options.connectorWidth ?? this.options.connectorWidth ?? 7;
+      const angle =
+        catScale.scale(p.x) -
+        band / 2 +
+        (groupIndex + 0.5) * subWidth;
+      const lowRadius = ctx.yScale.scale(p.low);
+      const highRadius = ctx.yScale.scale(p.high);
+      const low = projectPolar(ctx.plot, angle, lowRadius);
+      const high = projectPolar(ctx.plot, angle, highRadius);
+
+      renderer.create(
+        "line",
+        {
+          x1: low.x,
+          y1: low.y,
+          x2: high.x,
+          y2: high.y,
+          stroke: connColor,
+          "stroke-width": connWidth,
+          class: "facet-dumbbell-connector",
+        },
+        g,
+      );
+
+      for (const [point, color] of [
+        [low, lowColor],
+        [high, highColor],
+      ] as const) {
+        const marker = this.options.marker ?? {};
+        const el =
+          marker.enabled === false
+            ? renderer.create(
+                "circle",
+                {
+                  cx: point.x,
+                  cy: point.y,
+                  r: Math.max(8, radius),
+                  fill: "transparent",
+                  "pointer-events": "all",
+                  class: "facet-point-hit",
+                },
+                g,
+              )
+            : drawMarker(renderer, g, point.x, point.y, {
+                symbol: marker.symbol ?? "circle",
+                radius,
+                fill: marker.fillColor ?? color,
+                stroke: marker.lineColor ?? "#fff",
+                strokeWidth: marker.lineWidth ?? 1.5,
+                width: rectWidth,
+                height: rectHeight,
+              });
+        ctx.registerHover(el, p);
+        el.addEventListener("click", (e: Event) =>
+          ctx.onPointEvent("click", p, e),
+        );
+        el.addEventListener("mouseover", (e: Event) =>
+          ctx.onPointEvent("mouseOver", p, e),
+        );
+        el.addEventListener("mouseout", (e: Event) =>
+          ctx.onPointEvent("mouseOut", p, e),
+        );
+      }
+
+      this.drawPolarEndLabels(
+        ctx,
+        p,
+        angle,
+        lowRadius,
+        highRadius,
+        radius,
+      );
+    }
+  }
+
+  /** In inverted polar mode the pair shares an x radius and spans y angles. */
+  private renderInvertedPolar(ctx: SeriesRenderContext): void {
+    const { renderer, groupCount, groupIndex } = ctx;
+    const catScale = ctx.xScale as CategoryScale;
+    const g = renderer.group(
+      {
+        class:
+          `facet-series facet-dumbbell facet-polar-dumbbell ` +
+          `facet-polar-inverted-dumbbell ${this.name}`,
+      },
+      renderer.root,
+    );
+    const center = polarCenter(ctx);
+    const band = catScale.bandwidth ? catScale.bandwidth() : 0;
+    const subWidth = band / groupCount;
+    const markerRadius = this.options.marker?.radius ?? 5;
+    const marker = this.options.marker ?? {};
+
+    for (const p of this.points) {
+      if (p.low === undefined || p.high === undefined) continue;
+      const lowColor =
+        p.options.lowColor ?? this.options.lowColor ?? this.color;
+      const highColor =
+        p.options.highColor ?? this.options.highColor ?? this.color;
+      const connColor =
+        p.options.connectorColor ??
+        this.options.connectorColor ??
+        THEME.neutralColor;
+      const connWidth =
+        p.options.connectorWidth ?? this.options.connectorWidth ?? 7;
+      const radial =
+        catScale.scale(p.x) -
+        band / 2 +
+        (groupIndex + 0.5) * subWidth;
+      const lowAngle = ctx.yScale.scale(p.low);
+      const highAngle = ctx.yScale.scale(p.high);
+      const low = projectPolar(ctx.plot, lowAngle, radial);
+      const high = projectPolar(ctx.plot, highAngle, radial);
+
+      renderer.create(
+        "path",
+        {
+          d: circularArcPath(
+            center.x,
+            center.y,
+            radial,
+            lowAngle,
+            highAngle,
+          ),
+          fill: "none",
+          stroke: connColor,
+          "stroke-width": connWidth,
+          class: "facet-dumbbell-connector facet-dumbbell-arc-connector",
+        },
+        g,
+      );
+
+      for (const [point, color] of [
+        [low, lowColor],
+        [high, highColor],
+      ] as const) {
+        const el =
+          marker.enabled === false
+            ? renderer.create(
+                "circle",
+                {
+                  cx: point.x,
+                  cy: point.y,
+                  r: Math.max(8, markerRadius),
+                  fill: "transparent",
+                  "pointer-events": "all",
+                  class: "facet-point-hit",
+                },
+                g,
+              )
+            : drawMarker(renderer, g, point.x, point.y, {
+                symbol: marker.symbol ?? "circle",
+                radius: markerRadius,
+                fill: marker.fillColor ?? color,
+                stroke: marker.lineColor ?? "#fff",
+                strokeWidth: marker.lineWidth ?? 1.5,
+                width: marker.width ?? 5,
+                height: marker.height ?? 5,
+              });
+        ctx.registerHover(el, p);
+        el.addEventListener("click", (e: Event) =>
+          ctx.onPointEvent("click", p, e),
+        );
+        el.addEventListener("mouseover", (e: Event) =>
+          ctx.onPointEvent("mouseOver", p, e),
+        );
+        el.addEventListener("mouseout", (e: Event) =>
+          ctx.onPointEvent("mouseOut", p, e),
+        );
+      }
+
+      this.drawInvertedPolarEndLabels(
+        ctx,
+        p,
+        radial,
+        lowAngle,
+        highAngle,
+        markerRadius,
+      );
+    }
+  }
+
+  private drawInvertedPolarEndLabels(
+    ctx: SeriesRenderContext,
+    p: Point,
+    radial: number,
+    lowAngle: number,
+    highAngle: number,
+    markerRadius: number,
+  ): void {
+    const dl = this.options.dataLabels;
+    if (!dl?.enabled) return;
+    const labelRadius = radial + markerRadius + 6 + (dl.distance ?? 0);
+    for (const [value, angle] of [
+      [p.low!, lowAngle],
+      [p.high!, highAngle],
+    ] as const) {
+      const point = projectPolar(ctx.plot, angle, labelRadius);
+      const cosine = Math.cos(angle);
+      drawDataLabel(
+        ctx.renderer,
+        ctx.renderer.root,
+        labelString(dl, {
+          x: p.x,
+          y: value,
+          low: p.low,
+          high: p.high,
+          point: p.options,
+          series: this.name,
+          name: p.name ?? p.x,
+          index: p.index,
+          color: p.color ?? this.color,
+        }),
+        {
+          x: point.x,
+          y: point.y + 4,
+          anchor:
+            cosine < -0.15 ? "end" : cosine > 0.15 ? "start" : "middle",
+        },
+        dl,
+      );
+    }
+  }
+
+  private drawPolarEndLabels(
+    ctx: SeriesRenderContext,
+    p: Point,
+    angle: number,
+    lowRadius: number,
+    highRadius: number,
+    markerRadius: number,
+  ): void {
+    const dl = this.options.dataLabels;
+    if (!dl?.enabled) return;
+    const distance = markerRadius + 6 + (dl.distance ?? 0);
+    for (const [value, radial] of [
+      [p.low!, lowRadius],
+      [p.high!, highRadius],
+    ] as const) {
+      const outward = radial >= Math.max(lowRadius, highRadius);
+      const point = projectPolar(
+        ctx.plot,
+        angle,
+        radial + (outward ? distance : -distance),
+      );
+      const cosine = Math.cos(angle);
+      const text = labelString(dl, {
+        x: p.x,
+        y: value,
+        low: p.low,
+        high: p.high,
+        point: p.options,
+        series: this.name,
+        name: p.name ?? p.x,
+        index: p.index,
+        color: p.color ?? this.color,
+      });
+      drawDataLabel(
+        ctx.renderer,
+        ctx.renderer.root,
+        text,
+        {
+          x: point.x,
+          y: point.y + 4,
+          anchor:
+            cosine < -0.15 ? "end" : cosine > 0.15 ? "start" : "middle",
+        },
+        dl,
+      );
     }
   }
 

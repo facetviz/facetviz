@@ -306,6 +306,56 @@ describe('configuration option wiring', () => {
     )).toBe(true);
   });
 
+  it('renders configurable dashed major and minor grid lines', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { ...baseChart, type: 'line' },
+      yAxis: {
+        min: 0,
+        max: 10,
+        tickCount: 3,
+        gridLineColor: '#aabbcc',
+        gridLineWidth: 2,
+        gridLineDashStyle: '6 3',
+        minorTickInterval: 'auto',
+        minorGridLineColor: '#ddeeff',
+        minorGridLineWidth: 0.5,
+        minorGridLineDashStyle: '1 4',
+      },
+      series: [{ data: [2, 8] }],
+    });
+
+    const major = [...el.querySelectorAll<SVGLineElement>('.facet-gridline')];
+    const minor = [...el.querySelectorAll<SVGLineElement>('.facet-minor-gridline')];
+    expect(major.length).toBeGreaterThan(1);
+    expect(minor).toHaveLength((major.length - 1) * 4);
+    expect(major[0].getAttribute('stroke')).toBe('#aabbcc');
+    expect(major[0].getAttribute('stroke-width')).toBe('2');
+    expect(major[0].getAttribute('stroke-dasharray')).toBe('6 3');
+    expect(minor[0].getAttribute('stroke')).toBe('#ddeeff');
+    expect(minor[0].getAttribute('stroke-width')).toBe('0.5');
+    expect(minor[0].getAttribute('stroke-dasharray')).toBe('1 4');
+
+    const polar = container();
+    new FacetViz(polar, {
+      chart: { ...baseChart, type: 'line', polar: true },
+      xAxis: { categories: ['A', 'B', 'C'] },
+      yAxis: {
+        min: 0,
+        max: 10,
+        tickCount: 3,
+        minorTickInterval: 'auto',
+        minorGridLineDashStyle: '3 5',
+      },
+      series: [{ data: [2, 8, 5] }],
+    });
+    const minorRing = polar.querySelector<SVGCircleElement>(
+      '.facet-minor-gridline.facet-polar-minor-ring',
+    );
+    expect(minorRing).toBeTruthy();
+    expect(minorRing?.getAttribute('stroke-dasharray')).toBe('3 5');
+  });
+
   it('keeps boosted series styling equivalent to SVG rendering', () => {
     const ctx = {
       scale: vi.fn(),

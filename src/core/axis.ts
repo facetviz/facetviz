@@ -27,6 +27,56 @@ export interface AxisConfig {
   grid?: boolean;
 }
 
+/**
+ * Pixel positions for minor grid lines on a continuous scale. Auto spacing
+ * creates four evenly spaced guides between each pair of major ticks. A
+ * numeric interval uses scale data units and excludes major-tick positions.
+ */
+export function minorGridPositions(
+  scale: Scale,
+  interval: number | 'auto',
+): number[] {
+  if (scale instanceof CategoryScale) return [];
+  const majorTicks = scale.ticks();
+  if (interval === 'auto') {
+    const majorPositions = majorTicks
+      .map((tick) => scale.scale(tick))
+      .filter(Number.isFinite);
+    const positions: number[] = [];
+    for (let i = 1; i < majorPositions.length; i++) {
+      const start = majorPositions[i - 1];
+      const end = majorPositions[i];
+      for (let part = 1; part < 5; part++)
+        positions.push(start + ((end - start) * part) / 5);
+    }
+    return positions;
+  }
+
+  if (!(interval > 0) || !scale.invert) return [];
+  const [rangeStart, rangeEnd] = scale.range();
+  const domainStart = scale.invert(rangeStart);
+  const domainEnd = scale.invert(rangeEnd);
+  const lo = Math.min(domainStart, domainEnd);
+  const hi = Math.max(domainStart, domainEnd);
+  const epsilon = Math.max(Math.abs(lo), Math.abs(hi), 1) * 1e-10;
+  const majorValues = majorTicks
+    .filter((tick): tick is number => typeof tick === 'number')
+    .map(Number);
+  const positions: number[] = [];
+  let value = Math.ceil((lo - epsilon) / interval) * interval;
+
+  // Cap generated lines so an accidentally tiny interval cannot lock up the
+  // renderer. Validation still reports invalid non-positive intervals.
+  for (let count = 0; value <= hi + epsilon && count < 1000; count++, value += interval) {
+    const onMajorTick = majorValues.some(
+      (major) => Math.abs(major - value) <= epsilon,
+    );
+    if (!onMajorTick && value > lo + epsilon && value < hi - epsilon)
+      positions.push(scale.scale(value));
+  }
+  return positions;
+}
+
 export class Axis {
   constructor(private cfg: AxisConfig) {}
 
@@ -99,6 +149,29 @@ export class Axis {
       }
     }
 
+    // Minor grid lines sit below the major grid. They are deliberately opt-in
+    // via `minorTickInterval` and only apply to continuous scales.
+    const minorGridWidth = options.minorGridLineWidth ?? 1;
+    if (
+      this.cfg.grid &&
+      !isCategory &&
+      options.minorTickInterval !== undefined &&
+      minorGridWidth > 0
+    ) {
+      const minorColor = options.minorGridLineColor ?? gridColor;
+      const minorDash = options.minorGridLineDashStyle ?? '2 2';
+      for (const pos of minorGridPositions(scale, options.minorTickInterval)) {
+        this.drawGridLine(
+          group,
+          pos,
+          minorColor,
+          minorGridWidth,
+          minorDash,
+          'facet-minor-gridline',
+        );
+      }
+    }
+
     ticks.forEach((tick, i) => {
       const pos = scale.scale(tick);
 
@@ -110,7 +183,14 @@ export class Axis {
         gridWidth > 0 &&
         (!isCategory || options.gridLineWidth)
       ) {
-        this.drawGridLine(group, pos, gridColor, gridWidth);
+        this.drawGridLine(
+          group,
+          pos,
+          gridColor,
+          gridWidth,
+          options.gridLineDashStyle,
+          'facet-gridline',
+        );
       }
 
       // Tick mark.
@@ -277,12 +357,37 @@ export class Axis {
     }
   }
 
-  private drawGridLine(g: SVGGElement, pos: number, color: string, width: number): void {
+  private drawGridLine(
+    g: SVGGElement,
+    pos: number,
+    color: string,
+    width: number,
+    dashStyle?: string,
+    className?: string,
+  ): void {
     const { renderer, plot } = this.cfg;
+    const attrs = {
+      stroke: color,
+      'stroke-width': width,
+      'stroke-dasharray': dashStyle,
+      class: className,
+    };
     if (this.horizontal) {
-      renderer.create('line', { x1: pos, y1: plot.y, x2: pos, y2: plot.y + plot.height, stroke: color, 'stroke-width': width }, g);
+      renderer.create('line', {
+        x1: pos,
+        y1: plot.y,
+        x2: pos,
+        y2: plot.y + plot.height,
+        ...attrs,
+      }, g);
     } else {
-      renderer.create('line', { x1: plot.x, y1: pos, x2: plot.x + plot.width, y2: pos, stroke: color, 'stroke-width': width }, g);
+      renderer.create('line', {
+        x1: plot.x,
+        y1: pos,
+        x2: plot.x + plot.width,
+        y2: pos,
+        ...attrs,
+      }, g);
     }
   }
 

@@ -23,7 +23,7 @@ import type {
   MarkerOptions,
 } from "./options.js";
 import { Renderer } from "./renderer.js";
-import { Axis, Rect } from "./axis.js";
+import { Axis, Rect, minorGridPositions } from "./axis.js";
 import {
   NestedAxis,
   nestedLevelWidths,
@@ -2215,9 +2215,11 @@ export class FacetViz {
       "scatter",
       "jitter",
       "column",
+      "dumbbell",
     ]);
     const series = visible.filter((item) => supported.has(item.type));
     if (!series.length) return;
+    const inverted = this.options.chart?.inverted === true;
     computeStacks(series);
 
     const xOptions = axisAt(this.options.xAxis, 0);
@@ -2238,9 +2240,16 @@ export class FacetViz {
               ),
             ),
           );
+    const circularTitlePadding =
+      inverted &&
+      yOptions.title?.text &&
+      yOptions.title.enabled !== false
+        ? 16
+        : 0;
     const radius = Math.max(
       1,
-      Math.min(plot.width, plot.height) / 2 - Math.min(framePadding, 54),
+      Math.min(plot.width, plot.height) / 2 -
+        Math.min(framePadding + circularTitlePadding, 70),
     );
     const innerRadius = this.resolvePolarInnerRadius(radius);
     const polarPlot: Rect = {
@@ -2259,23 +2268,27 @@ export class FacetViz {
     const xScale: Scale = categories
       ? new CategoryScale({
           categories,
-          range: [
-            -Math.PI / 2 - categoryOffset,
-            Math.PI * 1.5 - categoryOffset,
-          ],
+          range: inverted
+            ? [innerRadius, radius]
+            : [
+                -Math.PI / 2 - categoryOffset,
+                Math.PI * 1.5 - categoryOffset,
+              ],
           padding: 0.12,
           reversed: xOptions.reversed,
         })
       : this.valueScale(
           xOptions,
           this.xNumericDomain(series),
-          [-Math.PI / 2, Math.PI * 1.5],
+          inverted
+            ? [innerRadius, radius]
+            : [-Math.PI / 2, Math.PI * 1.5],
         );
 
     const onSecondary = (item: BaseSeries) => (item.options.yAxis ?? 0) === 1;
     const primary = series.filter((item) => !onSecondary(item));
     const secondary = series.filter(onSecondary);
-    const radialScale = (items: BaseSeries[], options: AxisOptions) => {
+    const polarValueScale = (items: BaseSeries[], options: AxisOptions) => {
       let domain = this.valueDomain(items.length ? items : series);
       if (
         items.some((item) =>
@@ -2284,11 +2297,19 @@ export class FacetViz {
         options.type !== "log"
       )
         domain = [Math.min(0, domain[0]), Math.max(0, domain[1])];
-      return this.valueScale(options, domain, [innerRadius, radius]);
+      return this.valueScale(
+        inverted && options.tickCount === undefined
+          ? { ...options, tickCount: 6 }
+          : options,
+        domain,
+        inverted
+          ? [-Math.PI / 2, Math.PI * 1.5]
+          : [innerRadius, radius],
+      );
     };
-    const yScale = radialScale(primary, yOptions);
+    const yScale = polarValueScale(primary, yOptions);
     const yScale2 = secondary.length
-      ? radialScale(secondary, axisAt(this.options.yAxis, 1))
+      ? polarValueScale(secondary, axisAt(this.options.yAxis, 1))
       : undefined;
 
     const project = (angle: number, radial: number) => ({
@@ -2296,10 +2317,44 @@ export class FacetViz {
       y: center.y + Math.sin(angle) * radial,
     });
     const xTicks = xScale.ticks();
+    const yTicks = yScale.ticks();
+    const annotationProject = inverted
+      ? (radial: number, angle: number) => project(angle, radial)
+      : project;
     const holeColor =
       this.options.chart?.polarInnerBackgroundColor ??
       this.options.chart?.backgroundColor ??
       this.theme.backgroundColor;
+    const drawInvertedRadialLabels = (parent: SVGElement) => {
+      if (
+        !inverted ||
+        xOptions.visible === false ||
+        xOptions.labels?.enabled === false
+      )
+        return;
+      for (const tick of xTicks) {
+        const radial = xScale.scale(tick);
+        if (radial < 0 || radial > radius + 0.5) continue;
+        const label = project(-Math.PI / 2, radial);
+        this.renderer.text(
+          xScale.tickLabel(tick),
+          label.x + (xOptions.labels?.offset ?? 6),
+          label.y + 4,
+          {
+            ...labelStyle,
+            fill: THEME.axis.labelColor,
+            stroke: holeColor,
+            "stroke-width": 3,
+            "stroke-linejoin": "round",
+            "paint-order": "stroke",
+            "text-anchor": "start",
+            class:
+              "facet-polar-category-label facet-polar-radial-x-label",
+          },
+          parent,
+        );
+      }
+    };
     const drawCategoryLabels = (parent: SVGElement) => {
       if (
         xOptions.visible === false ||
@@ -2401,9 +2456,17 @@ export class FacetViz {
       );
     }
     const gridColor = yOptions.gridLineColor ?? THEME.axis.gridLineColor;
-    if (yOptions.visible !== false) {
-      for (const tick of yScale.ticks()) {
-        const radial = yScale.scale(tick);
+    const drawMinorRings = (
+      scale: Scale,
+      options: AxisOptions,
+      className: string,
+    ) => {
+      if (
+        options.minorTickInterval === undefined ||
+        (options.minorGridLineWidth ?? 1) <= 0
+      )
+        return;
+      for (const radial of minorGridPositions(scale, options.minorTickInterval)) {
         if (radial < 0 || radial > radius + 0.5) continue;
         this.renderer.create(
           "circle",
@@ -2412,41 +2475,29 @@ export class FacetViz {
             cy: center.y,
             r: radial,
             fill: "none",
-            stroke: gridColor,
-            "stroke-width": yOptions.gridLineWidth ?? 1,
-            class: "facet-polar-ring",
+            stroke:
+              options.minorGridLineColor ??
+              options.gridLineColor ??
+              THEME.axis.gridLineColor,
+            "stroke-width": options.minorGridLineWidth ?? 1,
+            "stroke-dasharray": options.minorGridLineDashStyle ?? "2 2",
+            class: `facet-minor-gridline ${className}`,
           },
           axes,
         );
-        if (yOptions.labels?.enabled !== false) {
-          this.renderer.text(
-            yScale.tickLabel(tick),
-            center.x + 4,
-            center.y - radial - 3,
-            {
-              ...FONTS.axisLabel,
-              ...sanitizeStyle(yOptions.labels?.style),
-              fill: THEME.axis.labelColor,
-              class: "facet-polar-value-label",
-            },
-            axes,
-          );
-        }
       }
-    }
-    if (xOptions.visible !== false) {
-      const sectorMode =
-        this.options.chart?.polarGridLineMode === "sector" &&
-        !!categories?.length;
-      const gridAngles = sectorMode
-        ? categories!.map(
-            (_, index) =>
-              -Math.PI / 2 -
-              categoryOffset +
-              (index * Math.PI * 2) / categories!.length,
-          )
-        : xTicks.map((tick) => xScale.scale(tick));
-      for (const angle of gridAngles) {
+    };
+    const drawMinorSpokes = (
+      scale: Scale,
+      options: AxisOptions,
+      className: string,
+    ) => {
+      if (
+        options.minorTickInterval === undefined ||
+        (options.minorGridLineWidth ?? 1) <= 0
+      )
+        return;
+      for (const angle of minorGridPositions(scale, options.minorTickInterval)) {
         const innerEdge = project(angle, innerRadius);
         const edge = project(angle, radius);
         this.renderer.create(
@@ -2456,30 +2507,238 @@ export class FacetViz {
             y1: innerEdge.y,
             x2: edge.x,
             y2: edge.y,
-            stroke: xOptions.gridLineColor ?? THEME.axis.gridLineColor,
-            "stroke-width": xOptions.gridLineWidth ?? 1,
-            class: sectorMode
-              ? "facet-polar-sector-line"
-              : "facet-polar-spoke",
+            stroke:
+              options.minorGridLineColor ??
+              options.gridLineColor ??
+              THEME.axis.gridLineColor,
+            "stroke-width": options.minorGridLineWidth ?? 1,
+            "stroke-dasharray": options.minorGridLineDashStyle ?? "2 2",
+            class: `facet-minor-gridline ${className}`,
           },
           axes,
         );
       }
-      drawCategoryLabels(axes);
+    };
+    if (inverted) {
+      if (xOptions.visible !== false) {
+        const axisStart = project(-Math.PI / 2, innerRadius);
+        const axisEnd = project(-Math.PI / 2, radius);
+        this.renderer.create(
+          "line",
+          {
+            x1: axisStart.x,
+            y1: axisStart.y,
+            x2: axisEnd.x,
+            y2: axisEnd.y,
+            stroke: xOptions.lineColor ?? THEME.axis.lineColor,
+            "stroke-width": xOptions.lineWidth ?? 1,
+            class: "facet-polar-radial-x-axis",
+          },
+          axes,
+        );
+        drawMinorRings(xScale, xOptions, "facet-polar-minor-x-ring");
+        for (const tick of xTicks) {
+          const radial = xScale.scale(tick);
+          if (radial < 0 || radial > radius + 0.5) continue;
+          this.renderer.create(
+            "circle",
+            {
+              cx: center.x,
+              cy: center.y,
+              r: radial,
+              fill: "none",
+              stroke:
+                xOptions.gridLineColor ?? THEME.axis.gridLineColor,
+              "stroke-width": xOptions.gridLineWidth ?? 1,
+              "stroke-dasharray": xOptions.gridLineDashStyle,
+              class: "facet-gridline facet-polar-ring facet-polar-x-ring",
+            },
+            axes,
+          );
+        }
+      }
+      if (yOptions.visible !== false) {
+        this.renderer.create(
+          "circle",
+          {
+            cx: center.x,
+            cy: center.y,
+            r: radius,
+            fill: "none",
+            stroke: yOptions.lineColor ?? THEME.axis.lineColor,
+            "stroke-width": yOptions.lineWidth ?? 1,
+            class: "facet-polar-y-axis-circle",
+          },
+          axes,
+        );
+        drawMinorSpokes(
+          yScale,
+          yOptions,
+          "facet-polar-minor-angular-y-spoke",
+        );
+        const seenAngles = new Set<number>();
+        for (const tick of yTicks) {
+          const angle = yScale.scale(tick);
+          const normalized =
+            Math.round(
+              ((((angle + Math.PI / 2) % (Math.PI * 2)) +
+                Math.PI * 2) %
+                (Math.PI * 2)) *
+                1e6,
+            ) / 1e6;
+          if (seenAngles.has(normalized)) continue;
+          seenAngles.add(normalized);
+          const innerEdge = project(angle, innerRadius);
+          const edge = project(angle, radius);
+          this.renderer.create(
+            "line",
+            {
+              x1: innerEdge.x,
+              y1: innerEdge.y,
+              x2: edge.x,
+              y2: edge.y,
+              stroke: gridColor,
+              "stroke-width": yOptions.gridLineWidth ?? 1,
+              "stroke-dasharray": yOptions.gridLineDashStyle,
+              class:
+                "facet-gridline facet-polar-spoke facet-polar-angular-y-spoke",
+            },
+            axes,
+          );
+          if (yOptions.labels?.enabled !== false) {
+            const label = project(
+              angle,
+              radius + (yOptions.labels?.offset ?? 10),
+            );
+            const cosine = Math.cos(angle);
+            this.renderer.text(
+              yScale.tickLabel(tick),
+              label.x,
+              label.y,
+              {
+                ...FONTS.axisLabel,
+                ...sanitizeStyle(yOptions.labels?.style),
+                fill: THEME.axis.labelColor,
+                "text-anchor":
+                  cosine < -0.15
+                    ? "end"
+                    : cosine > 0.15
+                      ? "start"
+                      : "middle",
+                "dominant-baseline": "middle",
+                class: "facet-polar-value-label facet-polar-angular-y-label",
+              },
+              axes,
+            );
+          }
+        }
+      }
+    } else {
+      if (yOptions.visible !== false) {
+        drawMinorRings(yScale, yOptions, "facet-polar-minor-ring");
+        for (const tick of yTicks) {
+          const radial = yScale.scale(tick);
+          if (radial < 0 || radial > radius + 0.5) continue;
+          this.renderer.create(
+            "circle",
+            {
+              cx: center.x,
+              cy: center.y,
+              r: radial,
+              fill: "none",
+              stroke: gridColor,
+              "stroke-width": yOptions.gridLineWidth ?? 1,
+              "stroke-dasharray": yOptions.gridLineDashStyle,
+              class: "facet-gridline facet-polar-ring",
+            },
+            axes,
+          );
+          if (yOptions.labels?.enabled !== false) {
+            this.renderer.text(
+              yScale.tickLabel(tick),
+              center.x + 4,
+              center.y - radial - 3,
+              {
+                ...FONTS.axisLabel,
+                ...sanitizeStyle(yOptions.labels?.style),
+                fill: THEME.axis.labelColor,
+                class: "facet-polar-value-label",
+              },
+              axes,
+            );
+          }
+        }
+      }
+      if (xOptions.visible !== false) {
+        const sectorMode =
+          this.options.chart?.polarGridLineMode === "sector" &&
+          !!categories?.length;
+        const gridAngles = sectorMode
+          ? categories!.map(
+              (_, index) =>
+                -Math.PI / 2 -
+                categoryOffset +
+                (index * Math.PI * 2) / categories!.length,
+            )
+          : xTicks.map((tick) => xScale.scale(tick));
+        if (!categories?.length)
+          drawMinorSpokes(xScale, xOptions, "facet-polar-minor-spoke");
+        for (const angle of gridAngles) {
+          const innerEdge = project(angle, innerRadius);
+          const edge = project(angle, radius);
+          this.renderer.create(
+            "line",
+            {
+              x1: innerEdge.x,
+              y1: innerEdge.y,
+              x2: edge.x,
+              y2: edge.y,
+              stroke:
+                xOptions.gridLineColor ?? THEME.axis.gridLineColor,
+              "stroke-width": xOptions.gridLineWidth ?? 1,
+              "stroke-dasharray": xOptions.gridLineDashStyle,
+              class: sectorMode
+                ? "facet-gridline facet-polar-sector-line"
+                : "facet-gridline facet-polar-spoke",
+            },
+            axes,
+          );
+        }
+        drawCategoryLabels(axes);
+      }
     }
     if (xOptions.title?.text && xOptions.title.enabled !== false) {
-      const centered = xOptions.title.position === "center";
+      const centered = !inverted && xOptions.title.position === "center";
+      const align = xOptions.title.align ?? "center";
+      const along = align === "start" ? 0.2 : align === "end" ? 0.8 : 0.5;
+      const titleX = inverted
+        ? plot.x +
+          (xOptions.title.margin ?? 8) +
+          (xOptions.title.offset ?? 0) +
+          6
+        : center.x;
+      const titleY = inverted
+        ? plot.y + plot.height * along
+        : centered
+          ? center.y
+          : plot.y + plot.height - (xOptions.title.offset ?? 0);
       this.renderer.text(
         xOptions.title.text,
-        center.x,
-        centered
-          ? center.y
-          : plot.y + plot.height - (xOptions.title.offset ?? 0),
+        titleX,
+        titleY,
         {
           ...FONTS.axisTitle,
           ...sanitizeStyle(xOptions.title.style),
-          "text-anchor": "middle",
+          "text-anchor":
+            inverted && align !== "center"
+              ? align === "start"
+                ? "start"
+                : "end"
+              : "middle",
           "dominant-baseline": centered ? "middle" : undefined,
+          transform: inverted
+            ? `rotate(-90 ${titleX} ${titleY})`
+            : undefined,
           class: "facet-polar-axis-title facet-polar-x-title",
         },
         axes,
@@ -2489,12 +2748,15 @@ export class FacetViz {
       {
         const align = yOptions.title.align ?? "center";
         const along = align === "start" ? 0.2 : align === "end" ? 0.8 : 0.5;
-        const x =
-          plot.x +
-          (yOptions.title.margin ?? 8) +
-          (yOptions.title.offset ?? 0) +
-          6;
-        const y = plot.y + plot.height * along;
+        const x = inverted
+          ? plot.x + plot.width * along
+          : plot.x +
+            (yOptions.title.margin ?? 8) +
+            (yOptions.title.offset ?? 0) +
+            6;
+        const y = inverted
+          ? center.y + radius + 12 - (yOptions.title.offset ?? 0)
+          : plot.y + plot.height * along;
         this.renderer.text(
           yOptions.title.text,
           x,
@@ -2504,7 +2766,7 @@ export class FacetViz {
             ...sanitizeStyle(yOptions.title.style),
             "text-anchor":
               align === "start" ? "start" : align === "end" ? "end" : "middle",
-            transform: `rotate(-90 ${x} ${y})`,
+            transform: inverted ? undefined : `rotate(-90 ${x} ${y})`,
             class: "facet-polar-axis-title facet-polar-y-title",
           },
           axes,
@@ -2519,7 +2781,7 @@ export class FacetViz {
       yScale,
       yScale2,
       layer: "below",
-      project,
+      project: annotationProject,
     });
     const group = this.groupInfo(series);
     for (const item of series) {
@@ -2530,10 +2792,17 @@ export class FacetViz {
           xScale,
           yScale2 && onSecondary(item) ? yScale2 : yScale,
           group,
-          false,
+          inverted,
           true,
         ),
       );
+    }
+    if (inverted) {
+      const labelOverlay = this.renderer.group(
+        { class: "facet-polar-axis-label-overlay" },
+        this.renderer.root,
+      );
+      drawInvertedRadialLabels(labelOverlay);
     }
     renderAnnotations({
       renderer: this.renderer,
@@ -2543,7 +2812,7 @@ export class FacetViz {
       yScale,
       yScale2,
       layer: "above",
-      project,
+      project: annotationProject,
     });
   }
 

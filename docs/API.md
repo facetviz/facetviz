@@ -57,8 +57,8 @@ The root object passed to `new FacetViz(container, options)`.
 | `height`          | `number`                           | `400`           | Chart height in px.                                                     |
 | `backgroundColor` | `string`                           | `'#fff'`        | Plot background fill.                                                   |
 | `spacing`         | `[number, number, number, number]` | `[16,16,16,16]` | Outer padding `[top, right, bottom, left]`.                             |
-| `inverted`        | `boolean`                          | `false`         | Swap axes: makes column→bar, and renders boxplot/dumbbell horizontally. |
-| `polar`           | `boolean`                          | `false`         | Project line, spline, step, area, scatter, jitter, and column series into a shared polar frame. |
+| `inverted`        | `boolean`                          | `false`         | Swap axes: Cartesian categories become vertical; in general polar charts x becomes radial and y becomes circular. |
+| `polar`           | `boolean`                          | `false`         | Project line, spline, step, area, scatter, jitter, column, and dumbbell series into a shared polar frame. |
 | `polarInnerSize`  | `number \| string`                 | `0`             | Donut-style centre hole: pixels or a percentage such as `'35%'`.       |
 | `polarInnerBackgroundColor` | `string`                  | chart background| Fill of the polar centre hole; use `'#fff'` for a white circle.         |
 | `polarGridLineMode` | `'spoke' \| 'sector'`             | `'spoke'`       | Draw angular grid lines through category centres or along sector boundaries. |
@@ -102,8 +102,13 @@ Applies to both `xAxis` and `yAxis`. A **category axis** is used when
 | `max`           | `number`                                           | data max    | Force the axis maximum (value axes).                                                                                                               |
 | `tickCount`     | `number`                                           | auto        | Approximate number of ticks (linear axes).                                                                                                         |
 | `labels`        | [`AxisLabelOptions`](#axis-labels)                 | enabled     | Tick label config.                                                                                                                                 |
-| `gridLineWidth` | `number`                                           | `1`         | Grid line thickness (value axis). `0` hides grid lines.                                                                                            |
-| `gridLineColor` | `string`                                           | `'#e6e6e6'` | Grid line colour.                                                                                                                                  |
+| `gridLineWidth` | `number`                                           | `1`         | Major grid line thickness (value axis). `0` hides major grid lines.                                                                                 |
+| `gridLineColor` | `string`                                           | `'#e6e6e6'` | Major grid line colour.                                                                                                                             |
+| `gridLineDashStyle` | `string`                                       | –           | Major-grid SVG dash array, for example `'6 3'`.                                                                                                    |
+| `minorTickInterval` | `number \| 'auto'`                             | –           | Enables minor grid lines. A number uses axis units; `'auto'` divides each major interval into fifths.                                               |
+| `minorGridLineWidth` | `number`                                      | `1`         | Minor grid line thickness once enabled. `0` hides minor grid lines.                                                                                 |
+| `minorGridLineColor` | `string`                                      | major colour| Minor grid line colour.                                                                                                                             |
+| `minorGridLineDashStyle` | `string`                                  | `'2 2'`     | Minor-grid SVG dash array.                                                                                                                          |
 | `lineColor`     | `string`                                           | `'#ccd6eb'` | Axis line colour.                                                                                                                                  |
 | `lineWidth`     | `number`                                           | `1`         | Axis line thickness. `0` hides the axis line.                                                                                                      |
 | `plotLines`     | [`PlotLineOptions[]`](#plotlineoptions)            | –           | Reference lines at fixed values.                                                                                                                   |
@@ -128,8 +133,8 @@ Applies to both `xAxis` and `yAxis`. A **category axis** is used when
 | `step`      | `number`                | auto        | Draw every Nth label; collision handling may increase it.                                                                                           |
 | `maxWidth`  | `number`                | –           | Maximum measured label width in pixels.                                                                                                             |
 | `overflow`  | `'ellipsis' \| 'hide'`  | `'ellipsis'`| Truncate or hide labels wider than `maxWidth`.                                                                                                       |
-| `position`  | `'outer' \| 'inner'`    | `'outer'`   | Polar x-axis only: place labels outside the plot or curve them around the centre-hole radius.                                                        |
-| `offset`    | `number`                | `7` / `10`  | Polar x-axis only: pixel gap from the circle; defaults to 7 for inner labels and 10 for outer labels.                                                |
+| `position`  | `'outer' \| 'inner'`    | `'outer'`   | Non-inverted polar x-axis: place labels outside the plot or curve them around the centre-hole radius.                                                |
+| `offset`    | `number`                | contextual  | Polar x-axis label gap: 7 for inner, 10 for outer, and 6 beside an inverted radial axis.                                                            |
 | `style`     | `Record<string,string>` | –           | Extra text attributes.                                                                                                                                              |
 
 ### Axis titles
@@ -733,7 +738,7 @@ or validation configuration.
 ## General polar charts
 
 Set `chart.polar: true` on `line`, `spline`, `step`, `area`, `areaspline`,
-`scatter`, `jitter`, or `column` charts:
+`scatter`, `jitter`, `column`, or `dumbbell` charts:
 
 ```ts
 {
@@ -763,8 +768,25 @@ centres to category boundaries, outlining each wedge while keeping its label
 centred. `xAxis.labels.position: 'inner'` curves category labels around the
 centre-hole radius, while `xAxis.title.position: 'center'` places the title in
 the middle of the hole.
+Polar dumbbells place each low/high pair on one radial spoke, with grouped
+series offset into separate angular slots.
 Dedicated `radar`, `radialbar`, and `gauge` types keep their specialized
 renderers and do not require `chart.polar`.
+
+Set `chart.inverted: true` to swap the general polar coordinate roles:
+
+```ts
+{
+  chart: { type: 'column', polar: true, inverted: true },
+  xAxis: { categories: ['Inner', 'Middle', 'Outer'] },
+  yAxis: { min: 0, max: 100 },
+  series: [{ data: [35, 62, 84] }]
+}
+```
+
+The x-axis is then radial, with its labels on a vertical radius, while the
+y-axis is circular with value labels around the circumference. Columns become
+concentric arc bars and dumbbell connectors become circular arcs.
 
 ---
 

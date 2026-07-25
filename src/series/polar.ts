@@ -15,8 +15,10 @@ export function polarPoint(
   xValue: number | string,
   yValue: number,
 ): Pt {
-  const angle = ctx.xScale.scale(xValue);
-  const radius = ctx.yScale.scale(yValue);
+  const x = ctx.xScale.scale(xValue);
+  const y = ctx.yScale.scale(yValue);
+  const angle = ctx.inverted ? y : x;
+  const radius = ctx.inverted ? x : y;
   const center = polarCenter(ctx);
   return {
     x: center.x + Math.cos(angle) * radius,
@@ -77,4 +79,24 @@ export function annularSectorPath(
     `A ${inner} ${inner} 0 ${large} 0 ${innerStart.x} ${innerStart.y}`,
     "Z",
   ].join(" ");
+}
+
+export function circularArcPath(
+  cx: number,
+  cy: number,
+  radius: number,
+  startAngle: number,
+  endAngle: number,
+): string {
+  const start = Math.min(startAngle, endAngle);
+  const end = Math.max(startAngle, endAngle);
+  const from = {
+    x: cx + Math.cos(start) * radius,
+    y: cy + Math.sin(start) * radius,
+  };
+  const to = {
+    x: cx + Math.cos(end) * radius,
+    y: cy + Math.sin(end) * radius,
+  };
+  return `M ${from.x} ${from.y} A ${radius} ${radius} 0 ${end - start > Math.PI ? 1 : 0} 1 ${to.x} ${to.y}`;
 }

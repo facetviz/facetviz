@@ -156,6 +156,71 @@ if (requestedTheme) {
     ],
   });
   mount('layout-features', 'layout features', item);
+} else if (mode === 'polar-dumbbell') {
+  const item = fixture('dumbbell', {
+    chart: {
+      type: 'dumbbell',
+      polar: true,
+      polarInnerSize: '30%',
+      polarInnerBackgroundColor: '#ffffff',
+      polarGridLineMode: 'sector',
+      width: 418,
+      height: 330,
+    },
+    title: { text: 'Polar change by region', margin: 8 },
+    xAxis: {
+      categories: ['North', 'East', 'South', 'West'],
+      labels: { position: 'inner', offset: 10 },
+      title: { text: 'Region', position: 'center' },
+    },
+    yAxis: { title: { text: 'Score' } },
+    series: [{
+      name: 'Before / after',
+      lowColor: '#22c55e',
+      highColor: '#7c3aed',
+      connectorColor: '#94a3b8',
+      connectorWidth: 4,
+      data: [
+        ['North', 22, 58],
+        ['East', 35, 76],
+        ['South', 18, 64],
+        ['West', 42, 82],
+      ],
+    }],
+  });
+  mount('polar-dumbbell', 'polar dumbbell', item);
+} else if (mode === 'inverted-polar') {
+  const item = fixture('column', {
+    chart: {
+      type: 'column',
+      polar: true,
+      inverted: true,
+      polarInnerSize: '18%',
+      polarInnerBackgroundColor: '#ffffff',
+      width: 418,
+      height: 330,
+    },
+    title: { text: 'Completion by tier', margin: 8 },
+    xAxis: {
+      categories: ['Inner', 'Middle', 'Outer'],
+      title: { text: 'Tier' },
+    },
+    yAxis: {
+      min: 0,
+      max: 100,
+      tickCount: 5,
+      title: { text: 'Completion' },
+    },
+    series: [{
+      name: 'Progress',
+      data: [
+        { x: 'Inner', y: 35, color: '#22c55e' },
+        { x: 'Middle', y: 62, color: '#38bdf8' },
+        { x: 'Outer', y: 84, color: '#7c3aed' },
+      ],
+    }],
+  });
+  mount('inverted-polar', 'inverted polar', item);
 } else {
   const item = fixtures.find((candidate) => candidate.type === requestedType);
   if (!item) throw new Error(`Unknown chart fixture: ${requestedType}`);

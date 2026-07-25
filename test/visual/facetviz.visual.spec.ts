@@ -49,6 +49,22 @@ test('polar layout, titles, and annotation', async ({ page }) => {
   );
 });
 
+test('polar dumbbell connects radial low/high endpoints', async ({ page }) => {
+  await page.goto('/test/visual/fixtures.html?mode=polar-dumbbell');
+  await waitForFixture(page);
+  await expect(page.locator('[data-fixture="polar-dumbbell"]')).toHaveScreenshot(
+    'polar-dumbbell.png',
+  );
+});
+
+test('inverted polar uses a radial x-axis and circular y-axis', async ({ page }) => {
+  await page.goto('/test/visual/fixtures.html?mode=inverted-polar');
+  await waitForFixture(page);
+  await expect(page.locator('[data-fixture="inverted-polar"]')).toHaveScreenshot(
+    'inverted-polar.png',
+  );
+});
+
 test('data update before and after', async ({ page }) => {
   await page.goto('/test/visual/fixtures.html?mode=update');
   await waitForFixture(page);

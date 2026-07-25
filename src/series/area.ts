@@ -30,8 +30,16 @@ export class AreaSeries extends LineSeries {
     const hover: Array<{ pt: Pt; p: Point }> = [];
     // `chart.inverted` swaps which scale carries the category vs. the
     // value axis (same convention as ColumnSeries.render / LineSeries).
-    const catScale = ctx.inverted ? ctx.yScale : ctx.xScale;
-    const valScale = ctx.inverted ? ctx.xScale : ctx.yScale;
+    const catScale = ctx.polar
+      ? ctx.xScale
+      : ctx.inverted
+        ? ctx.yScale
+        : ctx.xScale;
+    const valScale = ctx.polar
+      ? ctx.yScale
+      : ctx.inverted
+        ? ctx.xScale
+        : ctx.yScale;
 
     const drawSegment = () => {
       if (!top.length) return;
@@ -46,7 +54,7 @@ export class AreaSeries extends LineSeries {
       }, g);
       renderer.create('path', {
         d:
-          ctx.polar && top.length > 2
+          ctx.polar && !ctx.inverted && top.length > 2
             ? line([...top, top[0]])
             : topD,
         fill: 'none',

@@ -99,6 +99,80 @@ export class ColumnSeries extends BaseSeries {
       class: `facet-series facet-column facet-polar-column ${this.name}`,
     });
     const center = polarCenter(ctx);
+    if (ctx.inverted) {
+      const band =
+        ctx.xScale.bandwidth() ||
+        Math.max(1, ctx.plot.width / 2 / Math.max(1, this.points.length));
+      const slot = band / groupCount;
+      for (const p of this.points) {
+        const [loValue, hiValue] = this.valuePair(p);
+        if (loValue === undefined || hiValue === undefined) continue;
+        const radial = ctx.xScale.scale(p.x);
+        const inner =
+          radial - band / 2 + groupIndex * slot + slot * 0.05;
+        const outer = inner + slot * 0.9;
+        const lo = ctx.yScale.scale(loValue);
+        const hi = ctx.yScale.scale(hiValue);
+        const start = Math.min(lo, hi);
+        const end = Math.max(lo, hi);
+        const el = renderer.create(
+          "path",
+          {
+            d: annularSectorPath(
+              center.x,
+              center.y,
+              Math.max(0, inner),
+              Math.max(1, outer),
+              start,
+              end,
+            ),
+            fill: p.color ?? this.color,
+            class:
+              "facet-point facet-polar-sector facet-polar-inverted-sector",
+          },
+          group,
+        );
+        ctx.registerHover(el, p);
+        this.wireEvents(el, p, ctx);
+
+        if (this.options.dataLabels?.enabled) {
+          const point = projectPolar(ctx.plot, hi, outer + 8);
+          const total = this.points.reduce(
+            (sum, item) => sum + (item.y ?? 0),
+            0,
+          );
+          drawDataLabel(
+            renderer,
+            group,
+            labelString(this.options.dataLabels, {
+              x: p.x,
+              y: p.y,
+              point: p.options,
+              series: this.name,
+              name: p.name ?? p.x,
+              index: p.index,
+              color: p.color ?? this.color,
+              total,
+              percentage: total
+                ? ((p.y ?? 0) / total) * 100
+                : undefined,
+            }),
+            {
+              x: point.x,
+              y: point.y,
+              anchor:
+                Math.cos(hi) < -0.15
+                  ? "end"
+                  : Math.cos(hi) > 0.15
+                    ? "start"
+                    : "middle",
+            },
+            this.options.dataLabels,
+          );
+        }
+      }
+      return;
+    }
     const band = ctx.xScale.bandwidth() || (Math.PI * 2) / Math.max(1, this.points.length);
     const slot = band / groupCount;
     for (const p of this.points) {

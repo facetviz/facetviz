@@ -143,7 +143,7 @@ describe("layout, annotations, responsive rules, and polar projection", () => {
     ).toBeUndefined();
   });
 
-  it("projects line and column series into a shared polar frame", () => {
+  it("projects line, column, and dumbbell series into a shared polar frame", () => {
     const lineElement = container();
     new FacetViz(lineElement, {
       chart: { ...chart, type: "line", polar: true },
@@ -190,6 +190,44 @@ describe("layout, annotations, responsive rules, and polar projection", () => {
     expect(mixedElement.querySelector(".facet-area path[fill]:not([fill='none'])")).toBeTruthy();
     expect(mixedElement.querySelectorAll(".facet-scatter .facet-point")).toHaveLength(4);
     expect(mixedElement.innerHTML).not.toContain("NaN");
+
+    const dumbbellElement = container();
+    new FacetViz(dumbbellElement, {
+      chart: {
+        ...chart,
+        type: "dumbbell",
+        polar: true,
+        polarInnerSize: "25%",
+      },
+      xAxis: { categories: ["N", "E", "S", "W"] },
+      series: [
+        {
+          data: [
+            ["N", 2, 6],
+            ["E", 4, 8],
+            ["S", 3, 7],
+            ["W", 5, 9],
+          ],
+        },
+      ],
+    });
+    const connectors = [
+      ...dumbbellElement.querySelectorAll<SVGLineElement>(
+        ".facet-polar-dumbbell .facet-dumbbell-connector",
+      ),
+    ];
+    expect(connectors).toHaveLength(4);
+    expect(
+      connectors.every((line) =>
+        ["x1", "y1", "x2", "y2"].every((attribute) =>
+          Number.isFinite(Number(line.getAttribute(attribute))),
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      dumbbellElement.querySelectorAll(".facet-polar-dumbbell .facet-point"),
+    ).toHaveLength(8);
+    expect(dumbbellElement.innerHTML).not.toContain("NaN");
   });
 
   it("creates a donut-style polar chart with a configurable centre fill", () => {
@@ -264,6 +302,109 @@ describe("layout, annotations, responsive rules, and polar projection", () => {
     ).toBe(true);
   });
 
+  it("inverts polar x values onto the radial axis and y values around the circle", () => {
+    const element = container();
+    new FacetViz(element, {
+      chart: {
+        ...chart,
+        type: "column",
+        polar: true,
+        inverted: true,
+        polarInnerSize: "20%",
+      },
+      xAxis: {
+        categories: ["Inner", "Middle", "Outer"],
+        title: { text: "Tier" },
+      },
+      yAxis: {
+        min: 0,
+        max: 100,
+        tickCount: 5,
+        title: { text: "Completion" },
+      },
+      annotations: [{ x: "Middle", y: 50, shape: "circle" }],
+      series: [{ data: [25, 60, 85] }],
+    });
+
+    expect(element.querySelectorAll(".facet-polar-radial-x-axis")).toHaveLength(1);
+    expect(element.querySelectorAll(".facet-polar-x-ring")).toHaveLength(3);
+    expect(element.querySelectorAll(".facet-polar-y-axis-circle")).toHaveLength(1);
+    expect(element.querySelectorAll(".facet-polar-angular-y-spoke")).toHaveLength(5);
+    expect(element.querySelectorAll(".facet-polar-inverted-sector")).toHaveLength(3);
+    const radialLabels = [
+      ...element.querySelectorAll<SVGTextElement>(
+        ".facet-polar-radial-x-label",
+      ),
+    ];
+    expect(radialLabels.map((node) => node.textContent)).toEqual([
+      "Inner",
+      "Middle",
+      "Outer",
+    ]);
+    expect(new Set(radialLabels.map((node) => node.getAttribute("x"))).size).toBe(1);
+    expect(element.querySelector(".facet-annotation-anchor")).toBeTruthy();
+    expect(element.innerHTML).not.toContain("NaN");
+
+    const mixedElement = container();
+    new FacetViz(mixedElement, {
+      chart: { ...chart, type: "line", polar: true, inverted: true },
+      xAxis: { categories: ["Inner", "Middle", "Outer"] },
+      yAxis: { min: 0, max: 100 },
+      series: [
+        { marker: { enabled: true }, data: [15, 45, 80] },
+        {
+          type: "scatter",
+          marker: { enabled: true },
+          data: [25, 55, 70],
+        },
+      ],
+    });
+    const linePath = mixedElement
+      .querySelector<SVGPathElement>(".facet-line path")
+      ?.getAttribute("d");
+    expect(linePath).toContain("L");
+    expect(linePath).not.toContain("NaN");
+    expect(
+      mixedElement.querySelectorAll(".facet-scatter .facet-point"),
+    ).toHaveLength(3);
+
+    const dumbbellElement = container();
+    new FacetViz(dumbbellElement, {
+      chart: {
+        ...chart,
+        type: "dumbbell",
+        polar: true,
+        inverted: true,
+      },
+      xAxis: { categories: ["Inner", "Middle", "Outer"] },
+      yAxis: { min: 0, max: 100 },
+      series: [
+        {
+          data: [
+            ["Inner", 10, 35],
+            ["Middle", 25, 65],
+            ["Outer", 45, 90],
+          ],
+        },
+      ],
+    });
+    const arcs = [
+      ...dumbbellElement.querySelectorAll<SVGPathElement>(
+        ".facet-dumbbell-arc-connector",
+      ),
+    ];
+    expect(arcs).toHaveLength(3);
+    expect(arcs.every((path) => path.getAttribute("d")?.includes(" A "))).toBe(
+      true,
+    );
+    expect(
+      dumbbellElement.querySelectorAll(
+        ".facet-polar-inverted-dumbbell .facet-point",
+      ),
+    ).toHaveLength(6);
+    expect(dumbbellElement.innerHTML).not.toContain("NaN");
+  });
+
   it("validates annotations, responsive rules, and unsupported polar series", () => {
     const result = validateChartOptions({
       chart: { type: "pie", polar: true },
@@ -281,6 +422,15 @@ describe("layout, annotations, responsive rules, and polar projection", () => {
         "chart.polar.series.unsupported",
       ]),
     );
+    expect(
+      validateChartOptions({
+        chart: { type: "dumbbell", polar: true },
+        xAxis: { categories: ["A"] },
+        series: [{ data: [["A", 1, 3]] }],
+      }).issues.some(
+        (issue) => issue.code === "chart.polar.series.unsupported",
+      ),
+    ).toBe(false);
 
     expect(
       validateChartOptions({

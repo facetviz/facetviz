@@ -506,7 +506,7 @@ function polarCenter(ctx) {
   };
 }
 function polarPoint(ctx, xValue, yValue) {
-  let angle = ctx.xScale.scale(xValue), radius = ctx.yScale.scale(yValue), center = polarCenter(ctx);
+  let x = ctx.xScale.scale(xValue), y = ctx.yScale.scale(yValue), angle = ctx.inverted ? y : x, radius = ctx.inverted ? x : y, center = polarCenter(ctx);
   return {
     x: center.x + Math.cos(angle) * radius,
     y: center.y + Math.sin(angle) * radius
@@ -547,6 +547,16 @@ function annularSectorPath(cx, cy, innerRadius, outerRadius, startAngle, endAngl
     `A ${inner} ${inner} 0 ${large} 0 ${innerStart.x} ${innerStart.y}`,
     "Z"
   ].join(" ");
+}
+function circularArcPath(cx, cy, radius, startAngle, endAngle) {
+  let start = Math.min(startAngle, endAngle), end = Math.max(startAngle, endAngle), from = {
+    x: cx + Math.cos(start) * radius,
+    y: cy + Math.sin(start) * radius
+  }, to = {
+    x: cx + Math.cos(end) * radius,
+    y: cy + Math.sin(end) * radius
+  };
+  return `M ${from.x} ${from.y} A ${radius} ${radius} 0 ${end - start > Math.PI ? 1 : 0} 1 ${to.x} ${to.y}`;
 }
 
 // src/series/line.ts
@@ -591,7 +601,7 @@ var LineSeries = class extends BaseSeries {
   render(ctx) {
     let { renderer } = ctx, g = renderer.group({ class: `facet-series facet-line ${this.name}` }, renderer.root), segments = this.pixelSegments(ctx), data = segments.flat();
     for (let segment of segments) {
-      let points = ctx.polar && segments.length === 1 && segment.length > 2 ? [...segment.map((d) => d.pt), segment[0].pt] : segment.map((d) => d.pt);
+      let points = ctx.polar && !ctx.inverted && segments.length === 1 && segment.length > 2 ? [...segment.map((d) => d.pt), segment[0].pt] : segment.map((d) => d.pt);
       renderer.create("path", {
         d: this.buildPath(points),
         fill: "none",
@@ -677,7 +687,7 @@ var AreaSeries = class extends LineSeries {
     return this.smooth() ? splinePath(pts) : linePath(pts);
   }
   render(ctx) {
-    let { renderer } = ctx, g = renderer.group({ class: `facet-series facet-area ${this.name}` }, renderer.root), top = [], bottom = [], hover = [], catScale = ctx.inverted ? ctx.yScale : ctx.xScale, valScale = ctx.inverted ? ctx.xScale : ctx.yScale, drawSegment = () => {
+    let { renderer } = ctx, g = renderer.group({ class: `facet-series facet-area ${this.name}` }, renderer.root), top = [], bottom = [], hover = [], catScale = ctx.polar ? ctx.xScale : ctx.inverted ? ctx.yScale : ctx.xScale, valScale = ctx.polar ? ctx.yScale : ctx.inverted ? ctx.xScale : ctx.yScale, drawSegment = () => {
       if (!top.length) return;
       let line = this.smooth() ? splinePath : linePath, reversedBottom = [...bottom].reverse(), topD = line(top), bottomD = line(reversedBottom).replace(/^M/, "L");
       renderer.create("path", {
@@ -685,7 +695,7 @@ var AreaSeries = class extends LineSeries {
         fill: alpha(this.color, this.options.fillOpacity ?? 0.35),
         stroke: "none"
       }, g), renderer.create("path", {
-        d: ctx.polar && top.length > 2 ? line([...top, top[0]]) : topD,
+        d: ctx.polar && !ctx.inverted && top.length > 2 ? line([...top, top[0]]) : topD,
         fill: "none",
         stroke: this.color,
         "stroke-width": this.options.lineWidth ?? this.options.size ?? 2,
@@ -1033,7 +1043,59 @@ var ColumnSeries = class extends BaseSeries {
   renderPolar(ctx) {
     let { renderer, groupCount, groupIndex } = ctx, group = renderer.group({
       class: `facet-series facet-column facet-polar-column ${this.name}`
-    }), center = polarCenter(ctx), band = ctx.xScale.bandwidth() || Math.PI * 2 / Math.max(1, this.points.length), slot = band / groupCount;
+    }), center = polarCenter(ctx);
+    if (ctx.inverted) {
+      let band2 = ctx.xScale.bandwidth() || Math.max(1, ctx.plot.width / 2 / Math.max(1, this.points.length)), slot2 = band2 / groupCount;
+      for (let p of this.points) {
+        let [loValue, hiValue] = this.valuePair(p);
+        if (loValue === void 0 || hiValue === void 0) continue;
+        let inner = ctx.xScale.scale(p.x) - band2 / 2 + groupIndex * slot2 + slot2 * 0.05, outer = inner + slot2 * 0.9, lo = ctx.yScale.scale(loValue), hi = ctx.yScale.scale(hiValue), start = Math.min(lo, hi), end = Math.max(lo, hi), el = renderer.create(
+          "path",
+          {
+            d: annularSectorPath(
+              center.x,
+              center.y,
+              Math.max(0, inner),
+              Math.max(1, outer),
+              start,
+              end
+            ),
+            fill: p.color ?? this.color,
+            class: "facet-point facet-polar-sector facet-polar-inverted-sector"
+          },
+          group
+        );
+        if (ctx.registerHover(el, p), this.wireEvents(el, p, ctx), this.options.dataLabels?.enabled) {
+          let point = projectPolar(ctx.plot, hi, outer + 8), total = this.points.reduce(
+            (sum2, item) => sum2 + (item.y ?? 0),
+            0
+          );
+          drawDataLabel(
+            renderer,
+            group,
+            labelString(this.options.dataLabels, {
+              x: p.x,
+              y: p.y,
+              point: p.options,
+              series: this.name,
+              name: p.name ?? p.x,
+              index: p.index,
+              color: p.color ?? this.color,
+              total,
+              percentage: total ? (p.y ?? 0) / total * 100 : void 0
+            }),
+            {
+              x: point.x,
+              y: point.y,
+              anchor: Math.cos(hi) < -0.15 ? "end" : Math.cos(hi) > 0.15 ? "start" : "middle"
+            },
+            this.options.dataLabels
+          );
+        }
+      }
+      return;
+    }
+    let band = ctx.xScale.bandwidth() || Math.PI * 2 / Math.max(1, this.points.length), slot = band / groupCount;
     for (let p of this.points) {
       let [loValue, hiValue] = this.valuePair(p);
       if (loValue === void 0 || hiValue === void 0) continue;
@@ -1171,6 +1233,10 @@ var DumbbellSeries = class extends BaseSeries {
     return [p.low, p.high];
   }
   render(ctx) {
+    if (ctx.polar) {
+      this.renderPolar(ctx);
+      return;
+    }
     let { renderer, groupCount, groupIndex, inverted } = ctx, catScale = inverted ? ctx.yScale : ctx.xScale, valScale = inverted ? ctx.xScale : ctx.yScale, g = renderer.group(
       { class: `facet-series facet-dumbbell ${this.name}` },
       renderer.root
@@ -1229,6 +1295,220 @@ var DumbbellSeries = class extends BaseSeries {
         );
       }
       this.drawEndLabels(ctx, p, cat, valScale, inverted, radius);
+    }
+  }
+  /** Draw each low/high pair along the category's radial spoke. */
+  renderPolar(ctx) {
+    if (ctx.inverted) {
+      this.renderInvertedPolar(ctx);
+      return;
+    }
+    let { renderer, groupCount, groupIndex } = ctx, catScale = ctx.xScale, g = renderer.group(
+      {
+        class: `facet-series facet-dumbbell facet-polar-dumbbell ${this.name}`
+      },
+      renderer.root
+    ), band = catScale.bandwidth ? catScale.bandwidth() : 0, subWidth = band / groupCount, radius = this.options.marker?.radius ?? 5, rectWidth = this.options.marker?.width ?? 5, rectHeight = this.options.marker?.height ?? 5;
+    for (let p of this.points) {
+      if (p.low === void 0 || p.high === void 0) continue;
+      let lowColor = p.options.lowColor ?? this.options.lowColor ?? this.color, highColor = p.options.highColor ?? this.options.highColor ?? this.color, connColor = p.options.connectorColor ?? this.options.connectorColor ?? THEME.neutralColor, connWidth = p.options.connectorWidth ?? this.options.connectorWidth ?? 7, angle = catScale.scale(p.x) - band / 2 + (groupIndex + 0.5) * subWidth, lowRadius = ctx.yScale.scale(p.low), highRadius = ctx.yScale.scale(p.high), low = projectPolar(ctx.plot, angle, lowRadius), high = projectPolar(ctx.plot, angle, highRadius);
+      renderer.create(
+        "line",
+        {
+          x1: low.x,
+          y1: low.y,
+          x2: high.x,
+          y2: high.y,
+          stroke: connColor,
+          "stroke-width": connWidth,
+          class: "facet-dumbbell-connector"
+        },
+        g
+      );
+      for (let [point, color] of [
+        [low, lowColor],
+        [high, highColor]
+      ]) {
+        let marker = this.options.marker ?? {}, el = marker.enabled === !1 ? renderer.create(
+          "circle",
+          {
+            cx: point.x,
+            cy: point.y,
+            r: Math.max(8, radius),
+            fill: "transparent",
+            "pointer-events": "all",
+            class: "facet-point-hit"
+          },
+          g
+        ) : drawMarker(renderer, g, point.x, point.y, {
+          symbol: marker.symbol ?? "circle",
+          radius,
+          fill: marker.fillColor ?? color,
+          stroke: marker.lineColor ?? "#fff",
+          strokeWidth: marker.lineWidth ?? 1.5,
+          width: rectWidth,
+          height: rectHeight
+        });
+        ctx.registerHover(el, p), el.addEventListener(
+          "click",
+          (e) => ctx.onPointEvent("click", p, e)
+        ), el.addEventListener(
+          "mouseover",
+          (e) => ctx.onPointEvent("mouseOver", p, e)
+        ), el.addEventListener(
+          "mouseout",
+          (e) => ctx.onPointEvent("mouseOut", p, e)
+        );
+      }
+      this.drawPolarEndLabels(
+        ctx,
+        p,
+        angle,
+        lowRadius,
+        highRadius,
+        radius
+      );
+    }
+  }
+  /** In inverted polar mode the pair shares an x radius and spans y angles. */
+  renderInvertedPolar(ctx) {
+    let { renderer, groupCount, groupIndex } = ctx, catScale = ctx.xScale, g = renderer.group(
+      {
+        class: `facet-series facet-dumbbell facet-polar-dumbbell facet-polar-inverted-dumbbell ${this.name}`
+      },
+      renderer.root
+    ), center = polarCenter(ctx), band = catScale.bandwidth ? catScale.bandwidth() : 0, subWidth = band / groupCount, markerRadius = this.options.marker?.radius ?? 5, marker = this.options.marker ?? {};
+    for (let p of this.points) {
+      if (p.low === void 0 || p.high === void 0) continue;
+      let lowColor = p.options.lowColor ?? this.options.lowColor ?? this.color, highColor = p.options.highColor ?? this.options.highColor ?? this.color, connColor = p.options.connectorColor ?? this.options.connectorColor ?? THEME.neutralColor, connWidth = p.options.connectorWidth ?? this.options.connectorWidth ?? 7, radial = catScale.scale(p.x) - band / 2 + (groupIndex + 0.5) * subWidth, lowAngle = ctx.yScale.scale(p.low), highAngle = ctx.yScale.scale(p.high), low = projectPolar(ctx.plot, lowAngle, radial), high = projectPolar(ctx.plot, highAngle, radial);
+      renderer.create(
+        "path",
+        {
+          d: circularArcPath(
+            center.x,
+            center.y,
+            radial,
+            lowAngle,
+            highAngle
+          ),
+          fill: "none",
+          stroke: connColor,
+          "stroke-width": connWidth,
+          class: "facet-dumbbell-connector facet-dumbbell-arc-connector"
+        },
+        g
+      );
+      for (let [point, color] of [
+        [low, lowColor],
+        [high, highColor]
+      ]) {
+        let el = marker.enabled === !1 ? renderer.create(
+          "circle",
+          {
+            cx: point.x,
+            cy: point.y,
+            r: Math.max(8, markerRadius),
+            fill: "transparent",
+            "pointer-events": "all",
+            class: "facet-point-hit"
+          },
+          g
+        ) : drawMarker(renderer, g, point.x, point.y, {
+          symbol: marker.symbol ?? "circle",
+          radius: markerRadius,
+          fill: marker.fillColor ?? color,
+          stroke: marker.lineColor ?? "#fff",
+          strokeWidth: marker.lineWidth ?? 1.5,
+          width: marker.width ?? 5,
+          height: marker.height ?? 5
+        });
+        ctx.registerHover(el, p), el.addEventListener(
+          "click",
+          (e) => ctx.onPointEvent("click", p, e)
+        ), el.addEventListener(
+          "mouseover",
+          (e) => ctx.onPointEvent("mouseOver", p, e)
+        ), el.addEventListener(
+          "mouseout",
+          (e) => ctx.onPointEvent("mouseOut", p, e)
+        );
+      }
+      this.drawInvertedPolarEndLabels(
+        ctx,
+        p,
+        radial,
+        lowAngle,
+        highAngle,
+        markerRadius
+      );
+    }
+  }
+  drawInvertedPolarEndLabels(ctx, p, radial, lowAngle, highAngle, markerRadius) {
+    let dl = this.options.dataLabels;
+    if (!dl?.enabled) return;
+    let labelRadius = radial + markerRadius + 6 + (dl.distance ?? 0);
+    for (let [value, angle] of [
+      [p.low, lowAngle],
+      [p.high, highAngle]
+    ]) {
+      let point = projectPolar(ctx.plot, angle, labelRadius), cosine = Math.cos(angle);
+      drawDataLabel(
+        ctx.renderer,
+        ctx.renderer.root,
+        labelString(dl, {
+          x: p.x,
+          y: value,
+          low: p.low,
+          high: p.high,
+          point: p.options,
+          series: this.name,
+          name: p.name ?? p.x,
+          index: p.index,
+          color: p.color ?? this.color
+        }),
+        {
+          x: point.x,
+          y: point.y + 4,
+          anchor: cosine < -0.15 ? "end" : cosine > 0.15 ? "start" : "middle"
+        },
+        dl
+      );
+    }
+  }
+  drawPolarEndLabels(ctx, p, angle, lowRadius, highRadius, markerRadius) {
+    let dl = this.options.dataLabels;
+    if (!dl?.enabled) return;
+    let distance = markerRadius + 6 + (dl.distance ?? 0);
+    for (let [value, radial] of [
+      [p.low, lowRadius],
+      [p.high, highRadius]
+    ]) {
+      let outward = radial >= Math.max(lowRadius, highRadius), point = projectPolar(
+        ctx.plot,
+        angle,
+        radial + (outward ? distance : -distance)
+      ), cosine = Math.cos(angle), text = labelString(dl, {
+        x: p.x,
+        y: value,
+        low: p.low,
+        high: p.high,
+        point: p.options,
+        series: this.name,
+        name: p.name ?? p.x,
+        index: p.index,
+        color: p.color ?? this.color
+      });
+      drawDataLabel(
+        ctx.renderer,
+        ctx.renderer.root,
+        text,
+        {
+          x: point.x,
+          y: point.y + 4,
+          anchor: cosine < -0.15 ? "end" : cosine > 0.15 ? "start" : "middle"
+        },
+        dl
+      );
     }
   }
   /** Labels at the low and high ends (both values shown by default). */
@@ -2097,12 +2377,16 @@ var ScatterSeries = class extends BaseSeries {
     let { renderer } = ctx, g = renderer.group(
       { class: `facet-series facet-scatter ${this.name}` },
       renderer.root
-    ), catScale = ctx.inverted ? ctx.yScale : ctx.xScale, valScale = ctx.inverted ? ctx.xScale : ctx.yScale, marker = this.options.marker ?? {}, rng = seededRandom(this.index * 7919 + this.points.length + 1), band = catScale instanceof CategoryScale ? catScale.bandwidth() : 0, spread = (this.options.jitter ?? 0.5) * band, labelData = [];
+    ), catScale = ctx.polar ? ctx.xScale : ctx.inverted ? ctx.yScale : ctx.xScale, valScale = ctx.polar ? ctx.yScale : ctx.inverted ? ctx.xScale : ctx.yScale, marker = this.options.marker ?? {}, rng = seededRandom(this.index * 7919 + this.points.length + 1), band = catScale instanceof CategoryScale ? catScale.bandwidth() : 0, spread = (this.options.jitter ?? 0.5) * band, labelData = [];
     for (let p of this.points) {
       if (p.y === void 0) continue;
       let catPx = catScale.scale(p.x);
       this.isJitter && band > 0 && (catPx += (rng() - 0.5) * spread);
-      let valPx = valScale.scale(p.y), projected = ctx.polar ? projectPolar(ctx.plot, catPx, valPx) : void 0, x = projected?.x ?? (ctx.inverted ? valPx : catPx), y = projected?.y ?? (ctx.inverted ? catPx : valPx);
+      let valPx = valScale.scale(p.y), projected = ctx.polar ? projectPolar(
+        ctx.plot,
+        ctx.inverted ? valPx : catPx,
+        ctx.inverted ? catPx : valPx
+      ) : void 0, x = projected?.x ?? (ctx.inverted ? valPx : catPx), y = projected?.y ?? (ctx.inverted ? catPx : valPx);
       labelData.push({ pt: { x, y }, p });
       let radius = p.options.radius ?? this.options.radius ?? this.options.size ?? marker.radius ?? 5, el = marker.enabled === !1 ? renderer.create(
         "circle",
@@ -2529,6 +2813,26 @@ var SVG_NS = "http://www.w3.org/2000/svg", Renderer = class {
 };
 
 // src/core/axis.ts
+function minorGridPositions(scale, interval) {
+  if (scale instanceof CategoryScale) return [];
+  let majorTicks = scale.ticks();
+  if (interval === "auto") {
+    let majorPositions = majorTicks.map((tick) => scale.scale(tick)).filter(Number.isFinite), positions2 = [];
+    for (let i = 1; i < majorPositions.length; i++) {
+      let start = majorPositions[i - 1], end = majorPositions[i];
+      for (let part = 1; part < 5; part++)
+        positions2.push(start + (end - start) * part / 5);
+    }
+    return positions2;
+  }
+  if (!(interval > 0) || !scale.invert) return [];
+  let [rangeStart, rangeEnd] = scale.range(), domainStart = scale.invert(rangeStart), domainEnd = scale.invert(rangeEnd), lo = Math.min(domainStart, domainEnd), hi = Math.max(domainStart, domainEnd), epsilon = Math.max(Math.abs(lo), Math.abs(hi), 1) * 1e-10, majorValues = majorTicks.filter((tick) => typeof tick == "number").map(Number), positions = [], value = Math.ceil((lo - epsilon) / interval) * interval;
+  for (let count = 0; value <= hi + epsilon && count < 1e3; count++, value += interval)
+    !majorValues.some(
+      (major) => Math.abs(major - value) <= epsilon
+    ) && value > lo + epsilon && value < hi - epsilon && positions.push(scale.scale(value));
+  return positions;
+}
 var Axis = class {
   constructor(cfg) {
     this.cfg = cfg;
@@ -2569,9 +2873,29 @@ var Axis = class {
         projected + 6 > band * labelStep && (labelStep = Math.ceil((projected + 6) / band));
       }
     }
+    let minorGridWidth = options.minorGridLineWidth ?? 1;
+    if (this.cfg.grid && !isCategory && options.minorTickInterval !== void 0 && minorGridWidth > 0) {
+      let minorColor = options.minorGridLineColor ?? gridColor, minorDash = options.minorGridLineDashStyle ?? "2 2";
+      for (let pos of minorGridPositions(scale, options.minorTickInterval))
+        this.drawGridLine(
+          group,
+          pos,
+          minorColor,
+          minorGridWidth,
+          minorDash,
+          "facet-minor-gridline"
+        );
+    }
     ticks.forEach((tick, i) => {
       let pos = scale.scale(tick);
-      this.cfg.grid && gridWidth > 0 && (!isCategory || options.gridLineWidth) && this.drawGridLine(group, pos, gridColor, gridWidth), options.ticks !== !1 && this.drawTick(group, pos, axisColor), labelsEnabled && i % labelStep === 0 && this.drawLabel(
+      this.cfg.grid && gridWidth > 0 && (!isCategory || options.gridLineWidth) && this.drawGridLine(
+        group,
+        pos,
+        gridColor,
+        gridWidth,
+        options.gridLineDashStyle,
+        "facet-gridline"
+      ), options.ticks !== !1 && this.drawTick(group, pos, axisColor), labelsEnabled && i % labelStep === 0 && this.drawLabel(
         group,
         pos,
         this.labelText(scale, tick),
@@ -2660,9 +2984,26 @@ var Axis = class {
         return { x1: plot.x + plot.width, y1: plot.y, x2: plot.x + plot.width, y2: plot.y + plot.height };
     }
   }
-  drawGridLine(g, pos, color, width) {
-    let { renderer, plot } = this.cfg;
-    this.horizontal ? renderer.create("line", { x1: pos, y1: plot.y, x2: pos, y2: plot.y + plot.height, stroke: color, "stroke-width": width }, g) : renderer.create("line", { x1: plot.x, y1: pos, x2: plot.x + plot.width, y2: pos, stroke: color, "stroke-width": width }, g);
+  drawGridLine(g, pos, color, width, dashStyle, className) {
+    let { renderer, plot } = this.cfg, attrs = {
+      stroke: color,
+      "stroke-width": width,
+      "stroke-dasharray": dashStyle,
+      class: className
+    };
+    this.horizontal ? renderer.create("line", {
+      x1: pos,
+      y1: plot.y,
+      x2: pos,
+      y2: plot.y + plot.height,
+      ...attrs
+    }, g) : renderer.create("line", {
+      x1: plot.x,
+      y1: pos,
+      x2: plot.x + plot.width,
+      y2: pos,
+      ...attrs
+    }, g);
   }
   drawTick(g, pos, color) {
     let { renderer, plot, position } = this.cfg, len = LAYOUT.tickLength;
@@ -3539,14 +3880,22 @@ function validateChartOptions(options) {
       );
       return;
     }
-    chartRecord.polar === !0 && !["line", "spline", "step", "area", "areaspline", "scatter", "jitter", "column"].includes(
-      String(type)
-    ) && add(
+    chartRecord.polar === !0 && ![
+      "line",
+      "spline",
+      "step",
+      "area",
+      "areaspline",
+      "scatter",
+      "jitter",
+      "column",
+      "dumbbell"
+    ].includes(String(type)) && add(
       "chart.polar.series.unsupported",
       "warning",
       `${base}.type`,
       `${type} does not support chart.polar and will not be rendered in the polar frame.`,
-      "Use line, spline, step, area, areaspline, scatter, jitter, or column."
+      "Use line, spline, step, area, areaspline, scatter, jitter, column, or dumbbell."
     );
     let data = entry.data;
     if (!Array.isArray(data)) {
@@ -3585,7 +3934,32 @@ function validateAxes(value, path, add) {
     "Keep a primary axis at index 0 and an optional secondary axis at index 1."
   ), axes.map((axis, index) => {
     let axisPath = Array.isArray(value) ? `${path}[${index}]` : path;
-    return isRecord(axis) ? (axis.min !== void 0 && typeof axis.min != "number" && add("axis.min.number", "error", `${axisPath}.min`, "Axis min must be a number."), axis.max !== void 0 && typeof axis.max != "number" && add("axis.max.number", "error", `${axisPath}.max`, "Axis max must be a number."), typeof axis.min == "number" && typeof axis.max == "number" && axis.min >= axis.max && add("axis.range.order", "error", axisPath, "Axis min must be smaller than max."), axis.type !== void 0 && !["linear", "log", "category", "datetime"].includes(String(axis.type)) && add("axis.type.unknown", "error", `${axisPath}.type`, `Unknown axis type ${describe(axis.type)}.`), validateTitle(axis.title, `${axisPath}.title`, add, !0), isRecord(axis.labels) && (axis.labels.position !== void 0 && !["outer", "inner"].includes(String(axis.labels.position)) && add(
+    if (!isRecord(axis))
+      return add("axis.object", "error", axisPath, "Axis configuration must be an object."), {};
+    axis.min !== void 0 && typeof axis.min != "number" && add("axis.min.number", "error", `${axisPath}.min`, "Axis min must be a number."), axis.max !== void 0 && typeof axis.max != "number" && add("axis.max.number", "error", `${axisPath}.max`, "Axis max must be a number."), typeof axis.min == "number" && typeof axis.max == "number" && axis.min >= axis.max && add("axis.range.order", "error", axisPath, "Axis min must be smaller than max."), axis.type !== void 0 && !["linear", "log", "category", "datetime"].includes(String(axis.type)) && add("axis.type.unknown", "error", `${axisPath}.type`, `Unknown axis type ${describe(axis.type)}.`);
+    for (let key of ["gridLineWidth", "minorGridLineWidth"]) {
+      let width = axis[key];
+      width !== void 0 && (typeof width != "number" || !Number.isFinite(width) || width < 0) && add(
+        "axis.grid_line_width.non_negative",
+        "error",
+        `${axisPath}.${key}`,
+        `${key} must be a non-negative finite number.`
+      );
+    }
+    axis.minorTickInterval !== void 0 && axis.minorTickInterval !== "auto" && (typeof axis.minorTickInterval != "number" || !Number.isFinite(axis.minorTickInterval) || axis.minorTickInterval <= 0) && add(
+      "axis.minor_tick_interval.positive",
+      "error",
+      `${axisPath}.minorTickInterval`,
+      "minorTickInterval must be 'auto' or a positive finite number."
+    );
+    for (let key of ["gridLineDashStyle", "minorGridLineDashStyle"])
+      axis[key] !== void 0 && typeof axis[key] != "string" && add(
+        "axis.grid_line_dash_style.string",
+        "error",
+        `${axisPath}.${key}`,
+        `${key} must be an SVG dash-array string.`
+      );
+    return validateTitle(axis.title, `${axisPath}.title`, add, !0), isRecord(axis.labels) && (axis.labels.position !== void 0 && !["outer", "inner"].includes(String(axis.labels.position)) && add(
       "axis.labels.position.unknown",
       "error",
       `${axisPath}.labels.position`,
@@ -3610,7 +3984,7 @@ function validateAxes(value, path, add) {
       "error",
       `${axisPath}.labels.autoRotation`,
       "autoRotation must be an array of numeric angles."
-    )), axis) : (add("axis.object", "error", axisPath, "Axis configuration must be an object."), {});
+    )), axis;
   });
 }
 function validateTitle(value, path, add, axis = !1) {
@@ -5011,9 +5385,11 @@ var FacetViz = class _FacetViz {
       "areaspline",
       "scatter",
       "jitter",
-      "column"
+      "column",
+      "dumbbell"
     ]), series = visible.filter((item) => supported.has(item.type));
     if (!series.length) return;
+    let inverted = this.options.chart?.inverted === !0;
     computeStacks(series);
     let xOptions = axisAt(this.options.xAxis, 0), yOptions = axisAt(this.options.yAxis, 0), labelStyle = {
       ...FONTS.axisLabel,
@@ -5025,9 +5401,9 @@ var FacetViz = class _FacetViz {
           (point) => this.renderer.measureText(String(point.x), labelStyle).width / 2 + 8
         )
       )
-    ), radius = Math.max(
+    ), circularTitlePadding = inverted && yOptions.title?.text && yOptions.title.enabled !== !1 ? 16 : 0, radius = Math.max(
       1,
-      Math.min(plot.width, plot.height) / 2 - Math.min(framePadding, 54)
+      Math.min(plot.width, plot.height) / 2 - Math.min(framePadding + circularTitlePadding, 70)
     ), innerRadius = this.resolvePolarInnerRadius(radius), polarPlot = {
       x: plot.x + plot.width / 2 - radius,
       y: plot.y + plot.height / 2 - radius,
@@ -5038,7 +5414,7 @@ var FacetViz = class _FacetViz {
       y: polarPlot.y + polarPlot.height / 2
     }, categories = this.currentCategories(series), categoryOffset = categories?.length ? Math.PI / categories.length : 0, xScale = categories ? new CategoryScale({
       categories,
-      range: [
+      range: inverted ? [innerRadius, radius] : [
         -Math.PI / 2 - categoryOffset,
         Math.PI * 1.5 - categoryOffset
       ],
@@ -5047,16 +5423,43 @@ var FacetViz = class _FacetViz {
     }) : this.valueScale(
       xOptions,
       this.xNumericDomain(series),
-      [-Math.PI / 2, Math.PI * 1.5]
-    ), onSecondary = (item) => (item.options.yAxis ?? 0) === 1, primary = series.filter((item) => !onSecondary(item)), secondary = series.filter(onSecondary), radialScale = (items, options) => {
+      inverted ? [innerRadius, radius] : [-Math.PI / 2, Math.PI * 1.5]
+    ), onSecondary = (item) => (item.options.yAxis ?? 0) === 1, primary = series.filter((item) => !onSecondary(item)), secondary = series.filter(onSecondary), polarValueScale = (items, options) => {
       let domain = this.valueDomain(items.length ? items : series);
       return items.some(
         (item) => ["column", "area", "areaspline"].includes(item.type)
-      ) && options.type !== "log" && (domain = [Math.min(0, domain[0]), Math.max(0, domain[1])]), this.valueScale(options, domain, [innerRadius, radius]);
-    }, yScale = radialScale(primary, yOptions), yScale2 = secondary.length ? radialScale(secondary, axisAt(this.options.yAxis, 1)) : void 0, project = (angle, radial) => ({
+      ) && options.type !== "log" && (domain = [Math.min(0, domain[0]), Math.max(0, domain[1])]), this.valueScale(
+        inverted && options.tickCount === void 0 ? { ...options, tickCount: 6 } : options,
+        domain,
+        inverted ? [-Math.PI / 2, Math.PI * 1.5] : [innerRadius, radius]
+      );
+    }, yScale = polarValueScale(primary, yOptions), yScale2 = secondary.length ? polarValueScale(secondary, axisAt(this.options.yAxis, 1)) : void 0, project = (angle, radial) => ({
       x: center.x + Math.cos(angle) * radial,
       y: center.y + Math.sin(angle) * radial
-    }), xTicks = xScale.ticks(), holeColor = this.options.chart?.polarInnerBackgroundColor ?? this.options.chart?.backgroundColor ?? this.theme.backgroundColor, drawCategoryLabels = (parent) => {
+    }), xTicks = xScale.ticks(), yTicks = yScale.ticks(), annotationProject = inverted ? (radial, angle) => project(angle, radial) : project, holeColor = this.options.chart?.polarInnerBackgroundColor ?? this.options.chart?.backgroundColor ?? this.theme.backgroundColor, drawInvertedRadialLabels = (parent) => {
+      if (!(!inverted || xOptions.visible === !1 || xOptions.labels?.enabled === !1))
+        for (let tick of xTicks) {
+          let radial = xScale.scale(tick);
+          if (radial < 0 || radial > radius + 0.5) continue;
+          let label = project(-Math.PI / 2, radial);
+          this.renderer.text(
+            xScale.tickLabel(tick),
+            label.x + (xOptions.labels?.offset ?? 6),
+            label.y + 4,
+            {
+              ...labelStyle,
+              fill: THEME.axis.labelColor,
+              stroke: holeColor,
+              "stroke-width": 3,
+              "stroke-linejoin": "round",
+              "paint-order": "stroke",
+              "text-anchor": "start",
+              class: "facet-polar-category-label facet-polar-radial-x-label"
+            },
+            parent
+          );
+        }
+    }, drawCategoryLabels = (parent) => {
       if (xOptions.visible === !1 || xOptions.labels?.enabled === !1)
         return;
       if (xOptions.labels?.position === "inner" && innerRadius > 0 && !!categories?.length) {
@@ -5133,75 +5536,214 @@ var FacetViz = class _FacetViz {
       },
       axes
     );
-    let gridColor = yOptions.gridLineColor ?? THEME.axis.gridLineColor;
-    if (yOptions.visible !== !1)
-      for (let tick of yScale.ticks()) {
-        let radial = yScale.scale(tick);
-        radial < 0 || radial > radius + 0.5 || (this.renderer.create(
+    let gridColor = yOptions.gridLineColor ?? THEME.axis.gridLineColor, drawMinorRings = (scale, options, className) => {
+      if (!(options.minorTickInterval === void 0 || (options.minorGridLineWidth ?? 1) <= 0))
+        for (let radial of minorGridPositions(scale, options.minorTickInterval))
+          radial < 0 || radial > radius + 0.5 || this.renderer.create(
+            "circle",
+            {
+              cx: center.x,
+              cy: center.y,
+              r: radial,
+              fill: "none",
+              stroke: options.minorGridLineColor ?? options.gridLineColor ?? THEME.axis.gridLineColor,
+              "stroke-width": options.minorGridLineWidth ?? 1,
+              "stroke-dasharray": options.minorGridLineDashStyle ?? "2 2",
+              class: `facet-minor-gridline ${className}`
+            },
+            axes
+          );
+    }, drawMinorSpokes = (scale, options, className) => {
+      if (!(options.minorTickInterval === void 0 || (options.minorGridLineWidth ?? 1) <= 0))
+        for (let angle of minorGridPositions(scale, options.minorTickInterval)) {
+          let innerEdge = project(angle, innerRadius), edge = project(angle, radius);
+          this.renderer.create(
+            "line",
+            {
+              x1: innerEdge.x,
+              y1: innerEdge.y,
+              x2: edge.x,
+              y2: edge.y,
+              stroke: options.minorGridLineColor ?? options.gridLineColor ?? THEME.axis.gridLineColor,
+              "stroke-width": options.minorGridLineWidth ?? 1,
+              "stroke-dasharray": options.minorGridLineDashStyle ?? "2 2",
+              class: `facet-minor-gridline ${className}`
+            },
+            axes
+          );
+        }
+    };
+    if (inverted) {
+      if (xOptions.visible !== !1) {
+        let axisStart = project(-Math.PI / 2, innerRadius), axisEnd = project(-Math.PI / 2, radius);
+        this.renderer.create(
+          "line",
+          {
+            x1: axisStart.x,
+            y1: axisStart.y,
+            x2: axisEnd.x,
+            y2: axisEnd.y,
+            stroke: xOptions.lineColor ?? THEME.axis.lineColor,
+            "stroke-width": xOptions.lineWidth ?? 1,
+            class: "facet-polar-radial-x-axis"
+          },
+          axes
+        ), drawMinorRings(xScale, xOptions, "facet-polar-minor-x-ring");
+        for (let tick of xTicks) {
+          let radial = xScale.scale(tick);
+          radial < 0 || radial > radius + 0.5 || this.renderer.create(
+            "circle",
+            {
+              cx: center.x,
+              cy: center.y,
+              r: radial,
+              fill: "none",
+              stroke: xOptions.gridLineColor ?? THEME.axis.gridLineColor,
+              "stroke-width": xOptions.gridLineWidth ?? 1,
+              "stroke-dasharray": xOptions.gridLineDashStyle,
+              class: "facet-gridline facet-polar-ring facet-polar-x-ring"
+            },
+            axes
+          );
+        }
+      }
+      if (yOptions.visible !== !1) {
+        this.renderer.create(
           "circle",
           {
             cx: center.x,
             cy: center.y,
-            r: radial,
+            r: radius,
             fill: "none",
-            stroke: gridColor,
-            "stroke-width": yOptions.gridLineWidth ?? 1,
-            class: "facet-polar-ring"
+            stroke: yOptions.lineColor ?? THEME.axis.lineColor,
+            "stroke-width": yOptions.lineWidth ?? 1,
+            class: "facet-polar-y-axis-circle"
           },
           axes
-        ), yOptions.labels?.enabled !== !1 && this.renderer.text(
-          yScale.tickLabel(tick),
-          center.x + 4,
-          center.y - radial - 3,
-          {
-            ...FONTS.axisLabel,
-            ...sanitizeStyle(yOptions.labels?.style),
-            fill: THEME.axis.labelColor,
-            class: "facet-polar-value-label"
-          },
-          axes
-        ));
-      }
-    if (xOptions.visible !== !1) {
-      let sectorMode = this.options.chart?.polarGridLineMode === "sector" && !!categories?.length, gridAngles = sectorMode ? categories.map(
-        (_, index) => -Math.PI / 2 - categoryOffset + index * Math.PI * 2 / categories.length
-      ) : xTicks.map((tick) => xScale.scale(tick));
-      for (let angle of gridAngles) {
-        let innerEdge = project(angle, innerRadius), edge = project(angle, radius);
-        this.renderer.create(
-          "line",
-          {
-            x1: innerEdge.x,
-            y1: innerEdge.y,
-            x2: edge.x,
-            y2: edge.y,
-            stroke: xOptions.gridLineColor ?? THEME.axis.gridLineColor,
-            "stroke-width": xOptions.gridLineWidth ?? 1,
-            class: sectorMode ? "facet-polar-sector-line" : "facet-polar-spoke"
-          },
-          axes
+        ), drawMinorSpokes(
+          yScale,
+          yOptions,
+          "facet-polar-minor-angular-y-spoke"
         );
+        let seenAngles = /* @__PURE__ */ new Set();
+        for (let tick of yTicks) {
+          let angle = yScale.scale(tick), normalized = Math.round(
+            ((angle + Math.PI / 2) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) * 1e6
+          ) / 1e6;
+          if (seenAngles.has(normalized)) continue;
+          seenAngles.add(normalized);
+          let innerEdge = project(angle, innerRadius), edge = project(angle, radius);
+          if (this.renderer.create(
+            "line",
+            {
+              x1: innerEdge.x,
+              y1: innerEdge.y,
+              x2: edge.x,
+              y2: edge.y,
+              stroke: gridColor,
+              "stroke-width": yOptions.gridLineWidth ?? 1,
+              "stroke-dasharray": yOptions.gridLineDashStyle,
+              class: "facet-gridline facet-polar-spoke facet-polar-angular-y-spoke"
+            },
+            axes
+          ), yOptions.labels?.enabled !== !1) {
+            let label = project(
+              angle,
+              radius + (yOptions.labels?.offset ?? 10)
+            ), cosine = Math.cos(angle);
+            this.renderer.text(
+              yScale.tickLabel(tick),
+              label.x,
+              label.y,
+              {
+                ...FONTS.axisLabel,
+                ...sanitizeStyle(yOptions.labels?.style),
+                fill: THEME.axis.labelColor,
+                "text-anchor": cosine < -0.15 ? "end" : cosine > 0.15 ? "start" : "middle",
+                "dominant-baseline": "middle",
+                class: "facet-polar-value-label facet-polar-angular-y-label"
+              },
+              axes
+            );
+          }
+        }
       }
-      drawCategoryLabels(axes);
+    } else {
+      if (yOptions.visible !== !1) {
+        drawMinorRings(yScale, yOptions, "facet-polar-minor-ring");
+        for (let tick of yTicks) {
+          let radial = yScale.scale(tick);
+          radial < 0 || radial > radius + 0.5 || (this.renderer.create(
+            "circle",
+            {
+              cx: center.x,
+              cy: center.y,
+              r: radial,
+              fill: "none",
+              stroke: gridColor,
+              "stroke-width": yOptions.gridLineWidth ?? 1,
+              "stroke-dasharray": yOptions.gridLineDashStyle,
+              class: "facet-gridline facet-polar-ring"
+            },
+            axes
+          ), yOptions.labels?.enabled !== !1 && this.renderer.text(
+            yScale.tickLabel(tick),
+            center.x + 4,
+            center.y - radial - 3,
+            {
+              ...FONTS.axisLabel,
+              ...sanitizeStyle(yOptions.labels?.style),
+              fill: THEME.axis.labelColor,
+              class: "facet-polar-value-label"
+            },
+            axes
+          ));
+        }
+      }
+      if (xOptions.visible !== !1) {
+        let sectorMode = this.options.chart?.polarGridLineMode === "sector" && !!categories?.length, gridAngles = sectorMode ? categories.map(
+          (_, index) => -Math.PI / 2 - categoryOffset + index * Math.PI * 2 / categories.length
+        ) : xTicks.map((tick) => xScale.scale(tick));
+        categories?.length || drawMinorSpokes(xScale, xOptions, "facet-polar-minor-spoke");
+        for (let angle of gridAngles) {
+          let innerEdge = project(angle, innerRadius), edge = project(angle, radius);
+          this.renderer.create(
+            "line",
+            {
+              x1: innerEdge.x,
+              y1: innerEdge.y,
+              x2: edge.x,
+              y2: edge.y,
+              stroke: xOptions.gridLineColor ?? THEME.axis.gridLineColor,
+              "stroke-width": xOptions.gridLineWidth ?? 1,
+              "stroke-dasharray": xOptions.gridLineDashStyle,
+              class: sectorMode ? "facet-gridline facet-polar-sector-line" : "facet-gridline facet-polar-spoke"
+            },
+            axes
+          );
+        }
+        drawCategoryLabels(axes);
+      }
     }
     if (xOptions.title?.text && xOptions.title.enabled !== !1) {
-      let centered = xOptions.title.position === "center";
+      let centered = !inverted && xOptions.title.position === "center", align = xOptions.title.align ?? "center", along = align === "start" ? 0.2 : align === "end" ? 0.8 : 0.5, titleX = inverted ? plot.x + (xOptions.title.margin ?? 8) + (xOptions.title.offset ?? 0) + 6 : center.x, titleY = inverted ? plot.y + plot.height * along : centered ? center.y : plot.y + plot.height - (xOptions.title.offset ?? 0);
       this.renderer.text(
         xOptions.title.text,
-        center.x,
-        centered ? center.y : plot.y + plot.height - (xOptions.title.offset ?? 0),
+        titleX,
+        titleY,
         {
           ...FONTS.axisTitle,
           ...sanitizeStyle(xOptions.title.style),
-          "text-anchor": "middle",
+          "text-anchor": inverted && align !== "center" ? align === "start" ? "start" : "end" : "middle",
           "dominant-baseline": centered ? "middle" : void 0,
+          transform: inverted ? `rotate(-90 ${titleX} ${titleY})` : void 0,
           class: "facet-polar-axis-title facet-polar-x-title"
         },
         axes
       );
     }
     if (yOptions.title?.text && yOptions.title.enabled !== !1) {
-      let align = yOptions.title.align ?? "center", along = align === "start" ? 0.2 : align === "end" ? 0.8 : 0.5, x = plot.x + (yOptions.title.margin ?? 8) + (yOptions.title.offset ?? 0) + 6, y = plot.y + plot.height * along;
+      let align = yOptions.title.align ?? "center", along = align === "start" ? 0.2 : align === "end" ? 0.8 : 0.5, x = inverted ? plot.x + plot.width * along : plot.x + (yOptions.title.margin ?? 8) + (yOptions.title.offset ?? 0) + 6, y = inverted ? center.y + radius + 12 - (yOptions.title.offset ?? 0) : plot.y + plot.height * along;
       this.renderer.text(
         yOptions.title.text,
         x,
@@ -5210,7 +5752,7 @@ var FacetViz = class _FacetViz {
           ...FONTS.axisTitle,
           ...sanitizeStyle(yOptions.title.style),
           "text-anchor": align === "start" ? "start" : align === "end" ? "end" : "middle",
-          transform: `rotate(-90 ${x} ${y})`,
+          transform: inverted ? void 0 : `rotate(-90 ${x} ${y})`,
           class: "facet-polar-axis-title facet-polar-y-title"
         },
         axes
@@ -5224,7 +5766,7 @@ var FacetViz = class _FacetViz {
       yScale,
       yScale2,
       layer: "below",
-      project
+      project: annotationProject
     });
     let group = this.groupInfo(series);
     for (let item of series)
@@ -5235,10 +5777,17 @@ var FacetViz = class _FacetViz {
           xScale,
           yScale2 && onSecondary(item) ? yScale2 : yScale,
           group,
-          !1,
+          inverted,
           !0
         )
       );
+    if (inverted) {
+      let labelOverlay = this.renderer.group(
+        { class: "facet-polar-axis-label-overlay" },
+        this.renderer.root
+      );
+      drawInvertedRadialLabels(labelOverlay);
+    }
     renderAnnotations({
       renderer: this.renderer,
       plot: polarPlot,
@@ -5247,7 +5796,7 @@ var FacetViz = class _FacetViz {
       yScale,
       yScale2,
       layer: "above",
-      project
+      project: annotationProject
     });
   }
   resolvePolarInnerRadius(outerRadius) {

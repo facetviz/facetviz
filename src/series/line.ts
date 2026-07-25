@@ -67,7 +67,7 @@ export class LineSeries extends BaseSeries {
     const data = segments.flat();
     for (const segment of segments) {
       const points =
-        ctx.polar && segments.length === 1 && segment.length > 2
+        ctx.polar && !ctx.inverted && segments.length === 1 && segment.length > 2
           ? [...segment.map((d) => d.pt), segment[0].pt]
           : segment.map((d) => d.pt);
       renderer.create('path', {

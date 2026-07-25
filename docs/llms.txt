@@ -121,7 +121,7 @@ interface ChartOptions {
     backgroundColor?: string;
     spacing?: [number, number, number, number]; // top right bottom left
     inverted?: boolean;
-    polar?: boolean;                          // line/area/scatter/column families
+    polar?: boolean;                          // line/area/scatter/column/dumbbell families
     polarInnerSize?: number|string;           // pixels or e.g. '35%'
     polarInnerBackgroundColor?: string;       // e.g. '#fff'
     polarGridLineMode?: 'spoke'|'sector';     // category centres or boundaries
@@ -196,12 +196,15 @@ interface AxisOptions {
     step?: number;
     maxWidth?: number;
     overflow?: 'ellipsis'|'hide';
-    position?: 'outer'|'inner';              // polar x-axis; inner follows hole radius
-    offset?: number;                         // gap from polar circle in pixels
+    position?: 'outer'|'inner';              // non-inverted polar x-axis
+    offset?: number;                         // polar label gap in pixels
     style?: Record<string,string>;
   };
   crosshair?: boolean;
-  gridLineWidth?: number; gridLineColor?: string;
+  gridLineWidth?: number; gridLineColor?: string; gridLineDashStyle?: string;
+  minorTickInterval?: number|'auto';
+  minorGridLineWidth?: number; minorGridLineColor?: string;
+  minorGridLineDashStyle?: string;
   lineWidth?: number; lineColor?: string; ticks?: boolean;
   reversed?: boolean;
   plotLines?: Array<{ value: number|string; color?: string; width?: number;
@@ -457,10 +460,14 @@ Formatting tokens for labels/tooltips: `{x}`, `{y}`, `{name}`, `{series}`,
 ### General polar projection
 
 Set `chart.polar:true` to project `line`, `spline`, `step`, `area`,
-`areaspline`, `scatter`, `jitter`, or `column` series into a shared angular
-x-axis / radial y-axis. Tooltips, events, stacking, labels, annotations,
+`areaspline`, `scatter`, `jitter`, `column`, or `dumbbell` series into a shared
+angular x-axis / radial y-axis. Polar dumbbells connect each low/high pair
+radially at its category angle. Tooltips, events, stacking, labels, annotations,
 legends, and a second y scale continue to work. Use dedicated `radar`,
 `radialbar`, and `gauge` types for their specialized semantics.
+Add `chart.inverted:true` to swap the roles: x is radial/vertical and y is
+circular/angular. In this mode columns are concentric arcs and dumbbell
+connectors follow circular arcs.
 Add `chart.polarInnerSize:'35%'` for a donut-style centre hole and
 `polarInnerBackgroundColor:'#fff'` for an explicitly white circle.
 Use `polarGridLineMode:'sector'` to outline category wedges with boundary
