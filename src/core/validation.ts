@@ -379,6 +379,16 @@ function validateAxes(value: unknown, path: string, add: AddIssue): UnknownRecor
           `${key} must be an SVG dash-array string.`,
         );
     }
+    if (
+      axis.alternateGridColor !== undefined &&
+      typeof axis.alternateGridColor !== "string"
+    )
+      add(
+        "axis.alternate_grid_color.string",
+        "error",
+        `${axisPath}.alternateGridColor`,
+        "alternateGridColor must be a CSS colour string.",
+      );
     validateTitle(axis.title, `${axisPath}.title`, add, true);
     if (isRecord(axis.labels)) {
       if (

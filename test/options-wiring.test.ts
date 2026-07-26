@@ -285,6 +285,7 @@ describe('configuration option wiring', () => {
         lineColor: '#778899',
         gridLineColor: '#99aabb',
         gridLineWidth: 2,
+        alternateGridColor: '#f5f7fa',
       },
       series: [{
         data: [
@@ -304,6 +305,7 @@ describe('configuration option wiring', () => {
     expect([...nested.querySelectorAll('line')].some((line) =>
       line.getAttribute('stroke') === '#99aabb' && line.getAttribute('stroke-width') === '2',
     )).toBe(true);
+    expect(el.querySelectorAll('.facet-alternate-grid-band')).toHaveLength(1);
   });
 
   it('renders configurable dashed major and minor grid lines', () => {
@@ -354,6 +356,74 @@ describe('configuration option wiring', () => {
     );
     expect(minorRing).toBeTruthy();
     expect(minorRing?.getAttribute('stroke-dasharray')).toBe('3 5');
+  });
+
+  it('fills alternate x-axis category areas behind the series', () => {
+    const columns = container();
+    new FacetViz(columns, {
+      chart: { ...baseChart, type: 'column' },
+      xAxis: {
+        categories: ['A', 'B', 'C', 'D'],
+        alternateGridColor: '#f0f4ff',
+      },
+      series: [{ data: [2, 4, 3, 5] }],
+    });
+
+    const columnBands = [
+      ...columns.querySelectorAll<SVGRectElement>(
+        '.facet-axis-bottom .facet-alternate-grid-band',
+      ),
+    ];
+    expect(columnBands).toHaveLength(2);
+    expect(columnBands.map((band) => band.getAttribute('fill'))).toEqual([
+      '#f0f4ff',
+      '#f0f4ff',
+    ]);
+    expect(
+      columnBands.every(
+        (band) =>
+          Number(band.getAttribute('height')) >
+          Number(band.getAttribute('width')),
+      ),
+    ).toBe(true);
+
+    const bars = container();
+    new FacetViz(bars, {
+      chart: { ...baseChart, type: 'bar' },
+      xAxis: {
+        categories: ['A', 'B', 'C', 'D'],
+        alternateGridColor: 'rgba(10, 20, 30, 0.08)',
+      },
+      series: [{ data: [2, 4, 3, 5] }],
+    });
+    const rowBands = [
+      ...bars.querySelectorAll<SVGRectElement>(
+        '.facet-axis-left .facet-alternate-grid-band',
+      ),
+    ];
+    expect(rowBands).toHaveLength(2);
+    expect(
+      rowBands.every(
+        (band) =>
+          Number(band.getAttribute('width')) >
+          Number(band.getAttribute('height')),
+      ),
+    ).toBe(true);
+  });
+
+  it('validates alternateGridColor as a CSS colour string', () => {
+    const issues = validateChartOptions({
+      xAxis: { alternateGridColor: 42 } as never,
+      series: [{ data: [1] }],
+    });
+    expect(issues.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'axis.alternate_grid_color.string',
+          path: 'xAxis.alternateGridColor',
+        }),
+      ]),
+    );
   });
 
   it('keeps boosted series styling equivalent to SVG rendering', () => {

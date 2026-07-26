@@ -202,6 +202,7 @@ interface AxisOptions {
   };
   crosshair?: boolean;
   gridLineWidth?: number; gridLineColor?: string; gridLineDashStyle?: string;
+  alternateGridColor?: string;               // every other category band
   minorTickInterval?: number|'auto';
   minorGridLineWidth?: number; minorGridLineColor?: string;
   minorGridLineDashStyle?: string;

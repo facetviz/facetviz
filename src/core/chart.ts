@@ -2977,6 +2977,7 @@ export class FacetViz {
           lineWidth: xOpts.lineWidth,
           gridLineColor: xOpts.gridLineColor,
           gridLineWidth: xOpts.gridLineWidth,
+          alternateGridColor: xOpts.alternateGridColor,
         }).render(axisLayer);
       }
     } else {
@@ -3052,6 +3053,7 @@ export class FacetViz {
           lineWidth: xOpts.lineWidth,
           gridLineColor: xOpts.gridLineColor,
           gridLineWidth: xOpts.gridLineWidth,
+          alternateGridColor: xOpts.alternateGridColor,
         }).render(axisLayer);
       }
     }

@@ -2844,7 +2844,7 @@ var Axis = class {
     let { renderer, scale, options, position } = this.cfg;
     if (options.visible === !1) return;
     let group = renderer.group({ class: `facet-axis facet-axis-${position}` }, parent), ticks = scale.ticks(), isCategory = scale instanceof CategoryScale;
-    this.drawPlotBands(group);
+    this.drawAlternateCategoryBands(group), this.drawPlotBands(group);
     let axisColor = options.lineColor ?? THEME.axis.lineColor;
     if (options.lineWidth !== 0) {
       let line = this.axisLineCoords();
@@ -2914,6 +2914,37 @@ var Axis = class {
     if (options.visible === !1 || !(options.plotLines ?? []).some((l) => l.zIndex === "above")) return;
     let group = renderer.group({ class: `facet-axis-above facet-axis-${position}` }, parent);
     this.drawPlotLines(group, "above");
+  }
+  /** Fill every other full category step across the plot area. */
+  drawAlternateCategoryBands(g) {
+    let { renderer, scale, plot, options } = this.cfg;
+    if (!(scale instanceof CategoryScale) || typeof options.alternateGridColor != "string")
+      return;
+    let halfStep = Math.abs(scale.fullStep()) / 2;
+    scale.ticks().forEach((tick, index) => {
+      if (index % 2 === 0) return;
+      let centre = scale.scale(tick), rect = this.horizontal ? {
+        x: Math.max(plot.x, centre - halfStep),
+        y: plot.y,
+        width: Math.min(plot.x + plot.width, centre + halfStep) - Math.max(plot.x, centre - halfStep),
+        height: plot.height
+      } : {
+        x: plot.x,
+        y: Math.max(plot.y, centre - halfStep),
+        width: plot.width,
+        height: Math.min(plot.y + plot.height, centre + halfStep) - Math.max(plot.y, centre - halfStep)
+      };
+      renderer.create(
+        "rect",
+        {
+          ...rect,
+          fill: options.alternateGridColor,
+          stroke: "none",
+          class: "facet-alternate-grid-band"
+        },
+        g
+      );
+    });
   }
   /** Shaded bands spanning an axis interval (horizontal or vertical). */
   drawPlotBands(g) {
@@ -3148,11 +3179,48 @@ var NestedAxis = class {
     this.linesOn && this.cfg.renderer.create("line", attrs, g);
   }
   render(parent) {
+    if (typeof this.cfg.alternateGridColor == "string") {
+      let bandGroup = this.cfg.renderer.group(
+        { class: "facet-alternate-grid-bands" },
+        parent
+      );
+      parent.insertBefore(bandGroup, parent.firstChild), this.drawAlternateCategoryBands(bandGroup);
+    }
     let g = this.cfg.renderer.group(
       { class: "facet-axis facet-axis-nested" },
       parent
     );
     this.drawLeafGridlines(g), this.cfg.vertical ? this.cfg.position === "split" ? this.renderSplitVertical(g) : this.renderStackedVertical(g, this.cfg.position === "top") : this.cfg.position === "split" ? this.renderSplit(g) : this.renderStacked(g, this.cfg.position === "top"), this.drawTitle(g);
+  }
+  /** Fill every other leaf category behind nested-axis series. */
+  drawAlternateCategoryBands(g) {
+    let { alternateGridColor, renderer, scale, plot, keys, vertical } = this.cfg;
+    if (typeof alternateGridColor != "string") return;
+    let halfStep = Math.abs(scale.fullStep()) / 2;
+    keys.forEach((key, index) => {
+      if (index % 2 === 0) return;
+      let centre = scale.scale(key), rect = vertical ? {
+        x: plot.x,
+        y: Math.max(plot.y, centre - halfStep),
+        width: plot.width,
+        height: Math.min(plot.y + plot.height, centre + halfStep) - Math.max(plot.y, centre - halfStep)
+      } : {
+        x: Math.max(plot.x, centre - halfStep),
+        y: plot.y,
+        width: Math.min(plot.x + plot.width, centre + halfStep) - Math.max(plot.x, centre - halfStep),
+        height: plot.height
+      };
+      renderer.create(
+        "rect",
+        {
+          ...rect,
+          fill: alternateGridColor,
+          stroke: "none",
+          class: "facet-alternate-grid-band"
+        },
+        g
+      );
+    });
   }
   drawTitle(g) {
     let title = this.cfg.title;
@@ -3959,7 +4027,12 @@ function validateAxes(value, path, add) {
         `${axisPath}.${key}`,
         `${key} must be an SVG dash-array string.`
       );
-    return validateTitle(axis.title, `${axisPath}.title`, add, !0), isRecord(axis.labels) && (axis.labels.position !== void 0 && !["outer", "inner"].includes(String(axis.labels.position)) && add(
+    return axis.alternateGridColor !== void 0 && typeof axis.alternateGridColor != "string" && add(
+      "axis.alternate_grid_color.string",
+      "error",
+      `${axisPath}.alternateGridColor`,
+      "alternateGridColor must be a CSS colour string."
+    ), validateTitle(axis.title, `${axisPath}.title`, add, !0), isRecord(axis.labels) && (axis.labels.position !== void 0 && !["outer", "inner"].includes(String(axis.labels.position)) && add(
       "axis.labels.position.unknown",
       "error",
       `${axisPath}.labels.position`,
@@ -5852,7 +5925,8 @@ var FacetViz = class _FacetViz {
         lineColor: xOpts.lineColor,
         lineWidth: xOpts.lineWidth,
         gridLineColor: xOpts.gridLineColor,
-        gridLineWidth: xOpts.gridLineWidth
+        gridLineWidth: xOpts.gridLineWidth,
+        alternateGridColor: xOpts.alternateGridColor
       }).render(axisLayer);
     } else {
       let leftReserve = LAYOUT.tickLength + 8 + this.valueLabelWidth(
@@ -5901,7 +5975,8 @@ var FacetViz = class _FacetViz {
         lineColor: xOpts.lineColor,
         lineWidth: xOpts.lineWidth,
         gridLineColor: xOpts.gridLineColor,
-        gridLineWidth: xOpts.gridLineWidth
+        gridLineWidth: xOpts.gridLineWidth,
+        alternateGridColor: xOpts.alternateGridColor
       }).render(axisLayer);
     }
     let group = this.groupInfo(aggSeries), lineFamily = /* @__PURE__ */ new Set([

@@ -91,7 +91,10 @@ export class Axis {
     const ticks = scale.ticks();
     const isCategory = scale instanceof CategoryScale;
 
-    // Plot bands sit behind everything else in the axis layer.
+    // Alternating category backgrounds and explicit plot bands sit behind
+    // everything else in the axis layer. Explicit bands paint second so they
+    // remain the more prominent annotation when the two overlap.
+    this.drawAlternateCategoryBands(group);
     this.drawPlotBands(group);
 
     // Axis baseline.
@@ -228,6 +231,51 @@ export class Axis {
     if (!(options.plotLines ?? []).some((l) => l.zIndex === 'above')) return;
     const group = renderer.group({ class: `facet-axis-above facet-axis-${position}` }, parent);
     this.drawPlotLines(group, 'above');
+  }
+
+  /** Fill every other full category step across the plot area. */
+  private drawAlternateCategoryBands(g: SVGGElement): void {
+    const { renderer, scale, plot, options } = this.cfg;
+    if (
+      !(scale instanceof CategoryScale) ||
+      typeof options.alternateGridColor !== "string"
+    )
+      return;
+
+    const halfStep = Math.abs(scale.fullStep()) / 2;
+    scale.ticks().forEach((tick, index) => {
+      // The chart background is the first colour; the configured alternate
+      // colour starts on the second category.
+      if (index % 2 === 0) return;
+      const centre = scale.scale(tick);
+      const rect = this.horizontal
+        ? {
+            x: Math.max(plot.x, centre - halfStep),
+            y: plot.y,
+            width:
+              Math.min(plot.x + plot.width, centre + halfStep) -
+              Math.max(plot.x, centre - halfStep),
+            height: plot.height,
+          }
+        : {
+            x: plot.x,
+            y: Math.max(plot.y, centre - halfStep),
+            width: plot.width,
+            height:
+              Math.min(plot.y + plot.height, centre + halfStep) -
+              Math.max(plot.y, centre - halfStep),
+          };
+      renderer.create(
+        "rect",
+        {
+          ...rect,
+          fill: options.alternateGridColor,
+          stroke: "none",
+          class: "facet-alternate-grid-band",
+        },
+        g,
+      );
+    });
   }
 
   /** Shaded bands spanning an axis interval (horizontal or vertical). */

@@ -45,6 +45,8 @@ export interface NestedAxisConfig {
    */
   gridLineWidth?: number;
   gridLineColor?: string;
+  /** Fill every other leaf-category band across the plot area. */
+  alternateGridColor?: string;
   /**
    * Tier placement:
    *  - `bottom` (default): all tiers stacked below the plot.
@@ -143,6 +145,14 @@ export class NestedAxis {
   }
 
   render(parent: SVGGElement): void {
+    if (typeof this.cfg.alternateGridColor === "string") {
+      const bandGroup = this.cfg.renderer.group(
+        { class: "facet-alternate-grid-bands" },
+        parent,
+      );
+      parent.insertBefore(bandGroup, parent.firstChild);
+      this.drawAlternateCategoryBands(bandGroup);
+    }
     const g = this.cfg.renderer.group(
       { class: "facet-axis facet-axis-nested" },
       parent,
@@ -157,6 +167,45 @@ export class NestedAxis {
       this.renderStacked(g, this.cfg.position === "top");
     }
     this.drawTitle(g);
+  }
+
+  /** Fill every other leaf category behind nested-axis series. */
+  private drawAlternateCategoryBands(g: SVGGElement): void {
+    const { alternateGridColor, renderer, scale, plot, keys, vertical } =
+      this.cfg;
+    if (typeof alternateGridColor !== "string") return;
+    const halfStep = Math.abs(scale.fullStep()) / 2;
+    keys.forEach((key, index) => {
+      if (index % 2 === 0) return;
+      const centre = scale.scale(key);
+      const rect = vertical
+        ? {
+            x: plot.x,
+            y: Math.max(plot.y, centre - halfStep),
+            width: plot.width,
+            height:
+              Math.min(plot.y + plot.height, centre + halfStep) -
+              Math.max(plot.y, centre - halfStep),
+          }
+        : {
+            x: Math.max(plot.x, centre - halfStep),
+            y: plot.y,
+            width:
+              Math.min(plot.x + plot.width, centre + halfStep) -
+              Math.max(plot.x, centre - halfStep),
+            height: plot.height,
+          };
+      renderer.create(
+        "rect",
+        {
+          ...rect,
+          fill: alternateGridColor,
+          stroke: "none",
+          class: "facet-alternate-grid-band",
+        },
+        g,
+      );
+    });
   }
 
   private drawTitle(g: SVGGElement): void {

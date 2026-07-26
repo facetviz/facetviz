@@ -324,6 +324,11 @@ export interface AxisOptions {
   gridLineWidth?: number;
   gridLineColor?: string;
   /**
+   * Fill every other category band across the plot area. Only applies to
+   * categorical axes; the intervening bands retain the chart background.
+   */
+  alternateGridColor?: string;
+  /**
    * Spacing between minor grid lines on continuous axes. A positive number
    * uses data units; `'auto'` divides each major-tick interval into fifths.
    * Minor grid lines are disabled when this option is omitted.
