@@ -45,15 +45,40 @@ export class GaugeSeries extends BaseSeries {
     const thickness = Math.max(10, r * 0.16);
 
     // Track.
-    renderer.create('path', { d: this.arc(cx, cy, r, START, START + SWEEP), fill: 'none', stroke: THEME.axis.gridLineColor, 'stroke-width': thickness, 'stroke-linecap': 'round' }, g);
+    renderer.create('path',
+                    {
+                      d: this.arc(cx, cy, r, START, START + SWEEP),
+                      fill: 'none',
+                      stroke: THEME.axis.gridLineColor,
+                      'stroke-width': thickness,
+                      'stroke-linecap': 'round' },
+                      g);
 
     // Coloured bands, or a single value arc.
     const bands = this.options.bands;
     if (bands) {
+      // Draw all bands with 'butt' caps for clean junctions between bands.
+      // Then add round caps at track start/end if bands cover those positions.
       for (const b of bands) {
         const a0 = START + SWEEP * ((b.from - min) / (max - min || 1));
         const a1 = START + SWEEP * ((b.to - min) / (max - min || 1));
         renderer.create('path', { d: this.arc(cx, cy, r, a0, a1), fill: 'none', stroke: b.color, 'stroke-width': thickness, 'stroke-linecap': 'butt' }, g);
+      }
+
+      // Add rounded caps at track start (135°) and end (405°) if bands span the full range.
+      // The first band covers the start if its 'from' <= min, the last band covers the end if its 'to' >= max.
+      const firstBand = bands[0];
+      const lastBand = bands[bands.length - 1];
+      const capRadius = thickness / 2;
+      const eps = 1e-9;
+
+      if (firstBand.from <= min + eps) {
+        const pt = this.pt(cx, cy, r, START);
+        renderer.create('circle', { cx: pt.x, cy: pt.y, r: capRadius, fill: firstBand.color }, g);
+      }
+      if (lastBand.to >= max - eps) {
+        const pt = this.pt(cx, cy, r, START + SWEEP);
+        renderer.create('circle', { cx: pt.x, cy: pt.y, r: capRadius, fill: lastBand.color }, g);
       }
     } else {
       renderer.create('path', { d: this.arc(cx, cy, r, START, START + SWEEP * frac), fill: 'none', stroke: p.color ?? this.color, 'stroke-width': thickness, 'stroke-linecap': 'round' }, g);

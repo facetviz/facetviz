@@ -1634,14 +1634,33 @@ var START = 135, SWEEP = 270, GaugeSeries = class extends BaseSeries {
     let { renderer, plot } = ctx, g = renderer.group({ class: `facet-series facet-gauge ${this.name}` }, renderer.root), p = this.points[0];
     if (!p) return;
     let min = this.options.min ?? 0, max = this.options.max ?? 100, value = p.y ?? 0, frac = Math.max(0, Math.min(1, (value - min) / (max - min || 1))), cx = plot.x + plot.width / 2, cy = plot.y + plot.height * 0.62, r = Math.min(plot.width * 0.44, plot.height * 0.5) - 6, thickness = Math.max(10, r * 0.16);
-    renderer.create("path", { d: this.arc(cx, cy, r, START, START + SWEEP), fill: "none", stroke: THEME.axis.gridLineColor, "stroke-width": thickness, "stroke-linecap": "round" }, g);
+    renderer.create(
+      "path",
+      {
+        d: this.arc(cx, cy, r, START, START + SWEEP),
+        fill: "none",
+        stroke: THEME.axis.gridLineColor,
+        "stroke-width": thickness,
+        "stroke-linecap": "round"
+      },
+      g
+    );
     let bands = this.options.bands;
-    if (bands)
+    if (bands) {
       for (let b of bands) {
         let a0 = START + SWEEP * ((b.from - min) / (max - min || 1)), a1 = START + SWEEP * ((b.to - min) / (max - min || 1));
         renderer.create("path", { d: this.arc(cx, cy, r, a0, a1), fill: "none", stroke: b.color, "stroke-width": thickness, "stroke-linecap": "butt" }, g);
       }
-    else
+      let firstBand = bands[0], lastBand = bands[bands.length - 1], capRadius = thickness / 2, eps = 1e-9;
+      if (firstBand.from <= min + eps) {
+        let pt = this.pt(cx, cy, r, START);
+        renderer.create("circle", { cx: pt.x, cy: pt.y, r: capRadius, fill: firstBand.color }, g);
+      }
+      if (lastBand.to >= max - eps) {
+        let pt = this.pt(cx, cy, r, START + SWEEP);
+        renderer.create("circle", { cx: pt.x, cy: pt.y, r: capRadius, fill: lastBand.color }, g);
+      }
+    } else
       renderer.create("path", { d: this.arc(cx, cy, r, START, START + SWEEP * frac), fill: "none", stroke: p.color ?? this.color, "stroke-width": thickness, "stroke-linecap": "round" }, g);
     let ang = (START + SWEEP * frac) * Math.PI / 180, nr = r - thickness / 2, needle = renderer.create("line", {
       x1: cx,
