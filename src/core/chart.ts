@@ -1338,6 +1338,10 @@ export class FacetViz {
     const id = `facet-clip-${++this.clipSeq}`;
     const cp = document.createElementNS(NS, "clipPath");
     cp.setAttribute("id", id);
+    // Explicitly set clipPathUnits to userSpaceOnUse to work around a Chrome
+    // bug where the clip path isn't applied correctly when the SVG has a
+    // viewBox that differs from the viewport dimensions (responsive scaling).
+    cp.setAttribute("clipPathUnits", "userSpaceOnUse");
     const rect = document.createElementNS(NS, "rect");
     // A couple of px of slack so edge markers aren't harshly cut.
     rect.setAttribute("x", String(plot.x - 2));

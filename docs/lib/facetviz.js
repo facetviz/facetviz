@@ -1626,62 +1626,96 @@ var registerGanttSeries = () => registerSeriesType("gantt", GanttSeries);
 registerGanttSeries();
 
 // src/series/gauge.ts
-var START = 135, SWEEP = 270, GaugeSeries = class extends BaseSeries {
+function arcBandPath(cx, cy, rInner, rOuter, startDeg, endDeg) {
+  if (endDeg <= startDeg) return "";
+  let a0 = startDeg * Math.PI / 180, a1 = endDeg * Math.PI / 180, large = endDeg - startDeg > 180 ? 1 : 0, ox0 = cx + rOuter * Math.cos(a0), oy0 = cy + rOuter * Math.sin(a0), ox1 = cx + rOuter * Math.cos(a1), oy1 = cy + rOuter * Math.sin(a1), ix1 = cx + rInner * Math.cos(a1), iy1 = cy + rInner * Math.sin(a1), ix0 = cx + rInner * Math.cos(a0), iy0 = cy + rInner * Math.sin(a0);
+  return `M ${ox0} ${oy0} A ${rOuter} ${rOuter} 0 ${large} 1 ${ox1} ${oy1} L ${ix1} ${iy1} A ${rInner} ${rInner} 0 ${large} 0 ${ix0} ${iy0} Z`;
+}
+function pointOnCircle(cx, cy, r, deg) {
+  let a = deg * Math.PI / 180;
+  return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+}
+var GaugeSeries = class extends BaseSeries {
   capabilities() {
     return { grouped: !1, cartesian: !1, stackable: !1 };
   }
   render(ctx) {
     let { renderer, plot } = ctx, g = renderer.group({ class: `facet-series facet-gauge ${this.name}` }, renderer.root), p = this.points[0];
     if (!p) return;
-    let min = this.options.min ?? 0, max = this.options.max ?? 100, value = p.y ?? 0, frac = Math.max(0, Math.min(1, (value - min) / (max - min || 1))), cx = plot.x + plot.width / 2, cy = plot.y + plot.height * 0.62, r = Math.min(plot.width * 0.44, plot.height * 0.5) - 6, thickness = Math.max(10, r * 0.16);
-    renderer.create(
-      "path",
-      {
-        d: this.arc(cx, cy, r, START, START + SWEEP),
-        fill: "none",
-        stroke: THEME.axis.gridLineColor,
-        "stroke-width": thickness,
-        "stroke-linecap": "round"
-      },
-      g
-    );
-    let bands = this.options.bands;
-    if (bands) {
-      for (let b of bands) {
-        let a0 = START + SWEEP * ((b.from - min) / (max - min || 1)), a1 = START + SWEEP * ((b.to - min) / (max - min || 1));
-        renderer.create("path", { d: this.arc(cx, cy, r, a0, a1), fill: "none", stroke: b.color, "stroke-width": thickness, "stroke-linecap": "butt" }, g);
-      }
-      let firstBand = bands[0], lastBand = bands[bands.length - 1], capRadius = thickness / 2, eps = 1e-9;
-      if (firstBand.from <= min + eps) {
-        let pt = this.pt(cx, cy, r, START);
-        renderer.create("circle", { cx: pt.x, cy: pt.y, r: capRadius, fill: firstBand.color }, g);
-      }
-      if (lastBand.to >= max - eps) {
-        let pt = this.pt(cx, cy, r, START + SWEEP);
-        renderer.create("circle", { cx: pt.x, cy: pt.y, r: capRadius, fill: lastBand.color }, g);
-      }
-    } else
-      renderer.create("path", { d: this.arc(cx, cy, r, START, START + SWEEP * frac), fill: "none", stroke: p.color ?? this.color, "stroke-width": thickness, "stroke-linecap": "round" }, g);
-    let ang = (START + SWEEP * frac) * Math.PI / 180, nr = r - thickness / 2, needle = renderer.create("line", {
-      x1: cx,
-      y1: cy,
-      x2: cx + nr * Math.cos(ang),
-      y2: cy + nr * Math.sin(ang),
-      stroke: "#333",
-      "stroke-width": 3,
-      "stroke-linecap": "round",
+    let opts = this.options, min = opts.min ?? 0, max = opts.max ?? 100, value = Math.max(min, Math.min(max, p.y ?? 0)), frac = max === min ? 0 : (value - min) / (max - min), START_DEG = 180, SWEEP_DEG = 180, END_DEG = START_DEG + SWEEP_DEG, cx = plot.x + plot.width / 2, cy = plot.y + plot.height * 0.7, radius = Math.min(plot.width * 0.42, plot.height * 0.55), thickness = opts.thickness ?? Math.max(12, radius * 0.18), rOuter = radius, rInner = radius - thickness, trackColor = opts.trackColor ?? THEME.axis.gridLineColor, trackOpacity = opts.trackOpacity ?? 0.15;
+    renderer.create("path", {
+      d: arcBandPath(cx, cy, rInner, rOuter, START_DEG, END_DEG),
+      fill: trackColor,
+      opacity: trackOpacity,
+      stroke: "none"
+    }, g);
+    let valueEndDeg = START_DEG + SWEEP_DEG * frac, bandColor = opts.bandColor ?? p.color ?? this.color;
+    renderer.create("path", {
+      d: arcBandPath(cx, cy, rInner, rOuter, START_DEG, valueEndDeg),
+      fill: bandColor,
+      stroke: "none"
+    }, g);
+    let hitEl = renderer.create("path", {
+      d: arcBandPath(cx, cy, rInner, rOuter, START_DEG, END_DEG),
+      fill: "transparent",
+      stroke: "none",
       class: "facet-point"
     }, g);
-    renderer.create("circle", { cx, cy, r: 6, fill: "#333" }, g), renderer.text(String(value), cx, cy + r * 0.5, { "text-anchor": "middle", ...FONTS.title, "font-size": "22px" }, g), (p.name ?? this.name) && renderer.text(String(p.name ?? this.name), cx, cy + r * 0.5 + 18, { "text-anchor": "middle", ...FONTS.subtitle }, g), ctx.registerHover(needle, p), needle.addEventListener("click", (e) => ctx.onPointEvent("click", p, e)), needle.addEventListener("mouseover", (e) => ctx.onPointEvent("mouseOver", p, e)), needle.addEventListener("mouseout", (e) => ctx.onPointEvent("mouseOut", p, e));
-  }
-  /** SVG arc path from startDeg to endDeg on a circle. */
-  arc(cx, cy, r, a0, a1) {
-    let p0 = this.pt(cx, cy, r, a0), p1 = this.pt(cx, cy, r, a1), large = Math.abs(a1 - a0) > 180 ? 1 : 0;
-    return `M ${p0.x} ${p0.y} A ${r} ${r} 0 ${large} 1 ${p1.x} ${p1.y}`;
-  }
-  pt(cx, cy, r, deg) {
-    let a = deg * Math.PI / 180;
-    return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+    if (ctx.registerHover(hitEl, p), hitEl.addEventListener("click", (e) => ctx.onPointEvent("click", p, e)), hitEl.addEventListener("mouseover", (e) => ctx.onPointEvent("mouseOver", p, e)), hitEl.addEventListener("mouseout", (e) => ctx.onPointEvent("mouseOut", p, e)), opts.milestones && opts.milestones.length) {
+      let milestones = opts.milestones.map((m) => ({
+        ...m,
+        value: Math.max(min, Math.min(max, m.value)),
+        label: m.label ?? String(m.value),
+        color: m.color ?? bandColor,
+        labelPosition: m.labelPosition ?? "outside"
+      })).sort((a, b) => a.value - b.value);
+      for (let m of milestones) {
+        let mFrac = max === min ? 0 : (m.value - min) / (max - min), mDeg = START_DEG + SWEEP_DEG * mFrac, lineOuter = rOuter + 2, lineInner = rInner - 2, pOuter = pointOnCircle(cx, cy, lineOuter, mDeg), pInner = pointOnCircle(cx, cy, lineInner, mDeg);
+        renderer.create("line", {
+          x1: pInner.x,
+          y1: pInner.y,
+          x2: pOuter.x,
+          y2: pOuter.y,
+          stroke: m.color,
+          "stroke-width": 2,
+          "stroke-linecap": "round"
+        }, g);
+        let labelRadius = m.labelPosition === "inside" ? (rInner + rOuter) / 2 : rOuter + 18, labelPt = pointOnCircle(cx, cy, labelRadius, mDeg), isRightSide = mDeg > 270 && mDeg < 360, isLeftSide = mDeg > 180 && mDeg < 270, anchor = isRightSide ? "start" : isLeftSide ? "end" : "middle", dx = isRightSide ? 4 : isLeftSide ? -4 : 0;
+        renderer.text(m.label, labelPt.x + dx, labelPt.y + 4, {
+          "text-anchor": anchor,
+          ...FONTS.dataLabel,
+          "font-size": "10px",
+          fill: m.color
+        }, g);
+      }
+    }
+    if (opts.showMinMax !== !1) {
+      let minPt = pointOnCircle(cx, cy, rOuter + 22, START_DEG);
+      renderer.text(String(min), minPt.x, minPt.y + 4, {
+        "text-anchor": "middle",
+        ...FONTS.dataLabel,
+        "font-size": "11px",
+        fill: THEME.axis.labelColor
+      }, g);
+      let maxPt = pointOnCircle(cx, cy, rOuter + 22, END_DEG);
+      renderer.text(String(max), maxPt.x, maxPt.y + 4, {
+        "text-anchor": "middle",
+        ...FONTS.dataLabel,
+        "font-size": "11px",
+        fill: THEME.axis.labelColor
+      }, g);
+    }
+    let centerValue = opts.centerFormatter ? opts.centerFormatter(value) : String(value), centerFontSize = opts.centerFontSize ?? 22;
+    renderer.text(centerValue, cx, cy - rInner / 2 + centerFontSize / 2, {
+      "text-anchor": "middle",
+      ...FONTS.title,
+      "font-size": `${centerFontSize}px`,
+      fill: THEME.axis.titleColor
+    }, g), (p.name ?? this.name) && renderer.text(String(p.name ?? this.name), cx, cy, {
+      "text-anchor": "middle",
+      ...FONTS.subtitle,
+      fill: THEME.axis.labelColor
+    }, g);
   }
 };
 
@@ -5001,7 +5035,7 @@ var FacetViz = class _FacetViz {
     let NS = "http://www.w3.org/2000/svg", root = this.renderer.root, defs = root.querySelector("defs");
     defs || (defs = document.createElementNS(NS, "defs"), root.insertBefore(defs, root.firstChild));
     let id = `facet-clip-${++this.clipSeq}`, cp = document.createElementNS(NS, "clipPath");
-    cp.setAttribute("id", id);
+    cp.setAttribute("id", id), cp.setAttribute("clipPathUnits", "userSpaceOnUse");
     let rect = document.createElementNS(NS, "rect");
     rect.setAttribute("x", String(plot.x - 2)), rect.setAttribute("y", String(plot.y - 2)), rect.setAttribute("width", String(plot.width + 4)), rect.setAttribute("height", String(plot.height + 4)), cp.appendChild(rect), defs.appendChild(cp);
     for (let el of Array.from(root.children)) {
