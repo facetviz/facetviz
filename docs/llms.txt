@@ -79,7 +79,7 @@ Use this decision order:
 | Financial OHLC | `candlestick` | open/high/low/close data | Generic ranges |
 | Running contributions | `waterfall` | Deltas build toward totals | Independent categories |
 | Progress against targets | `bullet` | Measure, target, qualitative ranges | Multiple time points |
-| One KPI on a dial | `gauge` | A bounded single value is expected | Comparing several values |
+| One or a few KPIs on dials | `gauge` | Bounded values share one range | Many precise comparisons |
 | Events on a sequence | `timeline` | Event order/timing is primary | Durations matter |
 | Tasks with durations | `gantt` | start/end per task | Dependencies/critical path required |
 | Category × category intensity | `heatmap` | Dense matrix comparison | Precise individual values |
@@ -243,6 +243,17 @@ interface SeriesOptions {
   tooltip?: { enabled?: boolean; format?: string; formatter?: (ctx)=>string;
     valuePrefix?: string; valueSuffix?: string; valueDecimals?: number };
   states?: { hover?: { enabled?: boolean; scale?: number; brightness?: number } };
+  // gauge series
+  min?: number; max?: number;
+  minLabel?: string; maxLabel?: string;
+  trackColor?: string; trackOpacity?: number; thickness?: number;
+  showMinMax?: boolean;
+  centerFormatter?: (value: number) => string;
+  centerFontSize?: number;
+  markers?: Array<{
+    value: number; label?: string; color?: string;
+    labelPosition?: 'outside'|'inside'; fontSize?: number;
+  }>;
 }
 ```
 
@@ -353,11 +364,14 @@ series: [{ name: 'Group A', data: [18,25,20] },
 // bullet
 data: [{ name: 'Revenue', y: 72, target: 80, ranges: [50, 75, 100] }]
 
-// gauge
-{ type: 'gauge', min: 0, max: 100, data: [{ name: 'SLA', y: 86 }],
-  bands: [{ from: 0, to: 60, color: '#ef4444' },
-          { from: 60, to: 85, color: '#f59e0b' },
-          { from: 85, to: 100, color: '#22c55e' }] }
+// gauge: values lay out left-to-right; chart.inverted makes them top-to-bottom
+// marker fontSize is a pixel value; point color overrides the series color
+plotOptions: { gauge: {
+  color: '#22c55e',
+  markers: [{ value: 80, label: 'Target', fontSize: 12 }]
+} }
+series: [{ type: 'gauge', min: 0, max: 100,
+  data: [{ name: 'API', y: 86 }, { name: 'Workers', y: 74 }] }]
 
 // heatmap
 data: [{ x: 'Mon', y: 'Morning', value: 18 }]

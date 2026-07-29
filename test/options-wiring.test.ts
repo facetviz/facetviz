@@ -248,6 +248,34 @@ describe('configuration option wiring', () => {
     expect(mouseOut).toHaveBeenCalledTimes(3);
   });
 
+  it('inherits gauge markers from plotOptions and allows a series override', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { ...baseChart, type: 'gauge' },
+      plotOptions: {
+        gauge: {
+          markers: [{ value: 75, label: 'Default target' }],
+        },
+      },
+      series: [
+        {
+          name: 'Custom',
+          markers: [{ value: 50, label: 'Custom target' }],
+          data: [40],
+        },
+        {
+          name: 'Default',
+          data: [60],
+        },
+      ],
+    });
+
+    const labels = [...el.querySelectorAll('.facet-gauge-marker-label')]
+      .map((node) => node.textContent);
+    expect(labels).toEqual(['Custom target', 'Default target']);
+    expect(el.querySelectorAll('.facet-gauge-marker')).toHaveLength(2);
+  });
+
   it('fires legend callbacks for custom multi-level pie legend providers', () => {
     const legendItemClick = vi.fn();
     const el = container();

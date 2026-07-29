@@ -1640,82 +1640,178 @@ var GaugeSeries = class extends BaseSeries {
     return { grouped: !1, cartesian: !1, stackable: !1 };
   }
   render(ctx) {
-    let { renderer, plot } = ctx, g = renderer.group({ class: `facet-series facet-gauge ${this.name}` }, renderer.root), p = this.points[0];
-    if (!p) return;
-    let opts = this.options, min = opts.min ?? 0, max = opts.max ?? 100, value = Math.max(min, Math.min(max, p.y ?? 0)), frac = max === min ? 0 : (value - min) / (max - min), START_DEG = 180, SWEEP_DEG = 180, END_DEG = START_DEG + SWEEP_DEG, cx = plot.x + plot.width / 2, cy = plot.y + plot.height * 0.7, radius = Math.min(plot.width * 0.42, plot.height * 0.55), thickness = opts.thickness ?? Math.max(12, radius * 0.18), rOuter = radius, rInner = radius - thickness, trackColor = opts.trackColor ?? THEME.axis.gridLineColor, trackOpacity = opts.trackOpacity ?? 0.15;
-    renderer.create("path", {
-      d: arcBandPath(cx, cy, rInner, rOuter, START_DEG, END_DEG),
-      fill: trackColor,
-      opacity: trackOpacity,
-      stroke: "none"
-    }, g);
-    let valueEndDeg = START_DEG + SWEEP_DEG * frac, bandColor = opts.bandColor ?? p.color ?? this.color;
-    renderer.create("path", {
-      d: arcBandPath(cx, cy, rInner, rOuter, START_DEG, valueEndDeg),
-      fill: bandColor,
-      stroke: "none"
-    }, g);
-    let hitEl = renderer.create("path", {
-      d: arcBandPath(cx, cy, rInner, rOuter, START_DEG, END_DEG),
-      fill: "transparent",
-      stroke: "none",
-      class: "facet-point"
-    }, g);
-    if (ctx.registerHover(hitEl, p), hitEl.addEventListener("click", (e) => ctx.onPointEvent("click", p, e)), hitEl.addEventListener("mouseover", (e) => ctx.onPointEvent("mouseOver", p, e)), hitEl.addEventListener("mouseout", (e) => ctx.onPointEvent("mouseOut", p, e)), opts.milestones && opts.milestones.length) {
-      let milestones = opts.milestones.map((m) => ({
+    let { renderer, plot, inverted } = ctx, g = renderer.group(
+      { class: `facet-series facet-gauge ${this.name}` },
+      renderer.root
+    ), points = this.visiblePoints();
+    if (!points.length) return;
+    let opts = this.options;
+    points.forEach((p, index) => {
+      let gaugePlot = inverted ? {
+        x: plot.x,
+        y: plot.y + plot.height * index / points.length,
+        width: plot.width,
+        height: plot.height / points.length
+      } : {
+        x: plot.x + plot.width * index / points.length,
+        y: plot.y,
+        width: plot.width / points.length,
+        height: plot.height
+      }, item = renderer.group(
+        {
+          class: "facet-gauge-item",
+          "data-point-index": p.index
+        },
+        g
+      );
+      this.renderGauge(ctx, p, gaugePlot, item, opts);
+    });
+  }
+  renderGauge(ctx, p, plot, g, opts) {
+    let { renderer } = ctx, min = opts.min ?? 0, max = opts.max ?? 100, minLabel = opts.minLabel ?? String(min), maxLabel = opts.maxLabel ?? String(max), value = Math.max(min, Math.min(max, p.y ?? 0)), frac = max === min ? 0 : (value - min) / (max - min), START_DEG = 180, SWEEP_DEG = 180, END_DEG = START_DEG + SWEEP_DEG, cx = plot.x + plot.width / 2, cy = plot.y + plot.height * 0.7, radius = Math.min(plot.width * 0.42, plot.height * 0.55), requestedThickness = opts.thickness ?? Math.max(4, radius * 0.18), thickness = Math.min(requestedThickness, radius * 0.8), rOuter = radius, rInner = radius - thickness, trackColor = opts.trackColor ?? THEME.axis.gridLineColor, trackOpacity = opts.trackOpacity ?? 0.15;
+    renderer.create(
+      "path",
+      {
+        d: arcBandPath(cx, cy, rInner, rOuter, START_DEG, END_DEG),
+        fill: trackColor,
+        opacity: trackOpacity,
+        stroke: "none"
+      },
+      g
+    );
+    let valueEndDeg = START_DEG + SWEEP_DEG * frac, bandColor = p.color ?? this.color ?? opts.color;
+    renderer.create(
+      "path",
+      {
+        d: arcBandPath(cx, cy, rInner, rOuter, START_DEG, valueEndDeg),
+        fill: bandColor,
+        stroke: "none"
+      },
+      g
+    );
+    let hitEl = renderer.create(
+      "path",
+      {
+        d: arcBandPath(cx, cy, rInner, rOuter, START_DEG, END_DEG),
+        fill: "transparent",
+        stroke: "none",
+        class: "facet-point"
+      },
+      g
+    );
+    if (ctx.registerHover(hitEl, p), hitEl.addEventListener(
+      "click",
+      (e) => ctx.onPointEvent("click", p, e)
+    ), hitEl.addEventListener(
+      "mouseover",
+      (e) => ctx.onPointEvent("mouseOver", p, e)
+    ), hitEl.addEventListener(
+      "mouseout",
+      (e) => ctx.onPointEvent("mouseOut", p, e)
+    ), opts.markers && opts.markers.length) {
+      let markers = opts.markers.map((m) => ({
         ...m,
         value: Math.max(min, Math.min(max, m.value)),
         label: m.label ?? String(m.value),
         color: m.color ?? bandColor,
-        labelPosition: m.labelPosition ?? "outside"
+        labelPosition: m.labelPosition ?? "outside",
+        fontSize: m.fontSize ?? 10
       })).sort((a, b) => a.value - b.value);
-      for (let m of milestones) {
+      for (let m of markers) {
         let mFrac = max === min ? 0 : (m.value - min) / (max - min), mDeg = START_DEG + SWEEP_DEG * mFrac, lineOuter = rOuter + 2, lineInner = rInner - 2, pOuter = pointOnCircle(cx, cy, lineOuter, mDeg), pInner = pointOnCircle(cx, cy, lineInner, mDeg);
-        renderer.create("line", {
-          x1: pInner.x,
-          y1: pInner.y,
-          x2: pOuter.x,
-          y2: pOuter.y,
-          stroke: m.color,
-          "stroke-width": 2,
-          "stroke-linecap": "round"
-        }, g);
+        renderer.create(
+          "line",
+          {
+            x1: pInner.x,
+            y1: pInner.y,
+            x2: pOuter.x,
+            y2: pOuter.y,
+            stroke: m.color,
+            "stroke-width": 2,
+            "stroke-linecap": "round",
+            class: "facet-gauge-marker"
+          },
+          g
+        );
         let labelRadius = m.labelPosition === "inside" ? (rInner + rOuter) / 2 : rOuter + 18, labelPt = pointOnCircle(cx, cy, labelRadius, mDeg), isRightSide = mDeg > 270 && mDeg < 360, isLeftSide = mDeg > 180 && mDeg < 270, anchor = isRightSide ? "start" : isLeftSide ? "end" : "middle", dx = isRightSide ? 4 : isLeftSide ? -4 : 0;
-        renderer.text(m.label, labelPt.x + dx, labelPt.y + 4, {
-          "text-anchor": anchor,
-          ...FONTS.dataLabel,
-          "font-size": "10px",
-          fill: m.color
-        }, g);
+        renderer.text(
+          m.label,
+          labelPt.x + dx,
+          labelPt.y + 4,
+          {
+            "text-anchor": anchor,
+            ...FONTS.dataLabel,
+            "font-size": `${m.fontSize}px`,
+            fill: m.color,
+            class: "facet-gauge-marker-label"
+          },
+          g
+        );
       }
     }
     if (opts.showMinMax !== !1) {
-      let minPt = pointOnCircle(cx, cy, rOuter + 22, START_DEG);
-      renderer.text(String(min), minPt.x, minPt.y + 4, {
-        "text-anchor": "middle",
-        ...FONTS.dataLabel,
-        "font-size": "11px",
-        fill: THEME.axis.labelColor
-      }, g);
-      let maxPt = pointOnCircle(cx, cy, rOuter + 22, END_DEG);
-      renderer.text(String(max), maxPt.x, maxPt.y + 4, {
-        "text-anchor": "middle",
-        ...FONTS.dataLabel,
-        "font-size": "11px",
-        fill: THEME.axis.labelColor
-      }, g);
+      let minPt = pointOnCircle(
+        cx,
+        cy,
+        rOuter - (rOuter - rInner) / 2,
+        START_DEG
+      );
+      renderer.text(
+        minLabel,
+        minPt.x,
+        minPt.y + 20,
+        {
+          "text-anchor": "middle",
+          ...FONTS.dataLabel,
+          "font-size": "11px",
+          fill: THEME.axis.labelColor
+        },
+        g
+      );
+      let maxPt = pointOnCircle(
+        cx,
+        cy,
+        rInner + (rOuter - rInner) / 2,
+        END_DEG
+      );
+      renderer.text(
+        maxLabel,
+        maxPt.x,
+        maxPt.y + 20,
+        {
+          "text-anchor": "middle",
+          ...FONTS.dataLabel,
+          "font-size": "11px",
+          fill: THEME.axis.labelColor
+        },
+        g
+      );
     }
-    let centerValue = opts.centerFormatter ? opts.centerFormatter(value) : String(value), centerFontSize = opts.centerFontSize ?? 22;
-    renderer.text(centerValue, cx, cy - rInner / 2 + centerFontSize / 2, {
-      "text-anchor": "middle",
-      ...FONTS.title,
-      "font-size": `${centerFontSize}px`,
-      fill: THEME.axis.titleColor
-    }, g), (p.name ?? this.name) && renderer.text(String(p.name ?? this.name), cx, cy, {
-      "text-anchor": "middle",
-      ...FONTS.subtitle,
-      fill: THEME.axis.labelColor
-    }, g);
+    let centerValue = opts.centerFormatter ? opts.centerFormatter(value) : String(value), centerFontSize = opts.centerFontSize ?? Math.max(10, Math.min(22, radius * 0.32));
+    renderer.text(
+      centerValue,
+      cx,
+      cy - rInner / 2 + centerFontSize / 2,
+      {
+        "text-anchor": "middle",
+        ...FONTS.title,
+        "font-size": `${centerFontSize}px`,
+        fill: THEME.axis.titleColor,
+        class: "facet-gauge-value"
+      },
+      g
+    ), (p.name ?? this.name) && renderer.text(
+      String(p.name ?? this.name),
+      cx,
+      cy,
+      {
+        "text-anchor": "middle",
+        ...FONTS.subtitle,
+        fill: THEME.axis.labelColor,
+        class: "facet-gauge-label"
+      },
+      g
+    );
   }
 };
 
@@ -4032,9 +4128,10 @@ function validateChartOptions(options) {
       return typeof x == "number" && x <= 0;
     }) && add("axis.log.non_positive_x", "error", `${base}.data`, "Logarithmic x-axes require strictly positive x values."), type === "histogram" && entry.bins !== void 0 && (typeof entry.bins != "number" || !Number.isSafeInteger(entry.bins) || entry.bins <= 0) && add("histogram.bins.positive_integer", "error", `${base}.bins`, "Histogram bins must be a positive integer."), ["pie", "donut", "funnel", "radialbar", "sunburst"].includes(type) && data.some((point) => (pointValue(point) ?? 1) < 0) && add("series.value.non_negative", "error", `${base}.data`, `${type} values cannot be negative.`), ["arearange", "areasplinerange", "columnrange", "errorbar"].includes(type) && validateRanges(data, base, add), type === "boxplot" && validateBoxplots(data, base, add), type === "candlestick" && validateCandlesticks(data, base, add), type === "gantt" && validateGantt(data, base, add), type === "sankey" && validateSankey(data, base, add), (type === "treegraph" || type === "sunburst") && validateHierarchy(data, base, add), type === "gauge") {
       let min = numberAt(entry, "min") ?? 0, max = numberAt(entry, "max") ?? 100;
-      min >= max && add("gauge.range.order", "error", base, "Gauge min must be smaller than max.");
-      let value = pointValue(data[0]);
-      value !== void 0 && (value < min || value > max) && add("gauge.value.outside_range", "warning", `${base}.data[0]`, `Gauge value ${value} is outside ${min}\u2013${max} and will be clamped.`);
+      min >= max && add("gauge.range.order", "error", base, "Gauge min must be smaller than max."), data.forEach((point, pointIndex) => {
+        let value = pointValue(point);
+        value !== void 0 && (value < min || value > max) && add("gauge.value.outside_range", "warning", `${base}.data[${pointIndex}]`, `Gauge value ${value} is outside ${min}\u2013${max} and will be clamped.`);
+      });
     }
     data.forEach((point, pointIndex) => {
       isRecord(point) && typeof point.drilldown == "string" && !drilldownIds.has(point.drilldown) && add("drilldown.reference.missing", "warning", `${base}.data[${pointIndex}].drilldown`, `No drilldown series has id ${describe(point.drilldown)}.`);
@@ -5482,7 +5579,7 @@ var FacetViz = class _FacetViz {
     });
   }
   renderPolarPanel(plot, visible) {
-    let dummy = new LinearScale({ domain: [0, 1], range: [0, 1] });
+    let dummy = new LinearScale({ domain: [0, 1], range: [0, 1] }), inverted = this.isInverted(visible);
     for (let s of visible) {
       let ctx = this.seriesContext(
         s,
@@ -5490,7 +5587,7 @@ var FacetViz = class _FacetViz {
         dummy,
         dummy,
         { count: 1, index: /* @__PURE__ */ new Map() },
-        !1,
+        inverted,
         !0
       );
       s.render(ctx);

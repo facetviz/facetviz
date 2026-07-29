@@ -16,7 +16,7 @@ const chart = new FacetViz(container, options);
 
 - [ChartOptions](#chartoptions) · [chart](#chartoptions-chart) · [title / subtitle](#title--subtitle)
 - [Axes](#axisoptions) · [plotLines](#plotlineoptions) · [plotBands](#plotbandoptions)
-- [series](#seriesoptions) · [marker](#markeroptions) · [dataLabels](#datalabeloptions) · [states.hover](#hoverstateoptions) · [boxColors](#boxplot-options) · [dumbbell](#dumbbell-options)
+- [series](#seriesoptions) · [marker](#markeroptions) · [dataLabels](#datalabeloptions) · [states.hover](#hoverstateoptions) · [boxColors](#boxplot-options) · [dumbbell](#dumbbell-options) · [gauge](#gauge-options)
 - [tooltip](#tooltipoptions) · [legend](#legendoptions) · [plotOptions](#plotoptions)
 - [trellis](#trellisoptions) · [nested x-axis](#nested-hierarchical-x-axis)
 - [Events](#events) · [Data formats](#point-data-formats) · [Chart types](#chart-types)
@@ -28,42 +28,42 @@ const chart = new FacetViz(container, options);
 
 The root object passed to `new FacetViz(container, options)`.
 
-| Key            | Type                                             | Default       | Description                                                  |
-| -------------- | ------------------------------------------------ | ------------- | ------------------------------------------------------------ |
-| `chart`        | [`ChartConfig`](#chartoptions-chart)             | `{}`          | Chart-wide settings (type, size, background, events).        |
-| `title`        | [`TitleOptions`](#title--subtitle)               | –             | Main heading. Omit `text` to hide.                           |
-| `subtitle`     | [`TitleOptions`](#title--subtitle)               | –             | Secondary heading under the title.                           |
+| Key            | Type                                             | Default       | Description                                                           |
+| -------------- | ------------------------------------------------ | ------------- | --------------------------------------------------------------------- |
+| `chart`        | [`ChartConfig`](#chartoptions-chart)             | `{}`          | Chart-wide settings (type, size, background, events).                 |
+| `title`        | [`TitleOptions`](#title--subtitle)               | –             | Main heading. Omit `text` to hide.                                    |
+| `subtitle`     | [`TitleOptions`](#title--subtitle)               | –             | Secondary heading under the title.                                    |
 | `xAxis`        | [`AxisOptions`](#axisoptions) \| `AxisOptions[]` | `{}`          | X-axis config; arrays support a primary axis plus one secondary axis. |
 | `yAxis`        | [`AxisOptions`](#axisoptions) \| `AxisOptions[]` | `{}`          | Y-axis config; arrays support a primary axis plus one secondary axis. |
-| `tooltip`      | [`TooltipOptions`](#tooltipoptions)              | enabled       | Hover tooltip config.                                        |
-| `legend`       | [`LegendOptions`](#legendoptions)                | enabled       | Legend config and placement.                                 |
-| `plotOptions`  | [`PlotOptions`](#plotoptions)                    | –             | Defaults applied to all series or per type.                  |
-| `series`       | [`SeriesOptions[]`](#seriesoptions)              | **required**  | One entry per data series.                                   |
-| `colors`       | `string[]`                                       | theme palette | Colours cycled through by series lacking an explicit colour. |
-| `theme`        | `string \| ThemeInput`                           | `'light'`     | Visual theme — see [Theming](#theming).                      |
-| `trellis`      | [`TrellisOptions`](#trellisoptions)              | –             | Small-multiples / cross-tab table split.                     |
-| `annotations`  | [`AnnotationOptions[]`](#annotations)             | –             | Value-anchored labels, callouts, and highlights.             |
-| `responsive`   | [`ResponsiveRule[]`](#responsive-rules)           | –             | Size-matched option overrides.                               |
-| `seriesEvents` | [`SeriesEvents`](#events)                        | –             | Event callbacks applied to every series.                     |
+| `tooltip`      | [`TooltipOptions`](#tooltipoptions)              | enabled       | Hover tooltip config.                                                 |
+| `legend`       | [`LegendOptions`](#legendoptions)                | enabled       | Legend config and placement.                                          |
+| `plotOptions`  | [`PlotOptions`](#plotoptions)                    | –             | Defaults applied to all series or per type.                           |
+| `series`       | [`SeriesOptions[]`](#seriesoptions)              | **required**  | One entry per data series.                                            |
+| `colors`       | `string[]`                                       | theme palette | Colours cycled through by series lacking an explicit colour.          |
+| `theme`        | `string \| ThemeInput`                           | `'light'`     | Visual theme — see [Theming](#theming).                               |
+| `trellis`      | [`TrellisOptions`](#trellisoptions)              | –             | Small-multiples / cross-tab table split.                              |
+| `annotations`  | [`AnnotationOptions[]`](#annotations)            | –             | Value-anchored labels, callouts, and highlights.                      |
+| `responsive`   | [`ResponsiveRule[]`](#responsive-rules)          | –             | Size-matched option overrides.                                        |
+| `seriesEvents` | [`SeriesEvents`](#events)                        | –             | Event callbacks applied to every series.                              |
 
 ---
 
 ### ChartOptions.chart
 
-| Key               | Type                               | Default         | Description                                                             |
-| ----------------- | ---------------------------------- | --------------- | ----------------------------------------------------------------------- |
-| `type`            | [`ChartType`](#chart-types)        | `'line'`        | Default series type when a series omits its own `type`.                 |
-| `width`           | `number`                           | container width | Chart width in px. Falls back to the container's width, then `640`.     |
-| `height`          | `number`                           | `400`           | Chart height in px.                                                     |
-| `backgroundColor` | `string`                           | `'#fff'`        | Plot background fill.                                                   |
-| `spacing`         | `[number, number, number, number]` | `[16,16,16,16]` | Outer padding `[top, right, bottom, left]`.                             |
-| `inverted`        | `boolean`                          | `false`         | Swap axes: Cartesian categories become vertical; in general polar charts x becomes radial and y becomes circular. |
-| `polar`           | `boolean`                          | `false`         | Project line, spline, step, area, scatter, jitter, column, and dumbbell series into a shared polar frame. |
-| `polarInnerSize`  | `number \| string`                 | `0`             | Donut-style centre hole: pixels or a percentage such as `'35%'`.       |
-| `polarInnerBackgroundColor` | `string`                  | chart background| Fill of the polar centre hole; use `'#fff'` for a white circle.         |
-| `polarGridLineMode` | `'spoke' \| 'sector'`             | `'spoke'`       | Draw angular grid lines through category centres or along sector boundaries. |
-| `colors`          | `string[]`                         | –               | Alias of top-level `colors`.                                            |
-| `events`          | [`ChartEvents`](#events)           | –               | Chart-level `load` / `render` / `click` callbacks.                      |
+| Key                         | Type                               | Default          | Description                                                                                                       |
+| --------------------------- | ---------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `type`                      | [`ChartType`](#chart-types)        | `'line'`         | Default series type when a series omits its own `type`.                                                           |
+| `width`                     | `number`                           | container width  | Chart width in px. Falls back to the container's width, then `640`.                                               |
+| `height`                    | `number`                           | `400`            | Chart height in px.                                                                                               |
+| `backgroundColor`           | `string`                           | `'#fff'`         | Plot background fill.                                                                                             |
+| `spacing`                   | `[number, number, number, number]` | `[16,16,16,16]`  | Outer padding `[top, right, bottom, left]`.                                                                       |
+| `inverted`                  | `boolean`                          | `false`          | Swap axes: Cartesian categories become vertical; in general polar charts x becomes radial and y becomes circular. |
+| `polar`                     | `boolean`                          | `false`          | Project line, spline, step, area, scatter, jitter, column, and dumbbell series into a shared polar frame.         |
+| `polarInnerSize`            | `number \| string`                 | `0`              | Donut-style centre hole: pixels or a percentage such as `'35%'`.                                                  |
+| `polarInnerBackgroundColor` | `string`                           | chart background | Fill of the polar centre hole; use `'#fff'` for a white circle.                                                   |
+| `polarGridLineMode`         | `'spoke' \| 'sector'`              | `'spoke'`        | Draw angular grid lines through category centres or along sector boundaries.                                      |
+| `colors`                    | `string[]`                         | –                | Alias of top-level `colors`.                                                                                      |
+| `events`                    | [`ChartEvents`](#events)           | –                | Chart-level `load` / `render` / `click` callbacks.                                                                |
 
 > The chart is **responsive**: the SVG scales down (`max-width: 100%`) to never
 > overflow its parent, even when an explicit `width` is larger than the container.
@@ -74,14 +74,14 @@ The root object passed to `new FacetViz(container, options)`.
 
 `TitleOptions` (used by both `title` and `subtitle`):
 
-| Key       | Type                            | Default    | Description                                             |
-| --------- | ------------------------------- | ---------- | ------------------------------------------------------- |
-| `text`    | `string`                        | –          | Title text.                                             |
-| `enabled` | `boolean`                       | `true`     | Hide the title while preserving its configuration.      |
-| `align`   | `'left' \| 'center' \| 'right'` | `'center'` | Horizontal alignment.                                   |
-| `margin`  | `number`                        | auto       | Space below the title block.                            |
-| `offsetY` | `number`                        | `0`        | Additional vertical text offset.                        |
-| `style`   | `Record<string, string>`        | –          | Extra SVG text attributes (e.g. `{ fill: '#333' }`).    |
+| Key       | Type                            | Default    | Description                                          |
+| --------- | ------------------------------- | ---------- | ---------------------------------------------------- |
+| `text`    | `string`                        | –          | Title text.                                          |
+| `enabled` | `boolean`                       | `true`     | Hide the title while preserving its configuration.   |
+| `align`   | `'left' \| 'center' \| 'right'` | `'center'` | Horizontal alignment.                                |
+| `margin`  | `number`                        | auto       | Space below the title block.                         |
+| `offsetY` | `number`                        | `0`        | Additional vertical text offset.                     |
+| `style`   | `Record<string, string>`        | –          | Extra SVG text attributes (e.g. `{ fill: '#333' }`). |
 
 ---
 
@@ -91,63 +91,63 @@ Applies to both `xAxis` and `yAxis`. A **category axis** is used when
 `categories` is present (or `type: 'category'`); otherwise a **value axis**
 (`linear` or `log`).
 
-| Key             | Type                                               | Default     | Description                                                                                                                                        |
-| --------------- | -------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `visible`       | `boolean`                                          | `true`      | When `false`, nothing is drawn and **no space is reserved** for the axis.                                                                          |
-| `opposite`      | `boolean`                                          | `false`     | Move the axis to the opposite side: **y → right**, **x → top**. For a nested x-axis this triggers the [split layout](#nested-hierarchical-x-axis). |
-| `categories`    | `string[]`                                         | –           | Category labels; makes this a categorical axis.                                                                                                    |
-| `type`          | `'linear' \| 'log' \| 'category' \| 'datetime'`    | inferred    | Scale type.                                                                                                                                        |
-| `title`         | [`AxisTitleOptions`](#axis-titles)                 | –           | Axis title and its placement.                                                                                                                      |
-| `min`           | `number`                                           | data min    | Force the axis minimum (value axes).                                                                                                               |
-| `max`           | `number`                                           | data max    | Force the axis maximum (value axes).                                                                                                               |
-| `tickCount`     | `number`                                           | auto        | Approximate number of ticks (linear axes).                                                                                                         |
-| `labels`        | [`AxisLabelOptions`](#axis-labels)                 | enabled     | Tick label config.                                                                                                                                 |
-| `gridLineWidth` | `number`                                           | `1`         | Major grid line thickness (value axis). `0` hides major grid lines.                                                                                 |
-| `gridLineColor` | `string`                                           | `'#e6e6e6'` | Major grid line colour.                                                                                                                             |
-| `gridLineDashStyle` | `string`                                       | –           | Major-grid SVG dash array, for example `'6 3'`.                                                                                                    |
-| `alternateGridColor` | `string`                                      | –           | On a category axis, shade the second, fourth, etc. category bands across the plot with this colour.                                                 |
-| `minorTickInterval` | `number \| 'auto'`                             | –           | Enables minor grid lines. A number uses axis units; `'auto'` divides each major interval into fifths.                                               |
-| `minorGridLineWidth` | `number`                                      | `1`         | Minor grid line thickness once enabled. `0` hides minor grid lines.                                                                                 |
-| `minorGridLineColor` | `string`                                      | major colour| Minor grid line colour.                                                                                                                             |
-| `minorGridLineDashStyle` | `string`                                  | `'2 2'`     | Minor-grid SVG dash array.                                                                                                                          |
-| `lineColor`     | `string`                                           | `'#ccd6eb'` | Axis line colour.                                                                                                                                  |
-| `lineWidth`     | `number`                                           | `1`         | Axis line thickness. `0` hides the axis line.                                                                                                      |
-| `plotLines`     | [`PlotLineOptions[]`](#plotlineoptions)            | –           | Reference lines at fixed values.                                                                                                                   |
-| `plotBands`     | [`PlotBandOptions[]`](#plotbandoptions)            | –           | Shaded value bands.                                                                                                                                |
-| `reversed`      | `boolean`                                          | `false`     | Reverse the axis direction.                                                                                                                        |
-| `startOnZero`   | `boolean`                                          | –           | Force a value axis to include zero.                                                                                                                |
-| `dimension`     | `string`                                           | –           | Bind this axis to a data field for [trellis](#trellisoptions) splitting.                                                                           |
-| `dimensions`    | `string[]`                                         | –           | Two or more fields → [nested hierarchical x-axis](#nested-hierarchical-x-axis).                                                                    |
-| `aggregate`     | `'sum' \| 'avg' \| 'count' \| 'min' \| 'max'`      | `'sum'`     | Aggregation used to collapse points into nested-axis leaves.                                                                                       |
+| Key                      | Type                                            | Default      | Description                                                                                                                                        |
+| ------------------------ | ----------------------------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `visible`                | `boolean`                                       | `true`       | When `false`, nothing is drawn and **no space is reserved** for the axis.                                                                          |
+| `opposite`               | `boolean`                                       | `false`      | Move the axis to the opposite side: **y → right**, **x → top**. For a nested x-axis this triggers the [split layout](#nested-hierarchical-x-axis). |
+| `categories`             | `string[]`                                      | –            | Category labels; makes this a categorical axis.                                                                                                    |
+| `type`                   | `'linear' \| 'log' \| 'category' \| 'datetime'` | inferred     | Scale type.                                                                                                                                        |
+| `title`                  | [`AxisTitleOptions`](#axis-titles)              | –            | Axis title and its placement.                                                                                                                      |
+| `min`                    | `number`                                        | data min     | Force the axis minimum (value axes).                                                                                                               |
+| `max`                    | `number`                                        | data max     | Force the axis maximum (value axes).                                                                                                               |
+| `tickCount`              | `number`                                        | auto         | Approximate number of ticks (linear axes).                                                                                                         |
+| `labels`                 | [`AxisLabelOptions`](#axis-labels)              | enabled      | Tick label config.                                                                                                                                 |
+| `gridLineWidth`          | `number`                                        | `1`          | Major grid line thickness (value axis). `0` hides major grid lines.                                                                                |
+| `gridLineColor`          | `string`                                        | `'#e6e6e6'`  | Major grid line colour.                                                                                                                            |
+| `gridLineDashStyle`      | `string`                                        | –            | Major-grid SVG dash array, for example `'6 3'`.                                                                                                    |
+| `alternateGridColor`     | `string`                                        | –            | On a category axis, shade the second, fourth, etc. category bands across the plot with this colour.                                                |
+| `minorTickInterval`      | `number \| 'auto'`                              | –            | Enables minor grid lines. A number uses axis units; `'auto'` divides each major interval into fifths.                                              |
+| `minorGridLineWidth`     | `number`                                        | `1`          | Minor grid line thickness once enabled. `0` hides minor grid lines.                                                                                |
+| `minorGridLineColor`     | `string`                                        | major colour | Minor grid line colour.                                                                                                                            |
+| `minorGridLineDashStyle` | `string`                                        | `'2 2'`      | Minor-grid SVG dash array.                                                                                                                         |
+| `lineColor`              | `string`                                        | `'#ccd6eb'`  | Axis line colour.                                                                                                                                  |
+| `lineWidth`              | `number`                                        | `1`          | Axis line thickness. `0` hides the axis line.                                                                                                      |
+| `plotLines`              | [`PlotLineOptions[]`](#plotlineoptions)         | –            | Reference lines at fixed values.                                                                                                                   |
+| `plotBands`              | [`PlotBandOptions[]`](#plotbandoptions)         | –            | Shaded value bands.                                                                                                                                |
+| `reversed`               | `boolean`                                       | `false`      | Reverse the axis direction.                                                                                                                        |
+| `startOnZero`            | `boolean`                                       | –            | Force a value axis to include zero.                                                                                                                |
+| `dimension`              | `string`                                        | –            | Bind this axis to a data field for [trellis](#trellisoptions) splitting.                                                                           |
+| `dimensions`             | `string[]`                                      | –            | Two or more fields → [nested hierarchical x-axis](#nested-hierarchical-x-axis).                                                                    |
+| `aggregate`              | `'sum' \| 'avg' \| 'count' \| 'min' \| 'max'`   | `'sum'`      | Aggregation used to collapse points into nested-axis leaves.                                                                                       |
 
 ### Axis labels
 
 `AxisOptions.labels`:
 
-| Key         | Type                    | Default     | Description                                                                                                                                                         |
-| ----------- | ----------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `enabled`   | `boolean`               | `true`      | Show tick labels. Set `false` to hide labels but keep the axis line.                                                                                                |
-| `format`    | `string`                | `'{value}'` | Token string; `{value}` is the tick value. Accepts format specs / dates — see [Text & label formatting](#text--label-formatting).                                   |
-| `formatter` | `(value) => string`     | –           | Custom label function (overrides `format`).                                                                                                                         |
-| `rotation`  | `number`                | `0`         | Rotate tick labels by this angle (degrees), e.g. `-45` or `-90` for long/crowded categories. Labels are anchored to their tick and the axis band grows to fit them. |
-| `autoRotation` | `number[]`           | `[0]`       | Candidate rotations tried in order when horizontal category labels overlap.                                                                        |
-| `step`      | `number`                | auto        | Draw every Nth label; collision handling may increase it.                                                                                           |
-| `maxWidth`  | `number`                | –           | Maximum measured label width in pixels.                                                                                                             |
-| `overflow`  | `'ellipsis' \| 'hide'`  | `'ellipsis'`| Truncate or hide labels wider than `maxWidth`.                                                                                                       |
-| `position`  | `'outer' \| 'inner'`    | `'outer'`   | Non-inverted polar x-axis: place labels outside the plot or curve them around the centre-hole radius.                                                |
-| `offset`    | `number`                | contextual  | Polar x-axis label gap: 7 for inner, 10 for outer, and 6 beside an inverted radial axis.                                                            |
-| `style`     | `Record<string,string>` | –           | Extra text attributes.                                                                                                                                              |
+| Key            | Type                    | Default      | Description                                                                                                                                                         |
+| -------------- | ----------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`      | `boolean`               | `true`       | Show tick labels. Set `false` to hide labels but keep the axis line.                                                                                                |
+| `format`       | `string`                | `'{value}'`  | Token string; `{value}` is the tick value. Accepts format specs / dates — see [Text & label formatting](#text--label-formatting).                                   |
+| `formatter`    | `(value) => string`     | –            | Custom label function (overrides `format`).                                                                                                                         |
+| `rotation`     | `number`                | `0`          | Rotate tick labels by this angle (degrees), e.g. `-45` or `-90` for long/crowded categories. Labels are anchored to their tick and the axis band grows to fit them. |
+| `autoRotation` | `number[]`              | `[0]`        | Candidate rotations tried in order when horizontal category labels overlap.                                                                                         |
+| `step`         | `number`                | auto         | Draw every Nth label; collision handling may increase it.                                                                                                           |
+| `maxWidth`     | `number`                | –            | Maximum measured label width in pixels.                                                                                                                             |
+| `overflow`     | `'ellipsis' \| 'hide'`  | `'ellipsis'` | Truncate or hide labels wider than `maxWidth`.                                                                                                                      |
+| `position`     | `'outer' \| 'inner'`    | `'outer'`    | Non-inverted polar x-axis: place labels outside the plot or curve them around the centre-hole radius.                                                               |
+| `offset`       | `number`                | contextual   | Polar x-axis label gap: 7 for inner, 10 for outer, and 6 beside an inverted radial axis.                                                                            |
+| `style`        | `Record<string,string>` | –            | Extra text attributes.                                                                                                                                              |
 
 ### Axis titles
 
 `AxisOptions.title` supports `text`, `enabled`, `style`, and:
 
-| Key      | Type                              | Default    | Description                                      |
-| -------- | --------------------------------- | ---------- | ------------------------------------------------ |
-| `align`  | `'start' \| 'center' \| 'end'`   | `'center'` | Position along the axis.                         |
-| `margin` | `number`                          | auto       | Gap between tick labels and the title.           |
-| `offset` | `number`                          | `0`        | Additional distance away from the plot.          |
-| `position` | `'outer' \| 'center'`           | `'outer'`  | Polar x-axis only: place the title below the frame or in its centre. |
+| Key        | Type                           | Default    | Description                                                          |
+| ---------- | ------------------------------ | ---------- | -------------------------------------------------------------------- |
+| `align`    | `'start' \| 'center' \| 'end'` | `'center'` | Position along the axis.                                             |
+| `margin`   | `number`                       | auto       | Gap between tick labels and the title.                               |
+| `offset`   | `number`                       | `0`        | Additional distance away from the plot.                              |
+| `position` | `'outer' \| 'center'`          | `'outer'`  | Polar x-axis only: place the title below the frame or in its centre. |
 
 For two axes, configure an array and bind the series by zero-based index.
 `yAxis[1].opposite: true` explicitly places the second axis on the right;
@@ -222,8 +222,8 @@ One object per series in the `series` array.
 | `showInLegend`   | `boolean`                                                 | `true`        | Set to `false` to omit this series from the chart legend.                                                                                                                                                                                       |
 | `stack`          | `string \| number`                                        | –             | Series sharing a stack id pile together.                                                                                                                                                                                                        |
 | `stacking`       | `'normal' \| 'percent'`                                   | –             | Enable stacking (`percent` = 100% stacked).                                                                                                                                                                                                     |
-| `xAxis`          | `0 \| 1`                                                  | `0`           | Bound x-axis. `1` uses the secondary x-axis, drawn at the top with its own categories/domain.                                                                                                                      |
-| `yAxis`          | `0 \| 1`                                                  | `0`           | Bound y-axis. `1` = secondary axis, drawn on the right with its own scale — pass `yAxis` (top-level) as a 2-element array to configure it. Works with a plain categorical x-axis or a [nested one](#nested-hierarchical-x-axis).   |
+| `xAxis`          | `0 \| 1`                                                  | `0`           | Bound x-axis. `1` uses the secondary x-axis, drawn at the top with its own categories/domain.                                                                                                                                                   |
+| `yAxis`          | `0 \| 1`                                                  | `0`           | Bound y-axis. `1` = secondary axis, drawn on the right with its own scale — pass `yAxis` (top-level) as a 2-element array to configure it. Works with a plain categorical x-axis or a [nested one](#nested-hierarchical-x-axis).                |
 | `lineWidth`      | `number`                                                  | `2`           | Stroke width (line/area/range).                                                                                                                                                                                                                 |
 | `innerSize`      | `string`                                                  | –             | Pie inner radius, e.g. `'60%'` (makes a donut).                                                                                                                                                                                                 |
 | `centerLabel`    | [`PieCenterLabelOptions`](#piecenterlabeloptions)         | enabled       | Hovered slice value displayed in the hollow centre of a donut or pie with `innerSize`.                                                                                                                                                          |
@@ -312,12 +312,12 @@ default tooltip. Style them via `SeriesOptions.outlierMarker` (`radius`,
 
 ### Dumbbell options
 
-| Key              | Type     | Default       | Description                                                |
-| ---------------- | -------- | ------------- | ------------------------------------------------------------ |
-| `lowColor`       | `string` | series colour | Low-end marker colour.                                       |
-| `highColor`      | `string` | series colour | High-end marker colour (also the legend swatch).              |
-| `connectorColor` | `string` | `'#b0b0b0'`   | Connector line colour.                                        |
-| `connectorWidth` | `number` | `3`           | Connector line thickness.                                     |
+| Key              | Type     | Default       | Description                                      |
+| ---------------- | -------- | ------------- | ------------------------------------------------ |
+| `lowColor`       | `string` | series colour | Low-end marker colour.                           |
+| `highColor`      | `string` | series colour | High-end marker colour (also the legend swatch). |
+| `connectorColor` | `string` | `'#b0b0b0'`   | Connector line colour.                           |
+| `connectorWidth` | `number` | `3`           | Connector line thickness.                        |
 
 All four can also be set on an individual **point** to override that series'
 (or `plotOptions.dumbbell`'s) value for just that one connector — see
@@ -333,6 +333,60 @@ series: [{
   data: [
     { low: 2, high: 8 },                              // connector from plotOptions, low from series
     { low: 3, high: 7, highColor: 'green' },          // high overridden for this point only
+  ],
+}]
+```
+
+### Gauge options
+
+A gauge series renders one 180° dial for every point in `data`. Dials are
+arranged left-to-right by default and top-to-bottom with
+`chart.inverted: true`. Values outside `min`–`max` are clamped when rendered.
+
+| Key               | Type                                          | Default             | Description                                                          |
+| ----------------- | --------------------------------------------- | ------------------- | -------------------------------------------------------------------- |
+| `min`             | `number`                                      | `0`                 | Lower end of every dial in the series.                               |
+| `max`             | `number`                                      | `100`               | Upper end of every dial in the series.                               |
+| `minLabel`        | `string`                                      | `0`                 | Lower end of every dial in the series.                               |
+| `maxLabel`        | `string`                                      | `100`               | Upper end of every dial in the series.                               |
+| `color`           | `string`                                      | series palette      | Value-band colour. A point-level `color` overrides it for that dial. |
+| `trackColor`      | `string`                                      | theme grid colour   | Background-track colour.                                             |
+| `trackOpacity`    | `number`                                      | `0.15`              | Background-track opacity.                                            |
+| `thickness`       | `number`                                      | adaptive, about 18% | Band thickness in pixels, capped to fit small dials.                 |
+| `markers`         | [`GaugeMarkerOptions[]`](#gaugemarkeroptions) | –                   | Reference lines and labels drawn on every dial in the series.        |
+| `showMinMax`      | `boolean`                                     | `true`              | Show the minimum and maximum labels beneath the two band ends.       |
+| `centerFormatter` | `(value: number) => string`                   | `String(value)`     | Formats each dial's centre value.                                    |
+| `centerFontSize`  | `number`                                      | adaptive, 10–22 px  | Centre-value font size.                                              |
+
+#### GaugeMarkerOptions
+
+| Key             | Type                    | Default           | Description                                                       |
+| --------------- | ----------------------- | ----------------- | ----------------------------------------------------------------- |
+| `value`         | `number`                | **required**      | Position on the dial; values outside the gauge range are clamped. |
+| `label`         | `string`                | marker value      | Marker label text.                                                |
+| `color`         | `string`                | value-band colour | Marker line and label colour.                                     |
+| `labelPosition` | `'outside' \| 'inside'` | `'outside'`       | Places the label outside the track or inside the value band.      |
+| `fontSize`      | `number`                | `10`              | Marker-label font size in pixels.                                 |
+
+Defaults can be set through `plotOptions.gauge`; an explicit series value
+replaces the plot-level value:
+
+```ts
+plotOptions: {
+  gauge: {
+    color: '#26a69a',
+    markers: [
+      { value: 80, label: 'Target', fontSize: 12 },
+    ],
+  },
+},
+series: [{
+  type: 'gauge',
+  min: 0,
+  max: 100,
+  data: [
+    { name: 'API', y: 86 },
+    { name: 'Workers', y: 74, color: '#f59e0b' },
   ],
 }]
 ```
@@ -383,15 +437,15 @@ scatter/jitter, pie/donut and butterfly.
 Controls the value shown in the hollow centre while a donut sector is hovered
 or keyboard-focused. It also applies to pie series configured with `innerSize`.
 
-| Key          | Type                            | Default  | Description                                                              |
-| ------------ | ------------------------------- | -------- | ------------------------------------------------------------------------ |
-| `enabled`    | `boolean`                       | `true`   | Show the centre value when the chart has a hollow centre.                |
-| `format`     | `string`                        | `'{y}'`  | Supports `{name}`, `{y}`, `{percentage}`, `{total}`, and format specs.    |
-| `formatter`  | `(ctx: LabelContext) => string` | –        | Custom text callback; overrides `format`.                                |
-| `color`      | `string`                        | theme    | Text colour.                                                             |
-| `fontSize`   | `string`                        | adaptive | CSS font size such as `'20px'`.                                          |
-| `fontWeight` | `string`                        | `'600'`  | CSS font weight.                                                         |
-| `fontFamily` | `string`                        | theme    | CSS font family.                                                         |
+| Key          | Type                            | Default  | Description                                                            |
+| ------------ | ------------------------------- | -------- | ---------------------------------------------------------------------- |
+| `enabled`    | `boolean`                       | `true`   | Show the centre value when the chart has a hollow centre.              |
+| `format`     | `string`                        | `'{y}'`  | Supports `{name}`, `{y}`, `{percentage}`, `{total}`, and format specs. |
+| `formatter`  | `(ctx: LabelContext) => string` | –        | Custom text callback; overrides `format`.                              |
+| `color`      | `string`                        | theme    | Text colour.                                                           |
+| `fontSize`   | `string`                        | adaptive | CSS font size such as `'20px'`.                                        |
+| `fontWeight` | `string`                        | `'600'`  | CSS font weight.                                                       |
+| `fontFamily` | `string`                        | theme    | CSS font family.                                                       |
 
 ### Multi-level (two-dimension) pie
 
@@ -698,14 +752,16 @@ Annotations use axis values, so they stay attached to the data across resizing,
 axis-domain changes, and polar projection:
 
 ```ts
-annotations: [{
-  x: 'March',
-  y: 120,
-  text: 'Campaign launched',
-  shape: 'callout',
-  dx: 18,
-  dy: -24,
-}]
+annotations: [
+  {
+    x: "March",
+    y: 120,
+    text: "Campaign launched",
+    shape: "callout",
+    dx: 18,
+    dy: -24,
+  },
+];
 ```
 
 `shape` is `'label'`, `'callout'`, or `'circle'`. Use `xAxis` / `yAxis` (`0`
@@ -719,16 +775,18 @@ Rules are deep-merged for a matching render and restored afterwards, leaving
 `chart.options` unchanged:
 
 ```ts
-responsive: [{
-  condition: { maxWidth: 480 },
-  options: {
-    legend: { enabled: false },
-    title: { margin: 4 },
-    xAxis: {
-      labels: { autoRotation: [0, -45, -90], maxWidth: 72 }
-    }
-  }
-}]
+responsive: [
+  {
+    condition: { maxWidth: 480 },
+    options: {
+      legend: { enabled: false },
+      title: { margin: 4 },
+      xAxis: {
+        labels: { autoRotation: [0, -45, -90], maxWidth: 72 },
+      },
+    },
+  },
+];
 ```
 
 Conditions support `minWidth`, `maxWidth`, `minHeight`, and `maxHeight`.
@@ -838,18 +896,18 @@ Each entry in `series.data` (`PointInput`) may be:
 
 ### PointOptions
 
-| Key                            | Type               | Used by                              |
-| ------------------------------ | ------------------ | ------------------------------------ |
-| `x`                            | `number \| string` | all                                  |
-| `y`                            | `number`           | most                                 |
-| `low` / `high`                 | `number`           | range, dumbbell                      |
-| `min`/`q1`/`median`/`q3`/`max` | `number`           | boxplot                              |
-| `outliers`                     | `number[]`         | boxplot (values beyond the whiskers) |
-| `boxColors` / `outlierMarker`  | see [Boxplot options](#boxplot-options) | boxplot — per-point override |
-| `lowColor`/`highColor`/`connectorColor`/`connectorWidth` | see [Dumbbell options](#dumbbell-options) | dumbbell — per-point override |
-| `name`                         | `string`           | pie / categorical                    |
-| `color`                        | `string`           | per-point colour (any series)        |
-| _(custom)_                     | `any`              | surfaced in tooltips & events        |
+| Key                                                      | Type                                      | Used by                              |
+| -------------------------------------------------------- | ----------------------------------------- | ------------------------------------ |
+| `x`                                                      | `number \| string`                        | all                                  |
+| `y`                                                      | `number`                                  | most                                 |
+| `low` / `high`                                           | `number`                                  | range, dumbbell                      |
+| `min`/`q1`/`median`/`q3`/`max`                           | `number`                                  | boxplot                              |
+| `outliers`                                               | `number[]`                                | boxplot (values beyond the whiskers) |
+| `boxColors` / `outlierMarker`                            | see [Boxplot options](#boxplot-options)   | boxplot — per-point override         |
+| `lowColor`/`highColor`/`connectorColor`/`connectorWidth` | see [Dumbbell options](#dumbbell-options) | dumbbell — per-point override        |
+| `name`                                                   | `string`                                  | pie / categorical                    |
+| `color`                                                  | `string`                                  | per-point colour (any series)        |
+| _(custom)_                                               | `any`                                     | surfaced in tooltips & events        |
 
 Use `computeBoxStats(values)` (exported) to derive the five-number summary from a
 raw array for boxplots.
@@ -858,45 +916,66 @@ raw array for boxplots.
 
 ## Chart types
 
-| Type                            | Description                                                                       |
-| ------------------------------- | --------------------------------------------------------------------------------- |
-| `bar`                           | Horizontal bars.                                                                  |
-| `column`                        | Vertical bars.                                                                    |
-| `line` / `spline` / `step`      | Line variants (straight / smoothed / stepped).                                    |
-| `area` / `areaspline`           | Filled line / smoothed filled line.                                               |
-| `arearange` / `areasplinerange` | Filled band between `low` and `high`.                                             |
-| `pie` / `donut`                 | Circular proportion (donut = `innerSize`).                                        |
-| `scatter` / `jitter`            | Point clouds (jitter adds horizontal spread).                                     |
-| `boxplot`                       | Five-number distribution; dual-colour, horizontal & groupable.                    |
-| `dumbbell`                      | Two connected points per category; horizontal & groupable.                        |
-| `columnrange`                   | Rounded-capsule range bar (vertical; horizontal via `chart.inverted`); groupable. |
-| `butterfly`                     | Two series mirrored back-to-back around a central axis.                           |
-| `radialbar`                     | Bars around a polar centre (0→270°).                                              |
-| `heatmap`                       | Category × category grid coloured by `value`; draws its own row/column labels.    |
-| `bullet`                        | Measure bar per row against qualitative `ranges` bands and a `target` marker.     |
-| `candlestick`                   | OHLC candles (`open`/`high`/`low`/`close`); up/down coloured.                     |
-| `gauge`                         | 270° radial dial for one value; `min`/`max` and coloured `bands`.                 |
-| `waterfall`                     | Running cumulative bars; `isSum` for total bars, coloured rises/falls.            |
-| `histogram`                     | Bins an array of raw numbers (`bins` to override the bin count).                  |
-| `timeline`                      | Events placed in order along a line, labels alternating above/below.              |
-| `funnel`                        | Narrowing stages sized by value.                                                  |
-| `treegraph`                     | Hierarchy from flat `{ id, parent, name }` points, laid out left→right.           |
-| `bubble`                        | Scatter with `z` → marker size (by area); tune with `sizeRange`.                  |
-| `radar`                         | Line/area over categories on a polar grid; multiple series overlaid.              |
-| `sunburst`                      | Multi-level radial hierarchy from `{ id, parent, name, value }`.                  |
-| `sankey`                        | Weighted flows from `{ from, to, weight }` links.                                 |
-| `calendar`                      | Day-grid heatmap from `{ date, value }`.                                          |
-| `gantt`                         | Duration bar per row from `{ name, start, end }` (ms timestamps).                 |
-| `marimekko`                     | Variable-width 100% stacked columns (width = category total).                     |
-| `errorbar`                      | Low/high whiskers per category, usually overlaid on column/line.                  |
+| Type                            | Description                                                                                    |
+| ------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `bar`                           | Horizontal bars.                                                                               |
+| `column`                        | Vertical bars.                                                                                 |
+| `line` / `spline` / `step`      | Line variants (straight / smoothed / stepped).                                                 |
+| `area` / `areaspline`           | Filled line / smoothed filled line.                                                            |
+| `arearange` / `areasplinerange` | Filled band between `low` and `high`.                                                          |
+| `pie` / `donut`                 | Circular proportion (donut = `innerSize`).                                                     |
+| `scatter` / `jitter`            | Point clouds (jitter adds horizontal spread).                                                  |
+| `boxplot`                       | Five-number distribution; dual-colour, horizontal & groupable.                                 |
+| `dumbbell`                      | Two connected points per category; horizontal & groupable.                                     |
+| `columnrange`                   | Rounded-capsule range bar (vertical; horizontal via `chart.inverted`); groupable.              |
+| `butterfly`                     | Two series mirrored back-to-back around a central axis.                                        |
+| `radialbar`                     | Bars around a polar centre (0→270°).                                                           |
+| `heatmap`                       | Category × category grid coloured by `value`; draws its own row/column labels.                 |
+| `bullet`                        | Measure bar per row against qualitative `ranges` bands and a `target` marker.                  |
+| `candlestick`                   | OHLC candles (`open`/`high`/`low`/`close`); up/down coloured.                                  |
+| `gauge`                         | 180° dial per value; horizontal, or vertical via `chart.inverted`; supports reference markers. |
+| `waterfall`                     | Running cumulative bars; `isSum` for total bars, coloured rises/falls.                         |
+| `histogram`                     | Bins an array of raw numbers (`bins` to override the bin count).                               |
+| `timeline`                      | Events placed in order along a line, labels alternating above/below.                           |
+| `funnel`                        | Narrowing stages sized by value.                                                               |
+| `treegraph`                     | Hierarchy from flat `{ id, parent, name }` points, laid out left→right.                        |
+| `bubble`                        | Scatter with `z` → marker size (by area); tune with `sizeRange`.                               |
+| `radar`                         | Line/area over categories on a polar grid; multiple series overlaid.                           |
+| `sunburst`                      | Multi-level radial hierarchy from `{ id, parent, name, value }`.                               |
+| `sankey`                        | Weighted flows from `{ from, to, weight }` links.                                              |
+| `calendar`                      | Day-grid heatmap from `{ date, value }`.                                                       |
+| `gantt`                         | Duration bar per row from `{ name, start, end }` (ms timestamps).                              |
+| `marimekko`                     | Variable-width 100% stacked columns (width = category total).                                  |
+| `errorbar`                      | Low/high whiskers per category, usually overlaid on column/line.                               |
 
 **Data fields for the new types** — set on each point: heatmap `{ x, y, value }`;
 candlestick `{ x, open, high, low, close }`; bullet `{ name, y, target, ranges }`;
-gauge series `{ min, max, bands }` + one point `{ y }`; waterfall `{ x, y }` or
+gauge series `{ min, max, color, markers }` + one or more points
+`{ name, y, color }`; waterfall `{ x, y }` or
 `{ x, isSum: true }`; histogram raw `number[]`; treegraph / sunburst
 `{ id, parent, name, value }`; bubble `{ x, y, z }`; sankey `{ from, to, weight }`;
 calendar `{ date, value }`; gantt `{ name, start, end }`; variable-radius pie adds
 `z` per slice.
+
+Gauge markers can be supplied as defaults through `plotOptions.gauge` and
+replaced for an individual gauge series. Marker labels support a numeric
+`fontSize` in pixels:
+
+```ts
+plotOptions: {
+  gauge: {
+    markers: [{ value: 80, label: 'Default target', fontSize: 12 }],
+  },
+},
+series: [
+  { type: 'gauge', data: [72] }, // uses the default marker
+  {
+    type: 'gauge',
+    markers: [{ value: 90, label: 'Stretch target' }],
+    data: [84],
+  },
+]
+```
 
 **Stacking & grouping**: any bar/column/area series stacks with `stacking` and a
 shared `stack` id; series without stacking are grouped side-by-side
@@ -926,11 +1005,11 @@ automatically. Mix `type`s across series for combination charts.
 
 ### Interactivity options (`chart`)
 
-| Key         | Type                                          | Default | Description                                                                                                                                                                                                            |
-| ----------- | --------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `animation` | `boolean \| { duration?, easing?, enabled? }` | on      | Enter animation: bars grow, lines draw in, others fade.                                                                                                                                                                |
-| `zoom`      | `'x' \| 'y' \| 'xy' \| false \| { type }`     | off     | Drag-select on a numeric/datetime axis to zoom — `'x'`, `'y'`, or both with `'xy'`; a **Reset zoom** control restores the full range.                                                                                  |
-| `reflow`    | `boolean`                                     | `true`  | Auto re-render when the container's width **or** height resizes. Set `false` to disable and call `chart.reflow()` yourself.                                                                                            |
+| Key         | Type                                          | Default | Description                                                                                                                                                                                                   |
+| ----------- | --------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `animation` | `boolean \| { duration?, easing?, enabled? }` | on      | Enter animation: bars grow, lines draw in, others fade.                                                                                                                                                       |
+| `zoom`      | `'x' \| 'y' \| 'xy' \| false \| { type }`     | off     | Drag-select on a numeric/datetime axis to zoom — `'x'`, `'y'`, or both with `'xy'`; a **Reset zoom** control restores the full range.                                                                         |
+| `reflow`    | `boolean`                                     | `true`  | Auto re-render when the container's width **or** height resizes. Set `false` to disable and call `chart.reflow()` yourself.                                                                                   |
 | `boost`     | `boolean \| { enabled?, threshold? }`         | auto    | Draw high-volume point/line series to a canvas overlay (lines min/max-decimated). Auto-enables past `threshold` points (default 1500). Handles 100k+ points; exports embed the canvas pixels as an SVG image. |
 
 Axes add `type: 'datetime'` (nice date ticks) and `crosshair: true` (hover guide
@@ -939,12 +1018,12 @@ child series.
 
 ### Accessibility
 
-| Key | Type | Default | Description |
-| --- | --- | --- | --- |
-| `enabled` | `boolean` | `true` | Expose chart and point semantics. |
-| `description` | `string` | chart title or generated summary | Accessible chart-level label. |
-| `keyboardNavigation` | `boolean` | `true` | One Tab stop enters the chart; Arrow keys navigate points, Home/End jump, and Enter/Space activate. |
-| `pointDescriptionFormatter` | `(context) => string` | generated label | Override each point's screen-reader description. Context contains `seriesName`, `seriesIndex`, `pointIndex`, `x`, `y`, `low`, `high`, and `point`. |
+| Key                         | Type                  | Default                          | Description                                                                                                                                        |
+| --------------------------- | --------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`                   | `boolean`             | `true`                           | Expose chart and point semantics.                                                                                                                  |
+| `description`               | `string`              | chart title or generated summary | Accessible chart-level label.                                                                                                                      |
+| `keyboardNavigation`        | `boolean`             | `true`                           | One Tab stop enters the chart; Arrow keys navigate points, Home/End jump, and Enter/Space activate.                                                |
+| `pointDescriptionFormatter` | `(context) => string` | generated label                  | Override each point's screen-reader description. Context contains `seriesName`, `seriesIndex`, `pointIndex`, `x`, `y`, `low`, `high`, and `point`. |
 
 SVG data marks use roving `tabindex`, so a chart with many points does not add
 one page-level Tab stop per mark. Focus also shows the point tooltip. Canvas
@@ -969,12 +1048,12 @@ series are accepted after `registerSeriesType()`.
 
 Automatic validation is opt-in through the root `validation` option:
 
-| Value | Behavior |
-| --- | --- |
-| `true` | Validate and log every issue with its code and path. |
-| `{ mode: 'warn' }` | Same as `true`. |
-| `{ mode: 'error' }` | Throw `ChartValidationError` when errors exist, before constructor/update state mutates. |
-| `{ mode: 'silent', onIssue }` | Deliver structured issues without console output. |
+| Value                         | Behavior                                                                                 |
+| ----------------------------- | ---------------------------------------------------------------------------------------- |
+| `true`                        | Validate and log every issue with its code and path.                                     |
+| `{ mode: 'warn' }`            | Same as `true`.                                                                          |
+| `{ mode: 'error' }`           | Throw `ChartValidationError` when errors exist, before constructor/update state mutates. |
+| `{ mode: 'silent', onIssue }` | Deliver structured issues without console output.                                        |
 
 Configured validation also runs before `setData`, `addPoint`, `appendData`, and
 `setSize`. A batch validates its final outer configuration atomically. Warnings
@@ -1011,7 +1090,7 @@ import {
 // Modular bundle: register only selected renderer families before use.
 import { FacetViz, validateChartOptions } from "facetviz/core";
 import "facetviz/series/line"; // line, spline, step
-import "facetviz/series/pie";  // pie, donut
+import "facetviz/series/pie"; // pie, donut
 ```
 
 The `facetviz/series/*` subpaths correspond to renderer modules rather than

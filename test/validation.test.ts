@@ -132,6 +132,28 @@ describe('configuration validation', () => {
     expect(result.warnings.map((issue) => issue.code)).toContain('gauge.value.outside_range');
   });
 
+  it('validates every gauge value against the configured range', () => {
+    const result = validateChartOptions({
+      series: [{
+        type: 'gauge',
+        min: 0,
+        max: 100,
+        data: [50, 125, -10],
+      }],
+    });
+
+    expect(result.warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'gauge.value.outside_range',
+        path: 'series[0].data[1]',
+      }),
+      expect.objectContaining({
+        code: 'gauge.value.outside_range',
+        path: 'series[0].data[2]',
+      }),
+    ]));
+  });
+
   it('detects invalid and cyclic Sankey links', () => {
     const result = validateChartOptions({
       chart: { type: 'sankey' },

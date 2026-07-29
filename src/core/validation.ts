@@ -292,9 +292,11 @@ export function validateChartOptions(options: unknown): ChartValidationResult {
       const max = numberAt(entry, "max") ?? 100;
       if (min >= max)
         add("gauge.range.order", "error", base, "Gauge min must be smaller than max.");
-      const value = pointValue(data[0]);
-      if (value !== undefined && (value < min || value > max))
-        add("gauge.value.outside_range", "warning", `${base}.data[0]`, `Gauge value ${value} is outside ${min}–${max} and will be clamped.`);
+      data.forEach((point, pointIndex) => {
+        const value = pointValue(point);
+        if (value !== undefined && (value < min || value > max))
+          add("gauge.value.outside_range", "warning", `${base}.data[${pointIndex}]`, `Gauge value ${value} is outside ${min}–${max} and will be clamped.`);
+      });
     }
 
     data.forEach((point, pointIndex) => {

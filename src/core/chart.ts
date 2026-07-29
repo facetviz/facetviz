@@ -2189,6 +2189,7 @@ export class FacetViz {
   private renderPolarPanel(plot: Rect, visible: BaseSeries[]): void {
     // Pie/radial: no shared scales; dummy scales satisfy the interface.
     const dummy = new LinearScale({ domain: [0, 1], range: [0, 1] });
+    const inverted = this.isInverted(visible);
     for (const s of visible) {
       const ctx = this.seriesContext(
         s,
@@ -2196,7 +2197,7 @@ export class FacetViz {
         dummy,
         dummy,
         { count: 1, index: new Map() },
-        false,
+        inverted,
         true,
       );
       s.render(ctx);

@@ -73,7 +73,7 @@ export type ChartType =
   | "heatmap" // coloured grid of category × category cells
   | "bullet" // measure bar with qualitative bands and a target marker
   | "candlestick" // OHLC financial candles
-  | "gauge" // radial dial for a single value
+  | "gauge" // radial dial for one or more values
   | "waterfall" // running cumulative increases / decreases
   | "histogram" // binned distribution of raw values
   | "timeline" // events placed along a line

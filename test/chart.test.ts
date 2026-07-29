@@ -80,6 +80,45 @@ describe('FacetViz rendering', () => {
     expect(path?.getAttribute('d')?.match(/\bA\b/g)).toHaveLength(4);
   });
 
+  it('renders every gauge value from left to right', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { type: 'gauge', animation: false },
+      series: [{
+        name: 'Load',
+        data: [
+          { name: 'API', y: 25 },
+          { name: 'Workers', y: 50 },
+          { name: 'Database', y: 75 },
+        ],
+      }],
+    });
+
+    const values = [...el.querySelectorAll<SVGTextElement>('.facet-gauge-value')];
+    expect(el.querySelectorAll('.facet-gauge-item')).toHaveLength(3);
+    expect(el.querySelectorAll('.facet-gauge .facet-point')).toHaveLength(3);
+    expect(values.map((node) => node.textContent)).toEqual(['25', '50', '75']);
+    const xPositions = values.map((node) => Number(node.getAttribute('x')));
+    expect(xPositions[0]).toBeLessThan(xPositions[1]);
+    expect(xPositions[1]).toBeLessThan(xPositions[2]);
+    expect(new Set(values.map((node) => node.getAttribute('y'))).size).toBe(1);
+  });
+
+  it('renders every gauge value from top to bottom when inverted', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { type: 'gauge', inverted: true, animation: false },
+      series: [{ data: [20, 40, 60] }],
+    });
+
+    const values = [...el.querySelectorAll<SVGTextElement>('.facet-gauge-value')];
+    expect(values).toHaveLength(3);
+    expect(new Set(values.map((node) => node.getAttribute('x'))).size).toBe(1);
+    const yPositions = values.map((node) => Number(node.getAttribute('y')));
+    expect(yPositions[0]).toBeLessThan(yPositions[1]);
+    expect(yPositions[1]).toBeLessThan(yPositions[2]);
+  });
+
   it('shows the hovered donut slice value in the hollow centre', () => {
     const el = container();
     new FacetViz(el, {
