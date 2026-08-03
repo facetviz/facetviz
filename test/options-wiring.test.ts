@@ -76,6 +76,66 @@ describe('configuration option wiring', () => {
     expect(legend.getAttribute('fill')).toBe('#445566');
   });
 
+  it('positions and customizes chart text with alignment and offsets', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: baseChart,
+      texts: [
+        {
+          text: 'First line\nSecond line',
+          align: 'center',
+          verticalAlign: 'center',
+          offsetX: 10,
+          offsetY: -5,
+          lineHeight: 24,
+          rotation: 15,
+          color: '#123456',
+          className: 'custom-note',
+          style: { fontSize: '20px', fontWeight: '700' },
+        },
+        {
+          text: 'Bottom right',
+          align: 'right',
+          verticalAlign: 'bottom',
+          offsetX: -12,
+          offsetY: -8,
+        },
+        {
+          text: 'Top edge',
+          align: 'center',
+          verticalAlign: 'top',
+          style: { fontSize: '16px' },
+        },
+        { text: 'Hidden', enabled: false },
+      ],
+      series: [{ data: [1, 2] }],
+    });
+
+    const note = el.querySelector<SVGGElement>('.facet-chart-text.custom-note')!;
+    const text = note.querySelector<SVGTextElement>('.facet-chart-text-content')!;
+    expect(note.getAttribute('transform')).toBe('rotate(15 310 195)');
+    expect(text.getAttribute('x')).toBe('310');
+    expect(text.getAttribute('text-anchor')).toBe('middle');
+    expect(text.getAttribute('font-size')).toBe('20px');
+    expect(text.getAttribute('font-weight')).toBe('700');
+    expect(text.getAttribute('fill')).toBe('#123456');
+    expect([...text.querySelectorAll('tspan')].map((line) => line.textContent))
+      .toEqual(['First line', 'Second line']);
+    const textLayer = el.querySelector('.facet-chart-texts')!;
+    const series = el.querySelector('.facet-series')!;
+    expect(Boolean(series.compareDocumentPosition(textLayer) & Node.DOCUMENT_POSITION_FOLLOWING))
+      .toBe(true);
+    expect([...textLayer.querySelectorAll<SVGTextElement>('.facet-chart-text-content')]
+      .find((node) => node.textContent === 'Bottom right')?.getAttribute('x')).toBe('588');
+    const topText = [...el.querySelectorAll<SVGTextElement>('.facet-chart-text-content')]
+      .find((node) => node.textContent === 'Top edge')!;
+    expect(topText.getAttribute('y')).toBe('16');
+    expect(topText.querySelector('tspan')?.getAttribute('y')).toBe('16');
+    expect(topText.getAttribute('dominant-baseline')).toBe('auto');
+    expect([...el.querySelectorAll('.facet-chart-text-content')]
+      .some((node) => node.textContent === 'Hidden')).toBe(false);
+  });
+
   it('uses y-axis value options and x-axis category reversal in inverted charts', () => {
     const normal = container();
     new FacetViz(normal, {
@@ -208,6 +268,41 @@ describe('configuration option wiring', () => {
     expect(label.getAttribute('font-weight')).toBe('700');
     expect(label.getAttribute('transform')).toContain('rotate(12');
     expect(el.querySelector('.facet-pie rect[fill="#ffeeaa"]')).toBeTruthy();
+  });
+
+  it('hides data labels on very small charts and restores them when the chart grows', () => {
+    const el = container();
+    const chart = new FacetViz(el, {
+      chart: { ...baseChart, width: 160, height: 160 },
+      xAxis: { categories: ['A'] },
+      series: [{
+        dataLabels: { enabled: true, format: 'value:{y}' },
+        data: [5],
+      }],
+    });
+
+    expect([...el.querySelectorAll('.facet-series text')]
+      .some((node) => node.textContent === 'value:5')).toBe(false);
+    expect(chart.series[0].options.dataLabels?.enabled).toBe(true);
+
+    chart.setSize(240, 240);
+    expect([...el.querySelectorAll('.facet-series text')]
+      .some((node) => node.textContent === 'value:5')).toBe(true);
+  });
+
+  it('keeps data labels on small charts when responsive rendering is disabled', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { ...baseChart, width: 120, height: 120, responsive: false },
+      xAxis: { categories: ['A'] },
+      series: [{
+        dataLabels: { enabled: true, format: 'value:{y}' },
+        data: [5],
+      }],
+    });
+
+    expect([...el.querySelectorAll('.facet-series text')]
+      .some((node) => node.textContent === 'value:5')).toBe(true);
   });
 
   it('forwards hover events for self-contained, radar, and marimekko series', () => {

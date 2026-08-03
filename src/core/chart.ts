@@ -61,7 +61,14 @@ import { createSeries } from "../series/registry.js";
 import { drawDataLabel, labelString } from "../series/data-label.js";
 import { drawMarker } from "../series/marker.js";
 import { renderAnnotations } from "./annotations.js";
+import { renderChartTexts } from "./chart-text.js";
 import type { Point } from "./point.js";
+
+// SVG fragment IDs share the surrounding document's namespace. Keep resource
+// IDs unique across chart instances so browsers do not resolve a series or
+// text path against an element belonging to a different chart.
+let svgResourceId = 0;
+const SMALL_CHART_DATA_LABEL_THRESHOLD = 180;
 
 export class FacetViz {
   readonly container: HTMLElement;
@@ -100,7 +107,6 @@ export class FacetViz {
     series: BaseSeries;
     point: Point;
   }> = [];
-  private clipSeq = 0;
   /** Saved series/title/xAxis levels for drill-down navigation. */
   private drillStack: Array<{
     series: SeriesOptions[];
@@ -305,16 +311,14 @@ export class FacetViz {
   // -- Rendering ---------------------------------------------------------
 
   /**
-   * Drop the axis lines themselves once the container gets too small to
-   * read comfortably — leaving just gridlines and the series geometry —
-   * rather than rendering an unreadably cramped chart. Data labels, axis
-   * labels/titles, and the legend are no longer part of this degradation;
-   * they render at whatever size the chart is. Overrides `this.options`
-   * (mutable per-instance state) for the duration of this render only;
-   * returns a function that restores the originals.
+   * Hide data labels on very small charts and drop axis lines at the smallest
+   * sizes, leaving more room for the series geometry. Overrides resolved
+   * per-instance state for the duration of this render only and returns a
+   * function that restores the originals.
    */
   private applyResponsiveOverrides(): () => void {
     const originals = new Map<string, unknown>();
+    const originalDataLabels = new Map<BaseSeries, SeriesOptions["dataLabels"]>();
     const target = this.options as unknown as Record<string, unknown>;
     const remember = (key: string) => {
       if (!originals.has(key)) originals.set(key, target[key]);
@@ -338,9 +342,19 @@ export class FacetViz {
 
     const restore = () => {
       for (const [key, value] of originals) target[key] = value;
+      for (const [series, dataLabels] of originalDataLabels)
+        series.options.dataLabels = dataLabels;
     };
     if (this.options.chart?.responsive === false) return restore;
     const shortSide = Math.min(this.width, this.height);
+    if (shortSide < SMALL_CHART_DATA_LABEL_THRESHOLD) {
+      for (const series of this.series) {
+        const dataLabels = series.options.dataLabels;
+        if (!dataLabels?.enabled) continue;
+        originalDataLabels.set(series, dataLabels);
+        series.options.dataLabels = { ...dataLabels, enabled: false };
+      }
+    }
     const hideAxisLines = shortSide < 110;
     if (!hideAxisLines) return restore;
 
@@ -388,7 +402,6 @@ export class FacetViz {
       },
       this.renderer.root,
     );
-
     if (this.tooltip) this.tooltip.destroy();
     if (this.options.tooltip?.enabled !== false) {
       // Theme tooltip colours as defaults; user tooltip options still win.
@@ -515,6 +528,13 @@ export class FacetViz {
         onToggle: (i) => this.toggleSeries(i),
       }).render(this.renderer.group({}, this.renderer.root));
     }
+
+    renderChartTexts({
+      renderer: this.renderer,
+      width: this.width,
+      height: this.height,
+      texts: this.options.texts ?? [],
+    });
 
     this.applyAccessibility();
     this.installZoom(outer);
@@ -1335,7 +1355,7 @@ export class FacetViz {
       defs = document.createElementNS(NS, "defs");
       root.insertBefore(defs, root.firstChild);
     }
-    const id = `facet-clip-${++this.clipSeq}`;
+    const id = `facet-clip-${++svgResourceId}`;
     const cp = document.createElementNS(NS, "clipPath");
     cp.setAttribute("id", id);
     // Explicitly set clipPathUnits to userSpaceOnUse to work around a Chrome
@@ -2190,6 +2210,31 @@ export class FacetViz {
     // Pie/radial: no shared scales; dummy scales satisfy the interface.
     const dummy = new LinearScale({ domain: [0, 1], range: [0, 1] });
     const inverted = this.isInverted(visible);
+    computeStacks(visible);
+
+    const stackedRadialBars = visible.filter(
+      (item) => item.type === "radialbar" && !!item.options.stacking,
+    );
+    const radialCategories: Array<number | string> = [];
+    const seenRadialCategories = new Set<string>();
+    for (const item of stackedRadialBars) {
+      for (const point of item.points) {
+        const key = `${typeof point.x}:${String(point.x)}`;
+        if (seenRadialCategories.has(key)) continue;
+        seenRadialCategories.add(key);
+        radialCategories.push(point.x);
+      }
+    }
+    const radialValueMax = Math.max(
+      1,
+      ...stackedRadialBars.flatMap((item) =>
+        item.points.map((point) => point.stackHigh ?? point.y ?? 0),
+      ),
+    );
+    const radialSeriesIndex = new Map(
+      stackedRadialBars.map((item, index) => [item.index, index]),
+    );
+
     for (const s of visible) {
       const ctx = this.seriesContext(
         s,
@@ -2200,6 +2245,11 @@ export class FacetViz {
         inverted,
         true,
       );
+      if (s.type === "radialbar" && s.options.stacking) {
+        ctx.radialCategories = radialCategories;
+        ctx.radialValueMax = radialValueMax;
+        ctx.radialSeriesIndex = radialSeriesIndex.get(s.index) ?? 0;
+      }
       s.render(ctx);
     }
   }
@@ -2387,7 +2437,7 @@ export class FacetViz {
           const end = flipped ? angle - arcSpan / 2 : angle + arcSpan / 2;
           const from = project(start, textRadius);
           const to = project(end, textRadius);
-          const pathId = `facet-polar-label-path-${++this.clipSeq}`;
+          const pathId = `facet-polar-label-path-${++svgResourceId}`;
           this.renderer.create(
             "path",
             {
@@ -4636,9 +4686,9 @@ export class FacetViz {
 
   /**
    * The legend entries this chart will actually draw. Point-legend types
-   * (pie/donut/radialbar) are always exactly one series internally, with one
-   * entry per slice here — so check `legendItems.length`/`hasLegend` instead
-   * of `options.series.length` to decide whether a legend is meaningful.
+   * use one entry per point when configured with one series; multi-series
+   * charts such as stacked radial bars use one entry per series. Check
+   * `legendItems.length`/`hasLegend` to decide whether a legend is meaningful.
    */
   get legendItems(): LegendItem[] {
     return this.buildLegendItems();

@@ -19,10 +19,156 @@ describe('FacetViz rendering', () => {
     expect(el.querySelectorAll('.facet-column .facet-point').length).toBe(2);
   });
 
+  it('uses document-unique clip paths when multiple charts are rendered', () => {
+    const first = container();
+    const second = container();
+    const options = {
+      chart: { type: 'column' as const, animation: false },
+      xAxis: { categories: ['A', 'B'] },
+      series: [{ data: [3, 5] }],
+    };
+    new FacetViz(first, options);
+    new FacetViz(second, options);
+
+    const firstClip = first.querySelector('clipPath')?.id;
+    const secondClip = second.querySelector('clipPath')?.id;
+    expect(firstClip).toBeTruthy();
+    expect(secondClip).toBeTruthy();
+    expect(secondClip).not.toBe(firstClip);
+    expect(first.querySelector('.facet-series')?.getAttribute('clip-path'))
+      .toBe(`url(#${firstClip})`);
+    expect(second.querySelector('.facet-series')?.getAttribute('clip-path'))
+      .toBe(`url(#${secondClip})`);
+  });
+
   it('draws one grouped bar set per series', () => {
     const el = container();
     new FacetViz(el, { chart: { type: 'column', animation: false }, xAxis: { categories: ['A', 'B'] }, series: [{ name: 'X', data: [1, 2] }, { name: 'Y', data: [3, 4] }] });
     expect(el.querySelectorAll('.facet-column .facet-point').length).toBe(4);
+  });
+
+  it.each([
+    ['normal', 2, 3, 2, 5],
+    ['percent', 1, 3, 25, 100],
+  ] as const)('stacks radial-bar arcs using %s stacking', (stacking, firstValue, secondValue, firstHigh, secondHigh) => {
+    const el = container();
+    const chart = new FacetViz(el, {
+      chart: { type: 'radialbar', animation: false },
+      series: [
+        { name: 'Base', stacking, data: [{ name: 'A', y: firstValue }] },
+        { name: 'Top', stacking, data: [{ name: 'A', y: secondValue }] },
+      ],
+    });
+    const paths = [...el.querySelectorAll<SVGPathElement>('.facet-radialbar .facet-point')];
+    const track = el.querySelector<SVGPathElement>('.facet-radialbar-track');
+    const outerEndpoints = (path: SVGPathElement) => {
+      const tokens = path.getAttribute('d')!.split(' ');
+      return {
+        start: [Number(tokens[1]), Number(tokens[2])],
+        end: [Number(tokens[9]), Number(tokens[10])],
+      };
+    };
+
+    expect(paths).toHaveLength(2);
+    expect(el.querySelectorAll('.facet-radialbar-track')).toHaveLength(1);
+    expect(el.querySelectorAll('.facet-radialbar-label')).toHaveLength(1);
+    expect(chart.series[0].points[0].stackLow).toBe(0);
+    expect(chart.series[0].points[0].stackHigh).toBe(firstHigh);
+    expect(chart.series[1].points[0].stackLow).toBe(firstHigh);
+    expect(chart.series[1].points[0].stackHigh).toBe(secondHigh);
+    expect(chart.legendItems.map((item) => item.label)).toEqual(['Base', 'Top']);
+
+    const first = outerEndpoints(paths[0]);
+    const second = outerEndpoints(paths[1]);
+    const fullTrack = outerEndpoints(track!);
+    expect(first.end[0]).toBeCloseTo(second.start[0]);
+    expect(first.end[1]).toBeCloseTo(second.start[1]);
+    expect(second.end[0]).toBeCloseTo(fullTrack.end[0]);
+    expect(second.end[1]).toBeCloseTo(fullTrack.end[1]);
+    expect(paths[0].getAttribute('fill')).not.toBe(paths[1].getAttribute('fill'));
+  });
+
+  it('matches stacked radial-bar rings by category rather than point position', () => {
+    const el = container();
+    const chart = new FacetViz(el, {
+      chart: { type: 'radialbar', animation: false },
+      series: [
+        { stacking: 'normal', data: [{ name: 'A', y: 1 }, { name: 'B', y: 2 }] },
+        { stacking: 'normal', data: [{ name: 'B', y: 3 }] },
+      ],
+    });
+    const paths = [...el.querySelectorAll<SVGPathElement>('.facet-radialbar .facet-point')];
+    const outerRadius = (path: SVGPathElement) =>
+      Number(path.getAttribute('d')!.split(' ')[4]);
+
+    expect(paths).toHaveLength(3);
+    expect(outerRadius(paths[2])).toBeCloseTo(outerRadius(paths[1]));
+    expect(outerRadius(paths[2])).not.toBeCloseTo(outerRadius(paths[0]));
+    expect(chart.series[1].points[0].stackLow).toBe(2);
+    expect(chart.series[1].points[0].stackHigh).toBe(5);
+  });
+
+  it('supports a half-circle sweep for stacked radial bars', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { type: 'radialbar', animation: false },
+      plotOptions: { radialbar: { startAngle: -90, endAngle: 90 } },
+      series: [
+        { stacking: 'normal', data: [{ name: 'A', y: 1 }] },
+        { stacking: 'normal', data: [{ name: 'A', y: 1 }] },
+      ],
+    });
+    const paths = [...el.querySelectorAll<SVGPathElement>('.facet-radialbar .facet-point')];
+    const track = el.querySelector<SVGPathElement>('.facet-radialbar-track')!;
+    const trackTokens = track.getAttribute('d')!.split(' ');
+    const topSegmentTokens = paths[1].getAttribute('d')!.split(' ');
+
+    expect(track.getAttribute('d')?.match(/\bA\b/g)).toHaveLength(2);
+    expect(Number(trackTokens[1])).toBeCloseTo(Number(trackTokens[9]));
+    expect(Number(trackTokens[2])).toBeLessThan(Number(trackTokens[10]));
+    expect(Number(topSegmentTokens[9])).toBeCloseTo(Number(trackTokens[9]));
+    expect(Number(topSegmentTokens[10])).toBeCloseTo(Number(trackTokens[10]));
+  });
+
+  it('renders a complete radial-bar ring for a 360-degree sweep', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { type: 'radialbar', animation: false },
+      plotOptions: { radialbar: { startAngle: -90, endAngle: 270 } },
+      series: [{ data: [{ name: 'A', y: 1 }] }],
+    });
+
+    expect(el.querySelector('.facet-radialbar-track')?.getAttribute('d')?.match(/\bA\b/g))
+      .toHaveLength(4);
+    expect(el.querySelector('.facet-radialbar .facet-point')?.getAttribute('d')?.match(/\bA\b/g))
+      .toHaveLength(4);
+  });
+
+  it.each([
+    ['column', 'x', 'width'],
+    ['bar', 'y', 'height'],
+  ] as const)('keeps the gap between grouped %ss when columnWidth is reduced', (type, position, dimension) => {
+    const groupedRects = (columnWidth?: number) => {
+      const el = container();
+      new FacetViz(el, {
+        chart: { type, animation: false },
+        xAxis: { categories: ['A'] },
+        plotOptions: columnWidth === undefined ? undefined : { [type]: { columnWidth } },
+        series: [{ data: [1] }, { data: [2] }],
+      });
+      return [...el.querySelectorAll<SVGRectElement>('.facet-column .facet-point')];
+    };
+    const gap = (rects: SVGRectElement[]) =>
+      Number(rects[1].getAttribute(position)) -
+      Number(rects[0].getAttribute(position)) -
+      Number(rects[0].getAttribute(dimension));
+
+    const defaultRects = groupedRects();
+    const narrowRects = groupedRects(12);
+
+    expect(Number(narrowRects[0].getAttribute(dimension))).toBe(12);
+    expect(Number(narrowRects[1].getAttribute(dimension))).toBe(12);
+    expect(gap(narrowRects)).toBeCloseTo(gap(defaultRects));
   });
 
   it('inverts the axis mapping for bar charts', () => {

@@ -18,7 +18,7 @@ const chart = new FacetViz(container, options);
 - [Axes](#axisoptions) · [plotLines](#plotlineoptions) · [plotBands](#plotbandoptions)
 - [series](#seriesoptions) · [marker](#markeroptions) · [dataLabels](#datalabeloptions) · [states.hover](#hoverstateoptions) · [boxColors](#boxplot-options) · [dumbbell](#dumbbell-options) · [gauge](#gauge-options)
 - [tooltip](#tooltipoptions) · [legend](#legendoptions) · [plotOptions](#plotoptions)
-- [trellis](#trellisoptions) · [nested x-axis](#nested-hierarchical-x-axis)
+- [trellis](#trellisoptions) · [nested x-axis](#nested-hierarchical-x-axis) · [chart text](#chart-text)
 - [Events](#events) · [Data formats](#point-data-formats) · [Chart types](#chart-types)
 - [Instance methods](#instance-methods) · [Exports](#package-exports)
 
@@ -43,6 +43,7 @@ The root object passed to `new FacetViz(container, options)`.
 | `theme`        | `string \| ThemeInput`                           | `'light'`     | Visual theme — see [Theming](#theming).                               |
 | `trellis`      | [`TrellisOptions`](#trellisoptions)              | –             | Small-multiples / cross-tab table split.                              |
 | `annotations`  | [`AnnotationOptions[]`](#annotations)            | –             | Value-anchored labels, callouts, and highlights.                      |
+| `texts`        | [`ChartTextOptions[]`](#chart-text)              | –             | Text blocks positioned from chart edges or centre.                   |
 | `responsive`   | [`ResponsiveRule[]`](#responsive-rules)          | –             | Size-matched option overrides.                                        |
 | `seriesEvents` | [`SeriesEvents`](#events)                        | –             | Event callbacks applied to every series.                              |
 
@@ -64,6 +65,7 @@ The root object passed to `new FacetViz(container, options)`.
 | `polarGridLineMode`         | `'spoke' \| 'sector'`              | `'spoke'`        | Draw angular grid lines through category centres or along sector boundaries.                                      |
 | `colors`                    | `string[]`                         | –                | Alias of top-level `colors`.                                                                                      |
 | `events`                    | [`ChartEvents`](#events)           | –                | Chart-level `load` / `render` / `click` callbacks.                                                                |
+| `responsive`                | `boolean`                          | `true`           | Hide data labels below a 180 px short side and axis lines below 110 px; `false` disables this automatic simplification. |
 
 > The chart is **responsive**: the SVG scales down (`max-width: 100%`) to never
 > overflow its parent, even when an explicit `width` is larger than the container.
@@ -222,6 +224,8 @@ One object per series in the `series` array.
 | `showInLegend`   | `boolean`                                                 | `true`        | Set to `false` to omit this series from the chart legend.                                                                                                                                                                                       |
 | `stack`          | `string \| number`                                        | –             | Series sharing a stack id pile together.                                                                                                                                                                                                        |
 | `stacking`       | `'normal' \| 'percent'`                                   | –             | Enable stacking (`percent` = 100% stacked).                                                                                                                                                                                                     |
+| `startAngle`     | `number`                                                   | `-90`         | Radial-bar arc start in degrees; `-90` is 12 o'clock.                                                                                                                                                                                           |
+| `endAngle`       | `number`                                                   | `180`         | Radial-bar arc end in degrees. Use `90` with the default start for a half circle.                                                                                                                                                               |
 | `xAxis`          | `0 \| 1`                                                  | `0`           | Bound x-axis. `1` uses the secondary x-axis, drawn at the top with its own categories/domain.                                                                                                                                                   |
 | `yAxis`          | `0 \| 1`                                                  | `0`           | Bound y-axis. `1` = secondary axis, drawn on the right with its own scale — pass `yAxis` (top-level) as a 2-element array to configure it. Works with a plain categorical x-axis or a [nested one](#nested-hierarchical-x-axis).                |
 | `lineWidth`      | `number`                                                  | `2`           | Stroke width (line/area/range).                                                                                                                                                                                                                 |
@@ -769,6 +773,36 @@ or `1`) for a secondary scale, `zIndex: 'below'` to place an annotation under
 the series, and `color`, `backgroundColor`, `borderColor`, `borderWidth`,
 `padding`, `radius`, and `style` for appearance.
 
+## Chart text
+
+Use `texts` for labels that belong to the chart rather than to a data value.
+Choose a chart edge or centre with alignment, then adjust it with offsets:
+
+```ts
+texts: [
+  {
+    text: "Draft\nInternal only",
+    align: "center",
+    verticalAlign: "center",
+    offsetX: 8,
+    offsetY: -4,
+    rotation: -12,
+    color: "#475569",
+    style: { fontSize: "18px", fontWeight: "600", opacity: "0.7" },
+  },
+];
+```
+
+`align` supports `'left'`, `'center'`, and `'right'`; `verticalAlign` supports
+`'top'`, `'center'`, and `'bottom'`. Together they select the chart anchor.
+`offsetX` and `offsetY` are then added in pixels. For example, right/bottom
+alignment with offsets of `-16` places text 16 pixels inside the bottom-right
+corner.
+
+Text can contain newlines. Customize a block with `color`, `style`,
+`lineHeight`, `rotation`, and `className`. Set `enabled: false` to retain but
+hide a block. Chart text is always drawn above the chart content.
+
 ## Responsive rules
 
 Rules are deep-merged for a matching render and restored afterwards, leaving
@@ -791,7 +825,7 @@ responsive: [
 
 Conditions support `minWidth`, `maxWidth`, `minHeight`, and `maxHeight`.
 Responsive options cover chart layout, titles, axes, tooltip, legend, trellis,
-annotations, and accessibility. They intentionally do not replace series data
+annotations, chart text, and accessibility. They intentionally do not replace series data
 or validation configuration.
 
 ## General polar charts
@@ -929,7 +963,7 @@ raw array for boxplots.
 | `dumbbell`                      | Two connected points per category; horizontal & groupable.                                     |
 | `columnrange`                   | Rounded-capsule range bar (vertical; horizontal via `chart.inverted`); groupable.              |
 | `butterfly`                     | Two series mirrored back-to-back around a central axis.                                        |
-| `radialbar`                     | Bars around a polar centre (0→270°).                                                           |
+| `radialbar`                     | Bars around a polar centre with configurable start/end angles and optional stacking.           |
 | `heatmap`                       | Category × category grid coloured by `value`; draws its own row/column labels.                 |
 | `bullet`                        | Measure bar per row against qualitative `ranges` bands and a `target` marker.                  |
 | `candlestick`                   | OHLC candles (`open`/`high`/`low`/`close`); up/down coloured.                                  |
@@ -979,7 +1013,11 @@ series: [
 
 **Stacking & grouping**: any bar/column/area series stacks with `stacking` and a
 shared `stack` id; series without stacking are grouped side-by-side
-automatically. Mix `type`s across series for combination charts.
+automatically. Radial-bar series also support `stacking: 'normal' | 'percent'`:
+matching categories share a concentric ring and each series arc begins where
+the prior series ends. Set `startAngle: -90, endAngle: 90` for a half-circle
+track. Angles are degrees and may define a sweep up to 360°. Mix `type`s across
+series for combination charts.
 
 ---
 
@@ -1000,7 +1038,7 @@ automatically. Mix `type`s across series for combination charts.
 | `chart.setSize(width, height)`                            | Resize and re-render with an explicit size.                                                                                                                                                                                                                                                                            |
 | `chart.reflow()`                                          | Re-read the container's current width/height and re-render if either changed — no arguments needed. Call this after your own layout (a resizable panel, a grid library, a tab becoming visible) settles, instead of waiting for a resize event. Dimensions pinned via `chart.width`/`chart.height` are left untouched. |
 | `chart.destroy()`                                         | Remove the chart, disconnect the resize observer, and clear listeners.                                                                                                                                                                                                                                                 |
-| `chart.legendItems`                                       | The resolved legend entries this chart will actually draw (`{ label, color, visible }[]`). Point-legend types (pie/donut/radialbar) are always exactly **one** series internally — don't infer legend visibility from `options.series.length`; read this (or `hasLegend`) instead.                                     |
+| `chart.legendItems`                                       | The resolved legend entries this chart will actually draw (`{ label, color, visible }[]`). Single-series point-legend charts expose one entry per point; multi-series stacked radial bars expose one per series. Read this (or `hasLegend`) instead of inferring legend visibility from `options.series.length`.             |
 | `chart.hasLegend`                                         | Whether a legend will actually render — `legend.enabled !== false` **and** more than one legend entry.                                                                                                                                                                                                                 |
 
 ### Interactivity options (`chart`)
@@ -1101,4 +1139,5 @@ also exports its concrete renderer class and a `register…Series()` function.
 The full entrypoint remains backward compatible.
 
 All option interfaces are exported as types for TypeScript users
-(`ChartOptions`, `SeriesOptions`, `AxisOptions`, `DataLabelOptions`, …).
+(`ChartOptions`, `ChartTextOptions`, `SeriesOptions`, `AxisOptions`,
+`DataLabelOptions`, …).

@@ -38,6 +38,10 @@ describe('ticks', () => {
     expect(t[0]).toBeLessThanOrEqual(0);
     expect(t[t.length - 1]).toBeGreaterThanOrEqual(97);
   });
+  it('does not add excessive headroom above the data maximum', () => {
+    const t = niceTicks(0, 110, 6);
+    expect(t).toEqual([0, 20, 40, 60, 80, 100, 120]);
+  });
   it('niceDateTicks picks a day format over ~2 weeks', () => {
     const { ticks, format } = niceDateTicks(Date.UTC(2026, 0, 1), Date.UTC(2026, 0, 15));
     expect(format).toBe('%b %d');

@@ -42,6 +42,7 @@ import type { HistogramSeriesOptions } from "../series/histogram.js";
 import type { PieSeriesOptions } from "../series/pie.js";
 import type { BubbleSeriesOptions } from "../series/bubble.js";
 import type { ColumnOptions } from "../series/column.js";
+import type { RadialBarSeriesOptions } from "../series/radialbar.js";
 import type {
   ScatterPointOptions,
   ScatterSeriesOptions,
@@ -146,6 +147,7 @@ export interface SeriesOptions
     BubbleSeriesOptions,
     ScatterSeriesOptions,
     SparklineSeriesOptions,
+    RadialBarSeriesOptions,
     ColumnOptions {
   type?: ChartType;
   name?: string;
@@ -533,6 +535,29 @@ export interface AnnotationOptions {
   zIndex?: "below" | "above";
 }
 
+/** A text block positioned relative to the chart edges or centre. */
+export interface ChartTextOptions {
+  text: string;
+  /** Render this text block. Default `true`. */
+  enabled?: boolean;
+  /** Horizontal chart anchor. Default `'left'`. */
+  align?: "left" | "center" | "right";
+  /** Vertical chart anchor. Default `'top'`. */
+  verticalAlign?: "top" | "center" | "bottom";
+  /** Additional horizontal displacement in pixels. */
+  offsetX?: number;
+  /** Additional vertical displacement in pixels. */
+  offsetY?: number;
+  color?: string;
+  style?: Partial<CSSStyleDeclaration> | Record<string, string>;
+  /** Distance between baselines for multiline text. Defaults to 1.2 × font size. */
+  lineHeight?: number;
+  /** Clockwise rotation in degrees around the text anchor. */
+  rotation?: number;
+  /** Additional class placed on this text block's SVG group. */
+  className?: string;
+}
+
 export interface ResponsiveCondition {
   minWidth?: number;
   maxWidth?: number;
@@ -552,6 +577,7 @@ export type ResponsiveChartOptions = Partial<
     | "legend"
     | "trellis"
     | "annotations"
+    | "texts"
     | "accessibility"
   >
 >;
@@ -706,10 +732,9 @@ export interface ChartOptions {
     /** Auto re-render when the container resizes (default true). */
     reflow?: boolean;
     /**
-     * Drop the axis lines themselves once the container gets too small,
-     * leaving just gridlines and the series geometry, rather than rendering
-     * an unreadably cramped chart. Default `true`; pass `false` to always
-     * render every element regardless of size.
+     * Simplify very small charts by hiding data labels and, at the smallest
+     * sizes, axis lines. Default `true`; pass `false` to always render every
+     * configured element regardless of size.
      */
     responsive?: boolean;
     /**
@@ -733,6 +758,8 @@ export interface ChartOptions {
   trellis?: TrellisOptions;
   /** Labels, callouts, and point highlights anchored to chart values. */
   annotations?: AnnotationOptions[];
+  /** Text blocks positioned from the chart edges or centre. */
+  texts?: ChartTextOptions[];
   /** Conditional option overrides matched against the rendered chart size. */
   responsive?: ResponsiveRule[];
   /** Drill-down series revealed by clicking points that reference them. */

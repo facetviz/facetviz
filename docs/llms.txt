@@ -129,7 +129,7 @@ interface ChartOptions {
     animation?: boolean | { enabled?: boolean; duration?: number; easing?: string };
     zoom?: 'x' | 'y' | 'xy' | false | { type?: 'x'|'y'|'xy'|false };
     reflow?: boolean;                         // default true
-    responsive?: boolean;                     // default true
+    responsive?: boolean;                     // default true; hides data labels when short side <180px
     boost?: boolean | { enabled?: boolean; threshold?: number };
     events?: { render?; click? };
   };
@@ -150,6 +150,10 @@ interface ChartOptions {
   annotations?: Array<{ x?: number|string; y?: number; text?: string;
     shape?: 'label'|'callout'|'circle'; dx?: number; dy?: number;
     xAxis?: 0|1; yAxis?: 0|1; zIndex?: 'above'|'below' }>;
+  texts?: Array<{ text: string; enabled?: boolean; align?: 'left'|'center'|'right';
+    verticalAlign?: 'top'|'center'|'bottom';
+    offsetX?: number; offsetY?: number; color?: string; style?: Record<string,string>;
+    lineHeight?: number; rotation?: number; className?: string }>;
   responsive?: Array<{
     condition: { minWidth?: number; maxWidth?: number;
                  minHeight?: number; maxHeight?: number };
@@ -230,6 +234,7 @@ interface SeriesOptions {
   color?: string;
   visible?: boolean; showInLegend?: boolean;
   stack?: string|number; stacking?: 'normal'|'percent';
+  startAngle?: number; endAngle?: number;        // radialbar degrees; defaults -90 → 180
   xAxis?: 0 | 1; yAxis?: 0 | 1;
   lineWidth?: number; size?: number;
   marker?: { enabled?: boolean; radius?: number;
@@ -447,9 +452,9 @@ Type-specific series options:
 - Stacked bars default labels to the segment center; this is usually correct.
 - Use `tooltip.shared:true` for aligned multi-series x values with the same
   unit. For dual-axis series with different units, prefer individual tooltips.
-- Use `legend.enabled:false` for a single obvious series. Point-legend charts
-  (`pie`, `donut`, `radialbar`) still benefit from a legend when labels are not
-  shown.
+- Use `legend.enabled:false` for a single obvious series. Single-series
+  point-legend charts (`pie`, `donut`, `radialbar`) still benefit from a legend
+  when labels are not shown; stacked radial bars use one legend item per series.
 - Default tooltip formatting safely escapes substituted data. A custom
   `tooltip.formatter` returns trusted HTML; never insert untrusted strings into
   it without escaping.
@@ -461,8 +466,11 @@ Formatting tokens for labels/tooltips: `{x}`, `{y}`, `{name}`, `{series}`,
 ### Performance and responsiveness
 
 - Leave `chart.reflow:true` for normal responsive layouts.
+- With `chart.responsive` enabled (the default), data labels are hidden when
+  the chart's shorter side is below 180px and return automatically when it grows.
+  Set `chart.responsive:false` to keep configured labels at every size.
 - Use root `responsive` rules for size-specific legend, title, axis, tooltip,
-  trellis, annotation, or accessibility overrides. Rules match the rendered
+  trellis, annotation, chart text, or accessibility overrides. Rules match the rendered
   width/height and do not mutate the stored options.
 - Call `chart.reflow()` after a hidden tab, grid, or resizable panel becomes
   visible or finishes layout.
@@ -480,6 +488,21 @@ angular x-axis / radial y-axis. Polar dumbbells connect each low/high pair
 radially at its category angle. Tooltips, events, stacking, labels, annotations,
 legends, and a second y scale continue to work. Use dedicated `radar`,
 `radialbar`, and `gauge` types for their specialized semantics.
+`radialbar` supports `stacking:'normal'|'percent'`. Matching point names/x
+values share a ring, and every series arc continues from the previous one:
+
+```ts
+{
+  chart: { type: 'radialbar' },
+  series: [
+    { name: 'Done', stacking: 'normal', data: [{ name: 'Move', y: 60 }, { name: 'Exercise', y: 35 }] },
+    { name: 'Remaining', stacking: 'normal', data: [{ name: 'Move', y: 20 }, { name: 'Exercise', y: 25 }] }
+  ]
+}
+```
+Radial-bar angles are configurable in degrees. Use
+`plotOptions:{radialbar:{startAngle:-90,endAngle:90}}` for a half circle. The
+default is `-90` through `180` (a 270° sweep); sweeps up to 360° are supported.
 Add `chart.inverted:true` to swap the roles: x is radial/vertical and y is
 circular/angular. In this mode columns are concentric arcs and dumbbell
 connectors follow circular arcs.

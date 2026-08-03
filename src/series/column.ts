@@ -47,9 +47,6 @@ export class ColumnSeries extends BaseSeries {
       const [loVal, hiVal] = this.valuePair(p);
       if (loVal === undefined || hiVal === undefined) continue;
 
-      const center = catScale.scale(p.x);
-      // Offset within the category band for grouped (side-by-side) series.
-      const catStart = center - band / 2 + groupIndex * subWidth;
       const vLo = valScale.scale(loVal);
       const vHi = valScale.scale(hiVal);
       const max_colWidth = Math.max(1, subWidth * 0.9);
@@ -59,17 +56,27 @@ export class ColumnSeries extends BaseSeries {
         this.options.size ??
         max_colWidth; // leave a little gap between bars
 
+      const center = catScale.scale(p.x);
+      // Keep a narrowed group packed around the category centre. Centering
+      // every column in its original fixed-width slot would turn the unused
+      // width into extra space between neighbouring columns whenever an
+      // explicit columnWidth is smaller than the default.
+      const columnGap = subWidth - max_colWidth;
+      const groupWidth = groupCount * colWidth + (groupCount - 1) * columnGap;
+      const catStart =
+        center - groupWidth / 2 + groupIndex * (colWidth + columnGap);
+
       let rect: { x: number; y: number; width: number; height: number };
       if (horizontal) {
         rect = {
           x: Math.min(vLo, vHi),
-          y: catStart + (subWidth - colWidth) / 2,
+          y: catStart,
           width: Math.max(1, Math.abs(vHi - vLo)),
           height: colWidth,
         };
       } else {
         rect = {
-          x: catStart + (subWidth - colWidth) / 2,
+          x: catStart,
           y: Math.min(vLo, vHi),
           width: colWidth,
           height: Math.max(1, Math.abs(vHi - vLo)),

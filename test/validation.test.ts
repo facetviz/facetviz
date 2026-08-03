@@ -117,6 +117,22 @@ describe('configuration validation', () => {
     ]));
   });
 
+  it('validates free chart text placement and styling values', () => {
+    const result = validateChartOptions({
+      texts: [
+        { text: '', align: 'start' },
+        { text: 'Note', verticalAlign: 'middle' },
+      ],
+      series: [{ data: [1] }],
+    });
+
+    expect(result.errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'text.text.required', path: 'texts[0].text' }),
+      expect.objectContaining({ code: 'text.align.unknown', path: 'texts[0].align' }),
+      expect.objectContaining({ code: 'text.vertical_align.unknown', path: 'texts[1].verticalAlign' }),
+    ]));
+  });
+
   it('validates specialised statistical, financial, gantt, and gauge data', () => {
     const result = validateChartOptions({
       series: [
@@ -124,10 +140,13 @@ describe('configuration validation', () => {
         { type: 'candlestick', data: [{ open: 10, high: 9, low: 8, close: 11 }] },
         { type: 'gantt', data: [{ name: 'Build', start: 10, end: 5 }] },
         { type: 'gauge', min: 100, max: 0, data: [{ y: 150 }] },
+        { type: 'radialbar', startAngle: 'top', data: [50] },
+        { type: 'radialbar', startAngle: -90, endAngle: 300, data: [50] },
       ],
     });
     expect(result.errors.map((issue) => issue.code)).toEqual(expect.arrayContaining([
       'boxplot.order', 'candlestick.order', 'gantt.range.order', 'gauge.range.order',
+      'radialbar.start_angle.finite', 'radialbar.angle_sweep.range',
     ]));
     expect(result.warnings.map((issue) => issue.code)).toContain('gauge.value.outside_range');
   });

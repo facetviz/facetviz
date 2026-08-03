@@ -759,6 +759,33 @@
             },
           ],
         },
+        "Radial bar — stacked": {
+          chart: { type: "radialbar", height: 380 },
+          title: { text: "Half-circle activity progress" },
+          plotOptions: {
+            radialbar: { startAngle: -90, endAngle: 90 },
+          },
+          series: [
+            {
+              name: "Completed",
+              stacking: "normal",
+              data: [
+                { name: "Move", y: 60 },
+                { name: "Exercise", y: 35 },
+                { name: "Stand", y: 75 },
+              ],
+            },
+            {
+              name: "Remaining",
+              stacking: "normal",
+              data: [
+                { name: "Move", y: 20 },
+                { name: "Exercise", y: 20 },
+                { name: "Stand", y: 20 },
+              ],
+            },
+          ],
+        },
         Funnel: {
           chart: { type: "funnel", height: 400 },
           title: { text: "Conversion" },

@@ -36,6 +36,12 @@ export interface SeriesRenderContext {
   groupCount: number;
   /** This series' slot within a group (0-based). */
   groupIndex: number;
+  /** Shared category order for stacked radial-bar rings. */
+  radialCategories?: Array<number | string>;
+  /** Shared angular value maximum for stacked radial bars. */
+  radialValueMax?: number;
+  /** This stacked radial-bar series' paint order (0 draws tracks/labels). */
+  radialSeriesIndex?: number;
   /** Called by a series when a point is interacted with. */
   onPointEvent: (kind: 'click' | 'mouseOver' | 'mouseOut', p: Point, dom: Event) => void;
   /** Registers a hoverable region + its tooltip payload. */

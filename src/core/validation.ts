@@ -159,6 +159,7 @@ export function validateChartOptions(options: unknown): ChartValidationResult {
   validateTitle(options.title, "title", add);
   validateTitle(options.subtitle, "subtitle", add);
   validateAnnotations(options.annotations, add);
+  validateChartTexts(options.texts, add);
   validateResponsive(options.responsive, add);
 
   for (const [path, palette] of [
@@ -273,6 +274,33 @@ export function validateChartOptions(options: unknown): ChartValidationResult {
 
     if (type === "histogram" && entry.bins !== undefined && (typeof entry.bins !== "number" || !Number.isSafeInteger(entry.bins) || entry.bins <= 0))
       add("histogram.bins.positive_integer", "error", `${base}.bins`, "Histogram bins must be a positive integer.");
+
+    if (type === "radialbar") {
+      const startValue = entry.startAngle;
+      const endValue = entry.endAngle;
+      const startValid =
+        startValue === undefined ||
+        (typeof startValue === "number" && Number.isFinite(startValue));
+      const endValid =
+        endValue === undefined ||
+        (typeof endValue === "number" && Number.isFinite(endValue));
+      if (!startValid)
+        add("radialbar.start_angle.finite", "error", `${base}.startAngle`, "startAngle must be a finite number of degrees.");
+      if (!endValid)
+        add("radialbar.end_angle.finite", "error", `${base}.endAngle`, "endAngle must be a finite number of degrees.");
+      if (startValid && endValid) {
+        const startAngle = (startValue as number | undefined) ?? -90;
+        const endAngle = (endValue as number | undefined) ?? 180;
+        const sweep = endAngle - startAngle;
+        if (sweep <= 0 || sweep > 360)
+          add(
+            "radialbar.angle_sweep.range",
+            "error",
+            base,
+            "startAngle and endAngle must define a positive sweep of at most 360 degrees.",
+          );
+      }
+    }
 
     if (["pie", "donut", "funnel", "radialbar", "sunburst"].includes(type)) {
       if (data.some((point) => (pointValue(point) ?? 1) < 0))
@@ -528,6 +556,49 @@ function validateAnnotations(value: unknown, add: AddIssue): void {
           `${path}.${axis}`,
           `${axis} must be 0 or 1.`,
         );
+  });
+}
+
+function validateChartTexts(value: unknown, add: AddIssue): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    add("texts.array", "error", "texts", "texts must be an array.");
+    return;
+  }
+  value.forEach((item, index) => {
+    const path = `texts[${index}]`;
+    if (!isRecord(item)) {
+      add("text.object", "error", path, "Each chart text item must be an object.");
+      return;
+    }
+    if (typeof item.text !== "string" || item.text.length === 0)
+      add("text.text.required", "error", `${path}.text`, "Chart text requires a non-empty text string.");
+    if (item.enabled !== undefined && typeof item.enabled !== "boolean")
+      add("text.enabled.boolean", "error", `${path}.enabled`, "enabled must be a boolean.");
+    if (item.align !== undefined && !["left", "center", "right"].includes(String(item.align)))
+      add("text.align.unknown", "error", `${path}.align`, "align must be left, center, or right.");
+    if (
+      item.verticalAlign !== undefined &&
+      !["top", "center", "bottom"].includes(String(item.verticalAlign))
+    )
+      add(
+        "text.vertical_align.unknown",
+        "error",
+        `${path}.verticalAlign`,
+        "verticalAlign must be top, center, or bottom.",
+      );
+    for (const key of [
+      "offsetX",
+      "offsetY",
+      "lineHeight",
+      "rotation",
+    ] as const) {
+      const number = item[key];
+      if (number !== undefined && (typeof number !== "number" || !Number.isFinite(number)))
+        add("text.number.finite", "error", `${path}.${key}`, `${key} must be a finite number.`);
+      else if (key === "lineHeight" && typeof number === "number" && number <= 0)
+        add("text.line_height.positive", "error", `${path}.${key}`, "lineHeight must be positive.");
+    }
   });
 }
 

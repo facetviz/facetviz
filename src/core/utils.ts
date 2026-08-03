@@ -280,8 +280,10 @@ export function niceTicks(min: number, max: number, count = 6): number[] {
     min -= pad;
     max += pad;
   }
-  const span = niceNum(max - min, false);
-  const step = niceNum(span / Math.max(1, count - 1), true);
+  // Pick the interval from the actual data span. Rounding the span first and
+  // then rounding the interval again can compound the headroom considerably
+  // (for example, 0..110 with six ticks used to expand all the way to 150).
+  const step = niceNum((max - min) / Math.max(1, count - 1), true);
   const niceMin = Math.floor(min / step) * step;
   const niceMax = Math.ceil(max / step) * step;
   const ticks: number[] = [];

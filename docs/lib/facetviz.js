@@ -398,7 +398,7 @@ function niceTicks(min, max, count = 6) {
     let pad = Math.abs(min) || 1;
     min -= pad, max += pad;
   }
-  let span = niceNum(max - min, !1), step = niceNum(span / Math.max(1, count - 1), !0), niceMin = Math.floor(min / step) * step, niceMax = Math.ceil(max / step) * step, ticks = [];
+  let step = niceNum((max - min) / Math.max(1, count - 1), !0), niceMin = Math.floor(min / step) * step, niceMax = Math.ceil(max / step) * step, ticks = [];
   for (let v = niceMin; v <= niceMax + step * 0.5; v += step)
     ticks.push(Number(v.toFixed(10)));
   return ticks;
@@ -1011,18 +1011,18 @@ var ColumnSeries = class extends BaseSeries {
     }
     let { renderer, groupCount, groupIndex } = ctx, horizontal = this.type === "bar" || ctx.inverted, catScale = horizontal ? ctx.yScale : ctx.xScale, valScale = horizontal ? ctx.xScale : ctx.yScale, g = renderer.group({
       class: `facet-series facet-column ${this.name}`
-    }), band = catScale.bandwidth(), subWidth = band / groupCount;
+    }), subWidth = catScale.bandwidth() / groupCount;
     for (let p of this.points) {
       let [loVal, hiVal] = this.valuePair(p);
       if (loVal === void 0 || hiVal === void 0) continue;
-      let catStart = catScale.scale(p.x) - band / 2 + groupIndex * subWidth, vLo = valScale.scale(loVal), vHi = valScale.scale(hiVal), max_colWidth = Math.max(1, subWidth * 0.9), colWidth = p.options.columnWidth ?? this.options.columnWidth ?? this.options.size ?? max_colWidth, rect;
+      let vLo = valScale.scale(loVal), vHi = valScale.scale(hiVal), max_colWidth = Math.max(1, subWidth * 0.9), colWidth = p.options.columnWidth ?? this.options.columnWidth ?? this.options.size ?? max_colWidth, center = catScale.scale(p.x), columnGap = subWidth - max_colWidth, groupWidth = groupCount * colWidth + (groupCount - 1) * columnGap, catStart = center - groupWidth / 2 + groupIndex * (colWidth + columnGap), rect;
       horizontal ? rect = {
         x: Math.min(vLo, vHi),
-        y: catStart + (subWidth - colWidth) / 2,
+        y: catStart,
         width: Math.max(1, Math.abs(vHi - vLo)),
         height: colWidth
       } : rect = {
-        x: catStart + (subWidth - colWidth) / 2,
+        x: catStart,
         y: Math.min(vLo, vHi),
         width: colWidth,
         height: Math.max(1, Math.abs(vHi - vLo))
@@ -2269,33 +2269,77 @@ registerRadarSeries();
 // src/series/radialbar.ts
 var RadialBarSeries = class extends BaseSeries {
   capabilities() {
-    return { grouped: !1, cartesian: !1, stackable: !1, pointLegend: !0 };
+    return { grouped: !1, cartesian: !1, stackable: !0, pointLegend: !0 };
   }
   render(ctx) {
-    let { renderer, plot, colors } = ctx, g = renderer.group({ class: `facet-series facet-radialbar ${this.name}` }, renderer.root), cx = plot.x + plot.width / 2, cy = plot.y + plot.height / 2, outer = Math.min(plot.width, plot.height) / 2 - 4, points = this.visiblePoints(), max = Math.max(1, ...points.map((p) => p.y ?? 0)), n = points.length || 1, ringWidth = outer * 0.7 / n, gap = ringWidth * 0.25, startAngle = -Math.PI / 2, fullSweep = Math.PI * 2 * 270 / 360, labelX = cx - 8;
-    points.forEach((p, i) => {
-      let value = p.y ?? 0, rOuter = outer - i * ringWidth, rInner = rOuter - (ringWidth - gap), color = p.color ?? paletteColor(colors, this.points.indexOf(p)), frac = Math.max(0, Math.min(1, value / max));
+    let { renderer, plot, colors } = ctx, g = renderer.group({ class: `facet-series facet-radialbar ${this.name}` }, renderer.root), cx = plot.x + plot.width / 2, cy = plot.y + plot.height / 2, outer = Math.min(plot.width, plot.height) / 2 - 4, points = this.visiblePoints(), stacked = !!this.options.stacking, categories = stacked && ctx.radialCategories?.length ? ctx.radialCategories : points.map((point) => point.x), categoryIndex = new Map(
+      categories.map((category, index) => [
+        `${typeof category}:${String(category)}`,
+        index
+      ])
+    ), max = stacked ? ctx.radialValueMax ?? Math.max(1, ...points.map((p) => p.stackHigh ?? p.y ?? 0)) : Math.max(1, ...points.map((p) => p.y ?? 0)), n = categories.length || 1, ringWidth = outer * 0.7 / n, gap = ringWidth * 0.25, startAngleDegrees = this.options.startAngle ?? -90, endAngleDegrees = this.options.endAngle ?? 180, sweepDegrees = endAngleDegrees - startAngleDegrees;
+    if (!Number.isFinite(startAngleDegrees) || !Number.isFinite(endAngleDegrees) || sweepDegrees <= 0 || sweepDegrees > 360)
+      throw new RangeError(
+        "FacetViz: radialbar startAngle/endAngle must define a positive sweep of at most 360 degrees"
+      );
+    let startAngle = startAngleDegrees * Math.PI / 180, fullSweep = sweepDegrees * Math.PI / 180, labelX = cx - 8, ringGeometry = (index) => {
+      let rOuter = outer - index * ringWidth;
+      return {
+        rOuter,
+        rInner: rOuter - (ringWidth - gap)
+      };
+    }, drawTrack = (index, label, color) => {
+      let { rInner, rOuter } = ringGeometry(index);
       renderer.create("path", {
         d: this.arcBand(cx, cy, rInner, rOuter, startAngle, startAngle + fullSweep),
         fill: alpha(color, 0.15),
-        stroke: "none"
+        stroke: "none",
+        class: "facet-radialbar-track"
+      }, g), renderer.text(label, labelX, cy - (rInner + rOuter) / 2 + 4, {
+        "text-anchor": "end",
+        ...FONTS.dataLabel,
+        "font-size": "10px",
+        class: "facet-radialbar-label"
       }, g);
+    };
+    if (stacked && ctx.radialSeriesIndex === 0) {
+      let labels = new Map(
+        points.map((point) => [
+          `${typeof point.x}:${String(point.x)}`,
+          String(point.name ?? point.x)
+        ])
+      );
+      categories.forEach((category, index) => {
+        let key = `${typeof category}:${String(category)}`;
+        drawTrack(index, labels.get(key) ?? String(category), this.color);
+      });
+    }
+    points.forEach((p, pointIndex) => {
+      let value = p.y ?? 0, index = stacked ? categoryIndex.get(`${typeof p.x}:${String(p.x)}`) ?? pointIndex : pointIndex, { rInner, rOuter } = ringGeometry(index), color = p.color ?? (stacked ? this.color : paletteColor(colors, this.points.indexOf(p))), low = stacked ? p.stackLow ?? 0 : 0, high = stacked ? p.stackHigh ?? value : value, startFraction = Math.max(0, Math.min(1, low / max)), endFraction = Math.max(0, Math.min(1, high / max));
+      stacked || drawTrack(index, String(p.name ?? p.x), color);
       let el = renderer.create("path", {
-        d: this.arcBand(cx, cy, rInner, rOuter, startAngle, startAngle + fullSweep * frac),
+        d: this.arcBand(
+          cx,
+          cy,
+          rInner,
+          rOuter,
+          startAngle + fullSweep * startFraction,
+          startAngle + fullSweep * endFraction
+        ),
         fill: color,
         stroke: "none",
         class: "facet-point"
       }, g);
-      ctx.registerHover(el, p), el.addEventListener("click", (e) => ctx.onPointEvent("click", p, e)), el.addEventListener("mouseover", (e) => ctx.onPointEvent("mouseOver", p, e)), el.addEventListener("mouseout", (e) => ctx.onPointEvent("mouseOut", p, e)), renderer.text(String(p.name ?? p.x), labelX, cy - (rInner + rOuter) / 2 + 4, {
-        "text-anchor": "end",
-        ...FONTS.dataLabel,
-        "font-size": "10px"
-      }, g);
+      ctx.registerHover(el, p), el.addEventListener("click", (e) => ctx.onPointEvent("click", p, e)), el.addEventListener("mouseover", (e) => ctx.onPointEvent("mouseOver", p, e)), el.addEventListener("mouseout", (e) => ctx.onPointEvent("mouseOut", p, e));
     });
   }
   /** A filled band between two radii swept between two angles. */
   arcBand(cx, cy, ri, ro, a0, a1) {
     if (a1 <= a0 + 1e-4) return "";
+    if (a1 - a0 >= Math.PI * 2 - 1e-6) {
+      let mid = a0 + Math.PI, ox02 = cx + ro * Math.cos(a0), oy02 = cy + ro * Math.sin(a0), oxm = cx + ro * Math.cos(mid), oym = cy + ro * Math.sin(mid), ix02 = cx + ri * Math.cos(a0), iy02 = cy + ri * Math.sin(a0), ixm = cx + ri * Math.cos(mid), iym = cy + ri * Math.sin(mid);
+      return `M ${ox02} ${oy02} A ${ro} ${ro} 0 0 1 ${oxm} ${oym} A ${ro} ${ro} 0 0 1 ${ox02} ${oy02} L ${ix02} ${iy02} A ${ri} ${ri} 0 0 0 ${ixm} ${iym} A ${ri} ${ri} 0 0 0 ${ix02} ${iy02} Z`;
+    }
     let large = a1 - a0 > Math.PI ? 1 : 0, ox0 = cx + ro * Math.cos(a0), oy0 = cy + ro * Math.sin(a0), ox1 = cx + ro * Math.cos(a1), oy1 = cy + ro * Math.sin(a1), ix1 = cx + ri * Math.cos(a1), iy1 = cy + ri * Math.sin(a1), ix0 = cx + ri * Math.cos(a0), iy0 = cy + ri * Math.sin(a0);
     return `M ${ox0} ${oy0} A ${ro} ${ro} 0 ${large} 1 ${ox1} ${oy1} L ${ix1} ${iy1} A ${ri} ${ri} 0 ${large} 0 ${ix0} ${iy0} Z`;
   }
@@ -4067,7 +4111,7 @@ function validateChartOptions(options) {
     "error",
     "chart.polarGridLineMode",
     "polarGridLineMode must be spoke or sector."
-  ), validateTitle(options.title, "title", add), validateTitle(options.subtitle, "subtitle", add), validateAnnotations(options.annotations, add), validateResponsive(options.responsive, add);
+  ), validateTitle(options.title, "title", add), validateTitle(options.subtitle, "subtitle", add), validateAnnotations(options.annotations, add), validateChartTexts(options.texts, add), validateResponsive(options.responsive, add);
   for (let [path, palette] of [
     ["colors", options.colors],
     ["chart.colors", chartRecord.colors]
@@ -4126,7 +4170,19 @@ function validateChartOptions(options) {
     if (validXAxisIndex || add("series.x_axis.index", "error", `${base}.xAxis`, `xAxis index must reference one of ${xAxes.length} configured axes.`), (xAxes[validXAxisIndex ? xAxisIndex : 0] ?? {}).type === "log" && data.some((point, index) => {
       let x = pointX(point, index);
       return typeof x == "number" && x <= 0;
-    }) && add("axis.log.non_positive_x", "error", `${base}.data`, "Logarithmic x-axes require strictly positive x values."), type === "histogram" && entry.bins !== void 0 && (typeof entry.bins != "number" || !Number.isSafeInteger(entry.bins) || entry.bins <= 0) && add("histogram.bins.positive_integer", "error", `${base}.bins`, "Histogram bins must be a positive integer."), ["pie", "donut", "funnel", "radialbar", "sunburst"].includes(type) && data.some((point) => (pointValue(point) ?? 1) < 0) && add("series.value.non_negative", "error", `${base}.data`, `${type} values cannot be negative.`), ["arearange", "areasplinerange", "columnrange", "errorbar"].includes(type) && validateRanges(data, base, add), type === "boxplot" && validateBoxplots(data, base, add), type === "candlestick" && validateCandlesticks(data, base, add), type === "gantt" && validateGantt(data, base, add), type === "sankey" && validateSankey(data, base, add), (type === "treegraph" || type === "sunburst") && validateHierarchy(data, base, add), type === "gauge") {
+    }) && add("axis.log.non_positive_x", "error", `${base}.data`, "Logarithmic x-axes require strictly positive x values."), type === "histogram" && entry.bins !== void 0 && (typeof entry.bins != "number" || !Number.isSafeInteger(entry.bins) || entry.bins <= 0) && add("histogram.bins.positive_integer", "error", `${base}.bins`, "Histogram bins must be a positive integer."), type === "radialbar") {
+      let startValue = entry.startAngle, endValue = entry.endAngle, startValid = startValue === void 0 || typeof startValue == "number" && Number.isFinite(startValue), endValid = endValue === void 0 || typeof endValue == "number" && Number.isFinite(endValue);
+      if (startValid || add("radialbar.start_angle.finite", "error", `${base}.startAngle`, "startAngle must be a finite number of degrees."), endValid || add("radialbar.end_angle.finite", "error", `${base}.endAngle`, "endAngle must be a finite number of degrees."), startValid && endValid) {
+        let sweep = (endValue ?? 180) - (startValue ?? -90);
+        (sweep <= 0 || sweep > 360) && add(
+          "radialbar.angle_sweep.range",
+          "error",
+          base,
+          "startAngle and endAngle must define a positive sweep of at most 360 degrees."
+        );
+      }
+    }
+    if (["pie", "donut", "funnel", "radialbar", "sunburst"].includes(type) && data.some((point) => (pointValue(point) ?? 1) < 0) && add("series.value.non_negative", "error", `${base}.data`, `${type} values cannot be negative.`), ["arearange", "areasplinerange", "columnrange", "errorbar"].includes(type) && validateRanges(data, base, add), type === "boxplot" && validateBoxplots(data, base, add), type === "candlestick" && validateCandlesticks(data, base, add), type === "gantt" && validateGantt(data, base, add), type === "sankey" && validateSankey(data, base, add), (type === "treegraph" || type === "sunburst") && validateHierarchy(data, base, add), type === "gauge") {
       let min = numberAt(entry, "min") ?? 0, max = numberAt(entry, "max") ?? 100;
       min >= max && add("gauge.range.order", "error", base, "Gauge min must be smaller than max."), data.forEach((point, pointIndex) => {
         let value = pointValue(point);
@@ -4253,6 +4309,36 @@ function validateAnnotations(value, add) {
           `${path}.${axis}`,
           `${axis} must be 0 or 1.`
         );
+    });
+  }
+}
+function validateChartTexts(value, add) {
+  if (value !== void 0) {
+    if (!Array.isArray(value)) {
+      add("texts.array", "error", "texts", "texts must be an array.");
+      return;
+    }
+    value.forEach((item, index) => {
+      let path = `texts[${index}]`;
+      if (!isRecord(item)) {
+        add("text.object", "error", path, "Each chart text item must be an object.");
+        return;
+      }
+      (typeof item.text != "string" || item.text.length === 0) && add("text.text.required", "error", `${path}.text`, "Chart text requires a non-empty text string."), item.enabled !== void 0 && typeof item.enabled != "boolean" && add("text.enabled.boolean", "error", `${path}.enabled`, "enabled must be a boolean."), item.align !== void 0 && !["left", "center", "right"].includes(String(item.align)) && add("text.align.unknown", "error", `${path}.align`, "align must be left, center, or right."), item.verticalAlign !== void 0 && !["top", "center", "bottom"].includes(String(item.verticalAlign)) && add(
+        "text.vertical_align.unknown",
+        "error",
+        `${path}.verticalAlign`,
+        "verticalAlign must be top, center, or bottom."
+      );
+      for (let key of [
+        "offsetX",
+        "offsetY",
+        "lineHeight",
+        "rotation"
+      ]) {
+        let number = item[key];
+        number !== void 0 && (typeof number != "number" || !Number.isFinite(number)) ? add("text.number.finite", "error", `${path}.${key}`, `${key} must be a finite number.`) : key === "lineHeight" && typeof number == "number" && number <= 0 && add("text.line_height.positive", "error", `${path}.${key}`, "lineHeight must be positive.");
+      }
     });
   }
 }
@@ -4458,8 +4544,52 @@ function renderAnnotations(ctx) {
   }
 }
 
+// src/core/chart-text.ts
+function renderChartTexts(ctx) {
+  let items = ctx.texts.filter((item) => item.enabled !== !1);
+  if (!items.length) return;
+  let layer = ctx.renderer.group(
+    { class: "facet-chart-texts" },
+    ctx.renderer.root
+  );
+  for (let item of items) {
+    if (!item.text) continue;
+    let align = item.align ?? "left", verticalAlign = item.verticalAlign ?? "top", x = (align === "left" ? 0 : align === "right" ? ctx.width : ctx.width / 2) + (item.offsetX ?? 0), y = (verticalAlign === "top" ? 0 : verticalAlign === "bottom" ? ctx.height : ctx.height / 2) + (item.offsetY ?? 0), style = {
+      ...FONTS.dataLabel,
+      ...item.color ? { fill: item.color } : {},
+      ...sanitizeStyle(item.style)
+    }, fontSize = parseFloat(style["font-size"] ?? "11") || 11, lineHeight = item.lineHeight ?? fontSize * 1.2, lines = item.text.split(`
+`), textHeight = fontSize + lineHeight * (lines.length - 1), top = verticalAlign === "top" ? y : verticalAlign === "bottom" ? y - textHeight : y - textHeight / 2, className = item.className ? ` ${item.className}` : "", group = ctx.renderer.group(
+      {
+        class: `facet-chart-text${className}`,
+        transform: item.rotation ? `rotate(${item.rotation} ${x} ${y})` : void 0
+      },
+      layer
+    ), text = ctx.renderer.text(
+      "",
+      x,
+      top + fontSize,
+      {
+        ...style,
+        "text-anchor": align === "left" ? "start" : align === "right" ? "end" : "middle",
+        "dominant-baseline": "auto",
+        class: "facet-chart-text-content"
+      },
+      group
+    );
+    lines.forEach((line, index) => {
+      let tspan = ctx.renderer.create(
+        "tspan",
+        { x, y: top + fontSize + index * lineHeight },
+        text
+      );
+      tspan.textContent = line;
+    });
+  }
+}
+
 // src/core/chart.ts
-var FacetViz = class _FacetViz {
+var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, FacetViz = class _FacetViz {
   constructor(container, options) {
     this.events = new EventEmitter();
     this.series = [];
@@ -4469,7 +4599,6 @@ var FacetViz = class _FacetViz {
     this.animateNext = !0;
     /** Rendered SVG data marks in keyboard-navigation order. */
     this.accessiblePoints = [];
-    this.clipSeq = 0;
     /** Saved series/title/xAxis levels for drill-down navigation. */
     this.drillStack = [];
     /** Nested transaction state used to coalesce public API mutations. */
@@ -4553,16 +4682,13 @@ var FacetViz = class _FacetViz {
   }
   // -- Rendering ---------------------------------------------------------
   /**
-   * Drop the axis lines themselves once the container gets too small to
-   * read comfortably — leaving just gridlines and the series geometry —
-   * rather than rendering an unreadably cramped chart. Data labels, axis
-   * labels/titles, and the legend are no longer part of this degradation;
-   * they render at whatever size the chart is. Overrides `this.options`
-   * (mutable per-instance state) for the duration of this render only;
-   * returns a function that restores the originals.
+   * Hide data labels on very small charts and drop axis lines at the smallest
+   * sizes, leaving more room for the series geometry. Overrides resolved
+   * per-instance state for the duration of this render only and returns a
+   * function that restores the originals.
    */
   applyResponsiveOverrides() {
-    let originals = /* @__PURE__ */ new Map(), target = this.options, remember = (key) => {
+    let originals = /* @__PURE__ */ new Map(), originalDataLabels = /* @__PURE__ */ new Map(), target = this.options, remember = (key) => {
       originals.has(key) || originals.set(key, target[key]);
     };
     for (let rule of this.options.responsive ?? []) {
@@ -4573,8 +4699,17 @@ var FacetViz = class _FacetViz {
     }
     let restore = () => {
       for (let [key, value] of originals) target[key] = value;
+      for (let [series, dataLabels] of originalDataLabels)
+        series.options.dataLabels = dataLabels;
     };
-    if (this.options.chart?.responsive === !1 || !(Math.min(this.width, this.height) < 110)) return restore;
+    if (this.options.chart?.responsive === !1) return restore;
+    let shortSide = Math.min(this.width, this.height);
+    if (shortSide < SMALL_CHART_DATA_LABEL_THRESHOLD)
+      for (let series of this.series) {
+        let dataLabels = series.options.dataLabels;
+        dataLabels?.enabled && (originalDataLabels.set(series, dataLabels), series.options.dataLabels = { ...dataLabels, enabled: !1 });
+      }
+    if (!(shortSide < 110)) return restore;
     let patch = { lineWidth: 0 }, overrideAxis = (a) => Array.isArray(a) ? a.map((ax) => ({ ...ax, ...patch })) : { ...a ?? {}, ...patch };
     return remember("xAxis"), remember("yAxis"), this.options.xAxis = overrideAxis(this.options.xAxis), this.options.yAxis = overrideAxis(this.options.yAxis), restore;
   }
@@ -4659,7 +4794,12 @@ var FacetViz = class _FacetViz {
           onToggle: (i) => this.toggleSeries(i)
         }).render(this.renderer.group({}, this.renderer.root));
       }
-      this.applyAccessibility(), this.installZoom(outer), this.drawDrillUp(outer), this.animateNext && this.animateEnter(), this.animateNext = !1, this.events.emit("render", this), this.options.chart?.events?.render?.(this);
+      renderChartTexts({
+        renderer: this.renderer,
+        width: this.width,
+        height: this.height,
+        texts: this.options.texts ?? []
+      }), this.applyAccessibility(), this.installZoom(outer), this.drawDrillUp(outer), this.animateNext && this.animateEnter(), this.animateNext = !1, this.events.emit("render", this), this.options.chart?.events?.render?.(this);
     } finally {
       restoreResponsive();
     }
@@ -5131,7 +5271,7 @@ var FacetViz = class _FacetViz {
   clipToPlot(plot, existing) {
     let NS = "http://www.w3.org/2000/svg", root = this.renderer.root, defs = root.querySelector("defs");
     defs || (defs = document.createElementNS(NS, "defs"), root.insertBefore(defs, root.firstChild));
-    let id = `facet-clip-${++this.clipSeq}`, cp = document.createElementNS(NS, "clipPath");
+    let id = `facet-clip-${++svgResourceId}`, cp = document.createElementNS(NS, "clipPath");
     cp.setAttribute("id", id), cp.setAttribute("clipPathUnits", "userSpaceOnUse");
     let rect = document.createElementNS(NS, "rect");
     rect.setAttribute("x", String(plot.x - 2)), rect.setAttribute("y", String(plot.y - 2)), rect.setAttribute("width", String(plot.width + 4)), rect.setAttribute("height", String(plot.height + 4)), cp.appendChild(rect), defs.appendChild(cp);
@@ -5580,6 +5720,23 @@ var FacetViz = class _FacetViz {
   }
   renderPolarPanel(plot, visible) {
     let dummy = new LinearScale({ domain: [0, 1], range: [0, 1] }), inverted = this.isInverted(visible);
+    computeStacks(visible);
+    let stackedRadialBars = visible.filter(
+      (item) => item.type === "radialbar" && !!item.options.stacking
+    ), radialCategories = [], seenRadialCategories = /* @__PURE__ */ new Set();
+    for (let item of stackedRadialBars)
+      for (let point of item.points) {
+        let key = `${typeof point.x}:${String(point.x)}`;
+        seenRadialCategories.has(key) || (seenRadialCategories.add(key), radialCategories.push(point.x));
+      }
+    let radialValueMax = Math.max(
+      1,
+      ...stackedRadialBars.flatMap(
+        (item) => item.points.map((point) => point.stackHigh ?? point.y ?? 0)
+      )
+    ), radialSeriesIndex = new Map(
+      stackedRadialBars.map((item, index) => [item.index, index])
+    );
     for (let s of visible) {
       let ctx = this.seriesContext(
         s,
@@ -5590,7 +5747,7 @@ var FacetViz = class _FacetViz {
         inverted,
         !0
       );
-      s.render(ctx);
+      s.type === "radialbar" && s.options.stacking && (ctx.radialCategories = radialCategories, ctx.radialValueMax = radialValueMax, ctx.radialSeriesIndex = radialSeriesIndex.get(s.index) ?? 0), s.render(ctx);
     }
   }
   /**
@@ -5694,7 +5851,7 @@ var FacetViz = class _FacetViz {
           Math.PI * 2 / categories.length * 0.78
         );
         for (let tick of xTicks) {
-          let angle = xScale.scale(tick), flipped = Math.sin(angle) > 0.05, start = flipped ? angle + arcSpan / 2 : angle - arcSpan / 2, end = flipped ? angle - arcSpan / 2 : angle + arcSpan / 2, from = project(start, textRadius), to = project(end, textRadius), pathId = `facet-polar-label-path-${++this.clipSeq}`;
+          let angle = xScale.scale(tick), flipped = Math.sin(angle) > 0.05, start = flipped ? angle + arcSpan / 2 : angle - arcSpan / 2, end = flipped ? angle - arcSpan / 2 : angle + arcSpan / 2, from = project(start, textRadius), to = project(end, textRadius), pathId = `facet-polar-label-path-${++svgResourceId}`;
           this.renderer.create(
             "path",
             {
@@ -7175,9 +7332,9 @@ var FacetViz = class _FacetViz {
   }
   /**
    * The legend entries this chart will actually draw. Point-legend types
-   * (pie/donut/radialbar) are always exactly one series internally, with one
-   * entry per slice here — so check `legendItems.length`/`hasLegend` instead
-   * of `options.series.length` to decide whether a legend is meaningful.
+   * use one entry per point when configured with one series; multi-series
+   * charts such as stacked radial bars use one entry per series. Check
+   * `legendItems.length`/`hasLegend` to decide whether a legend is meaningful.
    */
   get legendItems() {
     return this.buildLegendItems();

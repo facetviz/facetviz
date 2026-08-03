@@ -19,6 +19,7 @@ export type {
   PlotOptions,
   TrellisOptions,
   AnnotationOptions,
+  ChartTextOptions,
   ResponsiveCondition,
   ResponsiveChartOptions,
   ResponsiveRule,
