@@ -44,7 +44,14 @@ export interface PieSeriesOptions {
   dimensions?: string[];
 }
 
-interface PieCenter { cx: number; cy: number; radius: number; margin: number; outside: boolean; }
+interface PieCenter {
+  cx: number;
+  cy: number;
+  radius: number;
+  margin: number;
+  /** `outside` is an explicit opt-out of the default inside-first layout. */
+  labelMode: 'adaptive' | 'outside';
+}
 
 /**
  * Tracks the last drawn outside label's y position on each side of the pie,
@@ -92,15 +99,16 @@ export class PieSeries extends BaseSeries {
     const g = renderer.group({ class: `facet-series facet-pie ${this.name}` }, renderer.root);
 
     const dl = this.options.dataLabels;
-    const outside = !!dl?.enabled && (dl.position ?? 'outside') !== 'inside';
-    // Outside labels + leader lines need a wider ring than inside labels.
-    const margin = outside ? 48 : 6;
+    const labelsEnabled = !!dl?.enabled;
+    const labelMode = dl?.position === 'outside' ? 'outside' : 'adaptive';
+    // Adaptive labels can fall back beyond the rim, so reserve leader-line room.
+    const margin = labelsEnabled ? 48 : 6;
     const c: PieCenter = {
       cx: plot.x + plot.width / 2,
       cy: plot.y + plot.height / 2,
       radius: Math.max(10, Math.min(plot.width, plot.height) / 2 - margin),
       margin,
-      outside,
+      labelMode,
     };
 
     if (this.dims()) { this.renderMultiLevel(ctx, g, c); return; }
@@ -145,7 +153,7 @@ export class PieSeries extends BaseSeries {
       el.addEventListener('mouseout', (e: Event) => ctx.onPointEvent('mouseOut', p, e));
 
       const label = this.labelText(p, p.name ?? p.x, value, total);
-      this.drawLabel(ctx, g, c, rr, angle, end, label, color, layout);
+      this.drawLabel(ctx, g, c, rr, innerR, angle, end, label, color, layout);
       angle = end;
     });
   }
@@ -214,7 +222,7 @@ export class PieSeries extends BaseSeries {
 
         const name = String(p.options[dims[1]] ?? p.name ?? p.x);
         const label = this.labelText(p, name, value, total);
-        this.drawLabel(ctx, g, c, c.radius, a2, e2, label, color, layout);
+        this.drawLabel(ctx, g, c, c.radius, midR, a2, e2, label, color, layout);
         a2 = e2;
       });
       angle = end;
@@ -335,20 +343,22 @@ export class PieSeries extends BaseSeries {
   }
 
   /**
-   * Draw a slice label. Inside labels sit on the ring; outside labels are placed
-   * beyond the rim and joined to the slice with a leader line (elbow + stub) so
-   * it is unambiguous which label belongs to which slice.
+   * Draw a slice label. Labels prefer the middle of the sector and fall back
+   * beyond the rim when their rendered bounds do not fit. An explicit
+   * `position: 'outside'` skips the inside candidate. Outside labels are joined
+   * to the slice with a leader line (elbow + stub) so it is unambiguous which
+   * label belongs to which slice.
    *
-   * A shrunk pie packs slices (and their labels) closer together — rather than
-   * the chart forcing every label off past some size threshold, a label that
-   * doesn't fit its own slice (inside) or would collide with the previous one
-   * on its side (outside) is simply skipped, leaving the rest legible.
+   * A shrunk pie packs slices (and their labels) closer together. An outside
+   * label that would collide with the previous one on its side is skipped,
+   * leaving the rest legible.
    */
   private drawLabel(
     ctx: SeriesRenderContext,
     g: SVGGElement,
     c: PieCenter,
     rimR: number,
+    innerR: number,
     a0: number,
     a1: number,
     text: string,
@@ -361,24 +371,22 @@ export class PieSeries extends BaseSeries {
     const mid = (a0 + a1) / 2;
     const fontPx = parseFloat(dl.fontSize ?? FONTS.dataLabel['font-size'] ?? '11') || 11;
 
-    if (!c.outside) {
-      const lr = rimR * 0.72;
-      // Skip a label whose slice is too thin to fit it — a 5% sliver reading
-      // "Other: 0.8%" just smears text across its neighbours otherwise.
-      const chord = 2 * lr * Math.sin(Math.min(Math.PI, a1 - a0) / 2);
-      if (text.length * fontPx * 0.62 > chord) return;
-      drawDataLabel(
-        renderer,
-        g,
-        text,
-        {
-          x: c.cx + lr * Math.cos(mid),
-          y: c.cy + lr * Math.sin(mid) + fontPx * 0.35,
-          anchor: 'middle',
-        },
-        { ...dl, color: dl.color ?? '#ffffff' },
-      );
-      return;
+    if (c.labelMode === 'adaptive') {
+      const inside = this.insideLabelPoint(ctx, c, innerR, rimR, a0, a1, text);
+      if (inside) {
+        drawDataLabel(
+          renderer,
+          g,
+          text,
+          {
+            x: inside.x,
+            y: inside.y + fontPx * 0.35,
+            anchor: 'middle',
+          },
+          { ...dl, color: dl.color ?? '#ffffff' },
+        );
+        return;
+      }
     }
 
     // Leader line: rim point → elbow just outside the rim → short horizontal stub.
@@ -414,6 +422,75 @@ export class PieSeries extends BaseSeries {
       },
       dl,
     );
+  }
+
+  /**
+   * Return an inside label centre only when the complete (possibly rotated)
+   * text rectangle fits between both radii and both angular edges.
+   */
+  private insideLabelPoint(
+    ctx: SeriesRenderContext,
+    c: PieCenter,
+    innerR: number,
+    rimR: number,
+    a0: number,
+    a1: number,
+    text: string,
+  ): { x: number; y: number } | undefined {
+    const dl = this.options.dataLabels!;
+    const fontSize = dl.fontSize ?? FONTS.dataLabel['font-size'] ?? '11px';
+    const metrics = ctx.renderer.measureText(text, {
+      ...FONTS.dataLabel,
+      'font-size': fontSize,
+      'font-weight': dl.fontWeight,
+    });
+    const width = Math.max(
+      metrics.width,
+      dl.backgroundColor ? text.length * 6.5 + 8 : 0,
+    ) + 6;
+    const height = Math.max(metrics.height, dl.backgroundColor ? 15 : 0) + 4;
+    const mid = (a0 + a1) / 2;
+    const rotation = ((dl.rotation ?? 0) * Math.PI) / 180;
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    const halfSweep = (a1 - a0) / 2;
+
+    // A pie has more usable width toward the rim; an annular sector is usually
+    // roomiest around the middle of its band. Try the natural location first,
+    // then nearby radii before deciding that the label belongs outside.
+    const preferred = innerR === 0 ? 0.68 : 0.5;
+    const ratios = [preferred, 0.6, 0.75, 0.5, 0.4];
+    for (const ratio of [...new Set(ratios)]) {
+      const labelR = innerR + (rimR - innerR) * ratio + (dl.distance ?? 0);
+      const x = c.cx + labelR * Math.cos(mid);
+      const y = c.cy + labelR * Math.sin(mid);
+
+      // The closest point can lie part-way along a rectangle edge (especially
+      // for donut labels), so check the exact rectangle-to-centre distance in
+      // the label's local coordinate system rather than checking corners alone.
+      const centreLocalX = -labelR * Math.cos(mid - rotation);
+      const centreLocalY = -labelR * Math.sin(mid - rotation);
+      const nearestX = Math.max(Math.abs(centreLocalX) - width / 2, 0);
+      const nearestY = Math.max(Math.abs(centreLocalY) - height / 2, 0);
+      if (Math.hypot(nearestX, nearestY) < innerR + 2) continue;
+
+      let fits = true;
+      for (const dx of [-width / 2, width / 2]) {
+        for (const dy of [-height / 2, height / 2]) {
+          const px = x + dx * cos - dy * sin - c.cx;
+          const py = y + dx * sin + dy * cos - c.cy;
+          const radius = Math.hypot(px, py);
+          if (radius > rimR - 2) fits = false;
+          if (halfSweep < Math.PI) {
+            const angle = Math.atan2(py, px);
+            const delta = Math.atan2(Math.sin(angle - mid), Math.cos(angle - mid));
+            if (Math.abs(delta) > halfSweep) fits = false;
+          }
+        }
+      }
+      if (fits) return { x, y };
+    }
+    return undefined;
   }
 
   private slicePath(cx: number, cy: number, r: number, ir: number, a0: number, a1: number): string {

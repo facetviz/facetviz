@@ -209,7 +209,9 @@ export interface DataLabelOptions {
    *  - bar & column: `outside` (default, beyond the bar end), `inside` (just
    *    within the end), `center`, or `base` (at the zero baseline).
    *  - line / area / scatter: `top` (default), `bottom`, `center`, `left`, `right`.
-   *  - pie / donut: `outside` (default) or `inside`.
+   *  - pie / donut: inside-first by default (falling back to `outside` when a
+   *    label does not fit); `outside` forces every label beyond the sector.
+   *    `inside` explicitly selects the adaptive inside-first behaviour.
    */
   position?:
     | "outside"
@@ -737,6 +739,17 @@ export interface ChartOptions {
      * configured element regardless of size.
      */
     responsive?: boolean;
+    /**
+     * Scale every chrome font size (title, subtitle, axis labels, legend,
+     * data labels, positioned texts) in proportion to the chart's own pixel
+     * size, the same way `chart.width`/`chart.height` scale the geometry --
+     * a chart authored (and whose font sizes were tuned) at one size still
+     * reads correctly at thumbnail or full-screen scale. Default `true`,
+     * including for an explicit `style.fontSize` you set on any of those;
+     * pass `false` to render every font size verbatim, in real pixels,
+     * regardless of the chart's own size.
+     */
+    scaleFonts?: boolean;
     /**
      * High-volume "boost" rendering. Cartesian point/line series with more than
      * `threshold` points are drawn to a single canvas overlay instead of one SVG

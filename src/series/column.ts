@@ -12,6 +12,15 @@ import { annularSectorPath, polarCenter, projectPolar } from "./polar.js";
 
 export interface ColumnOptions {
   columnWidth?: number;
+  /**
+   * Set to `false` to pull this series out of the side-by-side grouped
+   * layout — it renders across the full category band instead of its own
+   * slot, so it overlaps other `grouping: false` series in the same
+   * category rather than sitting next to them. Combine with `columnWidth`
+   * (or `size`) on each series so narrower bars stay visible in front of
+   * wider ones; later series in `chart.series` paint on top.
+   */
+  grouping?: boolean;
 }
 
 export class ColumnSeries extends BaseSeries {

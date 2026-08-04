@@ -224,6 +224,7 @@ One object per series in the `series` array.
 | `showInLegend`   | `boolean`                                                 | `true`        | Set to `false` to omit this series from the chart legend.                                                                                                                                                                                       |
 | `stack`          | `string \| number`                                        | –             | Series sharing a stack id pile together.                                                                                                                                                                                                        |
 | `stacking`       | `'normal' \| 'percent'`                                   | –             | Enable stacking (`percent` = 100% stacked).                                                                                                                                                                                                     |
+| `grouping`       | `boolean`                                                  | `true`        | Set `false` on a column/bar series to draw it across the full category band instead of its own side-by-side slot, overlapping other `grouping: false` series — see [Overlapping bars](#chart-types).                                          |
 | `startAngle`     | `number`                                                   | `-90`         | Radial-bar arc start in degrees; `-90` is 12 o'clock.                                                                                                                                                                                           |
 | `endAngle`       | `number`                                                   | `180`         | Radial-bar arc end in degrees. Use `90` with the default start for a half circle.                                                                                                                                                               |
 | `xAxis`          | `0 \| 1`                                                  | `0`           | Bound x-axis. `1` uses the secondary x-axis, drawn at the top with its own categories/domain.                                                                                                                                                   |
@@ -432,7 +433,7 @@ scatter/jitter, pie/donut and butterfly.
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | column / bar          | `outside`, `inside`, `center`, `base` — defaults to `center` for a stacked point instead, since `outside` (just past that point's own segment) sits inside whichever segment is stacked above it |
 | line / area / scatter | `top`, `bottom`, `center`, `left`, `right`                                                                                                                                                       |
-| pie / donut           | `outside`, `inside`                                                                                                                                                                              |
+| pie / donut           | adaptive inside-first (default), `inside` (same adaptive behaviour), `outside` (forced)                                                                                                         |
 
 `LabelContext` (passed to `formatter`): `{ x, y, point, series }`.
 
@@ -456,8 +457,8 @@ or keyboard-focused. It also applies to pie series configured with `innerSize`.
 Give a pie/donut series two field names in `dimensions` to render concentric
 rings: the **inner** ring groups by the first field (labelled inside), the
 **outer** ring breaks each group down by the second field (shaded variants of the
-parent colour, with leader-line labels). The legend lists the inner groups and
-toggling one hides its whole wedge.
+parent colour, with the same adaptive labels). The legend lists the inner groups
+and toggling one hides its whole wedge.
 
 ```ts
 {
@@ -476,9 +477,11 @@ toggling one hides its whole wedge.
 }
 ```
 
-Outside pie/donut labels are always joined to their slice with a **leader line**
-so the label↔slice mapping is unambiguous. Use `dataLabels.position: 'inside'`
-to place labels on the slice instead (no leader line).
+Pie/donut labels are placed inside their sector when the complete label fits.
+Labels that do not fit automatically move outside and are joined to their slice
+with a **leader line**, so the label↔slice mapping remains unambiguous. Use
+`dataLabels.position: 'outside'` to force every label outside; `inside` retains
+the adaptive inside-first behaviour.
 
 ### HoverStateOptions
 
@@ -1018,6 +1021,20 @@ matching categories share a concentric ring and each series arc begins where
 the prior series ends. Set `startAngle: -90, endAngle: 90` for a half-circle
 track. Angles are degrees and may define a sweep up to 360°. Mix `type`s across
 series for combination charts.
+
+**Overlapping bars**: set `grouping: false` on a column/bar series to pull it
+out of the side-by-side layout — it draws across the full category band
+instead of its own slot, so it overlaps other `grouping: false` series in the
+same category rather than sitting next to them. Combine with `columnWidth` (or
+`size`) per series so a narrower bar stays visible in front of a wider one;
+later entries in `series` paint on top since SVG draws in document order:
+
+```ts
+series: [
+  { type: 'column', name: 'Target', data: [80, 95, 70], grouping: false, columnWidth: 30, color: '#ccc' },
+  { type: 'column', name: 'Actual', data: [65, 90, 55], grouping: false, columnWidth: 14 },
+]
+```
 
 ---
 

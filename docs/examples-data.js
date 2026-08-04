@@ -93,6 +93,33 @@ export const EXAMPLES = [
   },
   {
     cat: "Bars & columns",
+    title: "Overlapping bars",
+    desc: "grouping: false draws each series full-width, on top of the last.",
+    types: ["column"],
+    cfg: {
+      chart: { type: "column", height: 300 },
+      title: { text: "Target vs. actual" },
+      xAxis: { categories: months },
+      yAxis: { title: { text: "Units" } },
+      series: [
+        {
+          name: "Target",
+          grouping: false,
+          columnWidth: 34,
+          color: "#d8dee9",
+          data: [7, 6, 8, 9, 6, 8],
+        },
+        {
+          name: "Actual",
+          grouping: false,
+          columnWidth: 16,
+          data: [5, 3, 4, 7, 2, 6],
+        },
+      ],
+    },
+  },
+  {
+    cat: "Bars & columns",
     title: "Stacked column",
     desc: "stacking: 'normal'.",
     types: ["bar"],

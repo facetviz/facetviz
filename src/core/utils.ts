@@ -1,5 +1,7 @@
 /** Small, self-contained helpers shared across modules. */
 
+import { FONT_SCALE_STATE } from './font-scale-state.js';
+
 export function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
@@ -320,10 +322,27 @@ export function clampFontSize(value: string): string {
   return clamped === n ? value : `${clamped}${unit}`;
 }
 
+// Scales a font-size value by the current render's `chartFontScale`, unless
+// the caller opted out via `chart.scaleFonts: false` (FONT_SCALE_STATE.
+// scaleExplicit) -- in which case an explicit style stays the exact pixel
+// value the caller asked for, regardless of chart size. On (the default), a
+// caller's font-size is instead treated the same as the theme's own
+// defaults: the size *at the chart's reference dimensions*, scaling with
+// everything else.
+function scaleFontSizeValue(value: string): string {
+  if (!FONT_SCALE_STATE.scaleExplicit || FONT_SCALE_STATE.scale === 1) return value;
+  const n = parseFloat(value);
+  if (!Number.isFinite(n)) return value;
+  const unit = /[a-z%]+$/i.exec(value)?.[0] ?? 'px';
+  return `${n * FONT_SCALE_STATE.scale}${unit}`;
+}
+
 /**
- * Clamp risky values in a user-supplied SVG style object before it reaches
- * the DOM (see {@link clampFontSize}). Every other property passes through
- * untouched.
+ * Normalize a user-supplied SVG/CSS style object -- aliasing CSS property
+ * names to their SVG equivalents, scaling `font-size` when `chart.
+ * scaleFonts` is on (see {@link scaleFontSizeValue}), then clamping it (see
+ * {@link clampFontSize}) as the final safety net regardless of that scale.
+ * Every other property passes through untouched.
  */
 export function sanitizeStyle(
   style?: Record<string, string>,
@@ -344,10 +363,10 @@ export function sanitizeStyle(
       normalized[svgName] = normalized[cssName];
     delete normalized[cssName];
   }
-  const fontSize = normalized['font-size'];
-  if (fontSize === undefined) return normalized;
-  const clamped = clampFontSize(fontSize);
-  return clamped === fontSize
+  const rawFontSize = normalized['font-size'];
+  if (rawFontSize === undefined) return normalized;
+  const clamped = clampFontSize(scaleFontSizeValue(rawFontSize));
+  return clamped === rawFontSize
     ? normalized
     : { ...normalized, 'font-size': clamped };
 }

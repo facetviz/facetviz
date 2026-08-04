@@ -459,14 +459,11 @@ export class Axis {
   }
 
   private labelStyle(): Record<string, string> {
+    // FONTS.axisLabel is already scaled to this chart's size (applyTheme, in
+    // chart.ts's render()); a caller's own `labels.style.font-size` still
+    // wins verbatim over that default.
     const customStyle = sanitizeStyle(this.cfg.options.labels?.style);
-    const style: Record<string, string> = { ...FONTS.axisLabel, ...customStyle };
-    const shortSide = Math.min(this.cfg.plot.width, this.cfg.plot.height);
-    if (!customStyle["font-size"]) {
-      if (shortSide < 120) style["font-size"] = "9px";
-      else if (shortSide < 220) style["font-size"] = "10px";
-    }
-    return style;
+    return { ...FONTS.axisLabel, ...customStyle };
   }
 
   private fitLabel(text: string, style: Record<string, string>): string | undefined {

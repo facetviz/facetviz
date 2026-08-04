@@ -16,6 +16,7 @@
 import { FONTS } from './defaults.js';
 import { DEFAULT_COLORS } from './colors.js';
 import { merge } from './utils.js';
+import { FONT_SCALE_STATE } from './font-scale-state.js';
 
 export interface Theme {
   name: string;
@@ -117,14 +118,59 @@ export function resolveTheme(input?: ThemeInput): Theme {
 /** The theme currently in effect, read by the chrome renderers. */
 export const THEME: Theme = { ...LIGHT_THEME };
 
-/** Apply a resolved theme: update the live THEME and the shared FONTS tokens. */
-export function applyTheme(theme: Theme): void {
+// Chart chrome (title, axis labels, legend, data labels) is authored at these
+// theme font sizes for a chart whose *shorter* side is this many px -- the
+// chart's own hardcoded 640x400 constructor fallback (chart.ts). Below/above
+// that reference, `chartFontScale` scales every font size in proportion to
+// the container, the same way the KPI free-layout SVG scales via its
+// viewBox: a card half the reference size renders chrome at roughly half the
+// font size, so text stays legible at thumbnail scale and doesn't look
+// comically small on a full-screen chart.
+const FONT_SCALE_REFERENCE_PX = 400;
+const FONT_SCALE_MIN = 0.7;
+const FONT_SCALE_MAX = 1.6;
+
+/**
+ * Proportional font-size multiplier for a chart of this pixel size, clamped
+ * so a thumbnail-sized chart keeps legible (if small) text and a very large
+ * one doesn't blow up its chrome past readability.
+ */
+export function chartFontScale(width: number, height: number): number {
+  const shortSide = Math.min(width, height);
+  const raw = shortSide / FONT_SCALE_REFERENCE_PX;
+  return Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, raw));
+}
+
+// FONT_SCALE_STATE (imported above): `scale` (from `chartFontScale` below)
+// always pre-scales the theme defaults set into FONTS by `applyTheme` --
+// unconditional, so chrome that never takes a per-instance style override
+// (most series' data labels, several axis-title/label spots that only ever
+// render the theme default) already scales with zero extra wiring.
+// `scaleExplicit` (chart.scaleFonts) additionally makes `sanitizeStyle`
+// (utils.ts) scale a *caller-supplied* `style.fontSize` the same way, since
+// every override-capable render site merges its custom style through that
+// one shared helper -- see its doc comment for why that keeps the two knobs
+// from double-applying. Read there and in `applyTheme`, both synchronously
+// within the render that wrote them, same contract `FONTS` itself relies on.
+export { FONT_SCALE_STATE };
+
+/**
+ * Apply a resolved theme: update the live THEME and the shared FONTS tokens,
+ * scaling every default font size by `fontScale` (1 = author-time size, from
+ * `chartFontScale`). Also records `fontScale`/`scaleExplicit` into
+ * {@link FONT_SCALE_STATE} for `sanitizeStyle` to apply to explicit
+ * `style.fontSize` overrides when `scaleExplicit` (chart.scaleFonts) is on.
+ */
+export function applyTheme(theme: Theme, fontScale = 1, scaleExplicit = false): void {
   Object.assign(THEME, theme);
+  FONT_SCALE_STATE.scale = fontScale;
+  FONT_SCALE_STATE.scaleExplicit = scaleExplicit;
   const ff = theme.fontFamily;
-  FONTS.title = { 'font-size': theme.title.fontSize, 'font-weight': theme.title.fontWeight, fill: theme.title.color, 'font-family': ff };
-  FONTS.subtitle = { 'font-size': theme.subtitle.fontSize, fill: theme.subtitle.color, 'font-family': ff };
-  FONTS.axisLabel = { 'font-size': '11px', fill: theme.axis.labelColor, 'font-family': ff };
-  FONTS.axisTitle = { 'font-size': '12px', fill: theme.axis.titleColor, 'font-family': ff };
-  FONTS.legend = { 'font-size': '12px', fill: theme.legend.color, 'font-family': ff };
-  FONTS.dataLabel = { 'font-size': '11px', fill: theme.dataLabel.color, 'font-family': ff };
+  const scalePx = (px: string) => `${(parseFloat(px) || 0) * fontScale}px`;
+  FONTS.title = { 'font-size': scalePx(theme.title.fontSize), 'font-weight': theme.title.fontWeight, fill: theme.title.color, 'font-family': ff };
+  FONTS.subtitle = { 'font-size': scalePx(theme.subtitle.fontSize), fill: theme.subtitle.color, 'font-family': ff };
+  FONTS.axisLabel = { 'font-size': scalePx('11px'), fill: theme.axis.labelColor, 'font-family': ff };
+  FONTS.axisTitle = { 'font-size': scalePx('12px'), fill: theme.axis.titleColor, 'font-family': ff };
+  FONTS.legend = { 'font-size': scalePx('12px'), fill: theme.legend.color, 'font-family': ff };
+  FONTS.dataLabel = { 'font-size': scalePx('11px'), fill: theme.dataLabel.color, 'font-family': ff };
 }

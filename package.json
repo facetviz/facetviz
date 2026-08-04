@@ -52,7 +52,8 @@
     "test:modular": "node scripts/check-modular-bundles.mjs",
     "test:bundle-size": "npm run build:site && node scripts/check-bundle-size.mjs && npm run test:modular",
     "test:all": "npm run test && npm run test:visual:typecheck && npm run test:performance:typecheck && npm run test:bundle-size && npm run test:visual && npm run test:performance",
-    "build:site": "esbuild src/index.ts --bundle --format=esm --minify-syntax --outfile=docs/lib/facetviz.js"
+    "build:site": "esbuild src/index.ts --bundle --format=esm --minify-syntax --outfile=docs/lib/facetviz.js",
+    "build:dev": "tsc -p tsconfig.json && esbuild src/index.ts --bundle --format=esm --minify-syntax --outfile=docs/lib/facetviz.js && vite"
   },
   "keywords": [
     "chart",

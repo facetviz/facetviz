@@ -270,6 +270,27 @@ describe('configuration option wiring', () => {
     expect(el.querySelector('.facet-pie rect[fill="#ffeeaa"]')).toBeTruthy();
   });
 
+  it('places pie labels inside when they fit and moves small-sector labels outside', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { ...baseChart, type: 'pie' },
+      series: [{
+        dataLabels: { enabled: true, format: '{name}' },
+        data: [
+          { name: 'Large', y: 90 },
+          { name: 'A label too wide for this small sector', y: 10 },
+        ],
+      }],
+    });
+
+    const labels = [...el.querySelectorAll<SVGTextElement>('.facet-pie text')];
+    const large = labels.find((label) => label.textContent === 'Large');
+    const small = labels.find((label) => label.textContent === 'A label too wide for this small sector');
+    expect(large?.getAttribute('fill')).toBe('#ffffff');
+    expect(small?.getAttribute('fill')).toBe('#333333');
+    expect(el.querySelectorAll('.facet-pie polyline')).toHaveLength(1);
+  });
+
   it('hides data labels on very small charts and restores them when the chart grows', () => {
     const el = container();
     const chart = new FacetViz(el, {

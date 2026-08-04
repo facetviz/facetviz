@@ -231,6 +231,9 @@ var DEFAULT_OPTIONS = {
   dataLabel: { "font-size": "11px", fill: "#333333" }
 };
 
+// src/core/font-scale-state.ts
+var FONT_SCALE_STATE = { scale: 1, scaleExplicit: !1 };
+
 // src/core/utils.ts
 function isObject(v) {
   return typeof v == "object" && v !== null && !Array.isArray(v);
@@ -413,6 +416,13 @@ function clampFontSize(value) {
   let unit = /[a-z%]+$/i.exec(value)?.[0] ?? "px", clamped = Math.min(Math.max(n, 6), 72);
   return clamped === n ? value : `${clamped}${unit}`;
 }
+function scaleFontSizeValue(value) {
+  if (!FONT_SCALE_STATE.scaleExplicit || FONT_SCALE_STATE.scale === 1) return value;
+  let n = parseFloat(value);
+  if (!Number.isFinite(n)) return value;
+  let unit = /[a-z%]+$/i.exec(value)?.[0] ?? "px";
+  return `${n * FONT_SCALE_STATE.scale}${unit}`;
+}
 function sanitizeStyle(style) {
   if (!style) return {};
   let normalized = { ...style }, aliases = {
@@ -426,10 +436,10 @@ function sanitizeStyle(style) {
   };
   for (let [cssName, svgName] of Object.entries(aliases))
     normalized[cssName] !== void 0 && normalized[svgName] === void 0 && (normalized[svgName] = normalized[cssName]), delete normalized[cssName];
-  let fontSize = normalized["font-size"];
-  if (fontSize === void 0) return normalized;
-  let clamped = clampFontSize(fontSize);
-  return clamped === fontSize ? normalized : { ...normalized, "font-size": clamped };
+  let rawFontSize = normalized["font-size"];
+  if (rawFontSize === void 0) return normalized;
+  let clamped = clampFontSize(scaleFontSizeValue(rawFontSize));
+  return clamped === rawFontSize ? normalized : { ...normalized, "font-size": clamped };
 }
 
 // src/series/data-label.ts
@@ -803,11 +813,15 @@ function resolveTheme(input) {
   let base = THEMES[input.base ?? "light"] ?? LIGHT_THEME;
   return merge(base, input);
 }
-var THEME = { ...LIGHT_THEME };
-function applyTheme(theme) {
-  Object.assign(THEME, theme);
-  let ff = theme.fontFamily;
-  FONTS.title = { "font-size": theme.title.fontSize, "font-weight": theme.title.fontWeight, fill: theme.title.color, "font-family": ff }, FONTS.subtitle = { "font-size": theme.subtitle.fontSize, fill: theme.subtitle.color, "font-family": ff }, FONTS.axisLabel = { "font-size": "11px", fill: theme.axis.labelColor, "font-family": ff }, FONTS.axisTitle = { "font-size": "12px", fill: theme.axis.titleColor, "font-family": ff }, FONTS.legend = { "font-size": "12px", fill: theme.legend.color, "font-family": ff }, FONTS.dataLabel = { "font-size": "11px", fill: theme.dataLabel.color, "font-family": ff };
+var THEME = { ...LIGHT_THEME }, FONT_SCALE_REFERENCE_PX = 400, FONT_SCALE_MIN = 0.7, FONT_SCALE_MAX = 1.6;
+function chartFontScale(width, height) {
+  let raw = Math.min(width, height) / FONT_SCALE_REFERENCE_PX;
+  return Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, raw));
+}
+function applyTheme(theme, fontScale = 1, scaleExplicit = !1) {
+  Object.assign(THEME, theme), FONT_SCALE_STATE.scale = fontScale, FONT_SCALE_STATE.scaleExplicit = scaleExplicit;
+  let ff = theme.fontFamily, scalePx = (px) => `${(parseFloat(px) || 0) * fontScale}px`;
+  FONTS.title = { "font-size": scalePx(theme.title.fontSize), "font-weight": theme.title.fontWeight, fill: theme.title.color, "font-family": ff }, FONTS.subtitle = { "font-size": scalePx(theme.subtitle.fontSize), fill: theme.subtitle.color, "font-family": ff }, FONTS.axisLabel = { "font-size": scalePx("11px"), fill: theme.axis.labelColor, "font-family": ff }, FONTS.axisTitle = { "font-size": scalePx("12px"), fill: theme.axis.titleColor, "font-family": ff }, FONTS.legend = { "font-size": scalePx("12px"), fill: theme.legend.color, "font-family": ff }, FONTS.dataLabel = { "font-size": scalePx("11px"), fill: theme.dataLabel.color, "font-family": ff };
 }
 
 // src/series/boxplot.ts
@@ -2039,12 +2053,12 @@ var PieSeries = class extends BaseSeries {
     return Number.isNaN(n) ? 0 : Math.min(0.95, Math.max(0, n / 100));
   }
   render(ctx) {
-    let { renderer, plot } = ctx, g = renderer.group({ class: `facet-series facet-pie ${this.name}` }, renderer.root), dl = this.options.dataLabels, outside = !!dl?.enabled && (dl.position ?? "outside") !== "inside", margin = outside ? 48 : 6, c = {
+    let { renderer, plot } = ctx, g = renderer.group({ class: `facet-series facet-pie ${this.name}` }, renderer.root), dl = this.options.dataLabels, labelsEnabled = !!dl?.enabled, labelMode = dl?.position === "outside" ? "outside" : "adaptive", margin = labelsEnabled ? 48 : 6, c = {
       cx: plot.x + plot.width / 2,
       cy: plot.y + plot.height / 2,
       radius: Math.max(10, Math.min(plot.width, plot.height) / 2 - margin),
       margin,
-      outside
+      labelMode
     };
     if (this.dims()) {
       this.renderMultiLevel(ctx, g, c);
@@ -2062,7 +2076,7 @@ var PieSeries = class extends BaseSeries {
       let sweep = value / total * Math.PI * 2, end = angle + sweep, color = p.color ?? paletteColor(ctx.colors, this.points.indexOf(p)), rr = radiusFor(p), path = this.slicePath(c.cx, c.cy, rr, innerR, angle, end), el = renderer.create("path", { d: path, fill: color, stroke: "#ffffff", "stroke-width": 1, class: "facet-point" }, g);
       ctx.registerHover(el, p), this.bindCenterValue(el, p, centerValue, total, color), el.addEventListener("click", (e) => ctx.onPointEvent("click", p, e)), el.addEventListener("mouseover", (e) => ctx.onPointEvent("mouseOver", p, e)), el.addEventListener("mouseout", (e) => ctx.onPointEvent("mouseOut", p, e));
       let label = this.labelText(p, p.name ?? p.x, value, total);
-      this.drawLabel(ctx, g, c, rr, angle, end, label, color, layout), angle = end;
+      this.drawLabel(ctx, g, c, rr, innerR, angle, end, label, color, layout), angle = end;
     });
   }
   /** Two-dimension pie: inner ring = first field, outer ring = second field. */
@@ -2096,7 +2110,7 @@ var PieSeries = class extends BaseSeries {
         let cs = value / gVal * sweep, e2 = a2 + cs, color = p.color ?? shade(base, 0.12 + 0.5 * (ps.length === 1 ? 0 : j / (ps.length - 1))), outerPath = this.slicePath(c.cx, c.cy, c.radius, midR, a2, e2), el = renderer.create("path", { d: outerPath, fill: color, stroke: "#ffffff", "stroke-width": 1, class: "facet-point" }, g);
         ctx.registerHover(el, p), this.bindCenterValue(el, p, centerValue, total, color), el.addEventListener("click", (e) => ctx.onPointEvent("click", p, e)), el.addEventListener("mouseover", (e) => ctx.onPointEvent("mouseOver", p, e)), el.addEventListener("mouseout", (e) => ctx.onPointEvent("mouseOut", p, e));
         let name = String(p.options[dims[1]] ?? p.name ?? p.x), label = this.labelText(p, name, value, total);
-        this.drawLabel(ctx, g, c, c.radius, a2, e2, label, color, layout), a2 = e2;
+        this.drawLabel(ctx, g, c, c.radius, midR, a2, e2, label, color, layout), a2 = e2;
       }), angle = end;
     });
   }
@@ -2185,34 +2199,36 @@ var PieSeries = class extends BaseSeries {
     });
   }
   /**
-   * Draw a slice label. Inside labels sit on the ring; outside labels are placed
-   * beyond the rim and joined to the slice with a leader line (elbow + stub) so
-   * it is unambiguous which label belongs to which slice.
+   * Draw a slice label. Labels prefer the middle of the sector and fall back
+   * beyond the rim when their rendered bounds do not fit. An explicit
+   * `position: 'outside'` skips the inside candidate. Outside labels are joined
+   * to the slice with a leader line (elbow + stub) so it is unambiguous which
+   * label belongs to which slice.
    *
-   * A shrunk pie packs slices (and their labels) closer together — rather than
-   * the chart forcing every label off past some size threshold, a label that
-   * doesn't fit its own slice (inside) or would collide with the previous one
-   * on its side (outside) is simply skipped, leaving the rest legible.
+   * A shrunk pie packs slices (and their labels) closer together. An outside
+   * label that would collide with the previous one on its side is skipped,
+   * leaving the rest legible.
    */
-  drawLabel(ctx, g, c, rimR, a0, a1, text, sliceColor, layout) {
+  drawLabel(ctx, g, c, rimR, innerR, a0, a1, text, sliceColor, layout) {
     let dl = this.options.dataLabels;
     if (!dl?.enabled || !text) return;
     let { renderer } = ctx, mid = (a0 + a1) / 2, fontPx = parseFloat(dl.fontSize ?? FONTS.dataLabel["font-size"] ?? "11") || 11;
-    if (!c.outside) {
-      let lr = rimR * 0.72, chord = 2 * lr * Math.sin(Math.min(Math.PI, a1 - a0) / 2);
-      if (text.length * fontPx * 0.62 > chord) return;
-      drawDataLabel(
-        renderer,
-        g,
-        text,
-        {
-          x: c.cx + lr * Math.cos(mid),
-          y: c.cy + lr * Math.sin(mid) + fontPx * 0.35,
-          anchor: "middle"
-        },
-        { ...dl, color: dl.color ?? "#ffffff" }
-      );
-      return;
+    if (c.labelMode === "adaptive") {
+      let inside = this.insideLabelPoint(ctx, c, innerR, rimR, a0, a1, text);
+      if (inside) {
+        drawDataLabel(
+          renderer,
+          g,
+          text,
+          {
+            x: inside.x,
+            y: inside.y + fontPx * 0.35,
+            anchor: "middle"
+          },
+          { ...dl, color: dl.color ?? "#ffffff" }
+        );
+        return;
+      }
     }
     let dir = Math.cos(mid) >= 0 ? 1 : -1, side = dir > 0 ? "right" : "left", rimX = c.cx + rimR * Math.cos(mid), rimY = c.cy + rimR * Math.sin(mid), elbowR = rimR + 10 + (dl.distance ?? 0), elbowX = c.cx + elbowR * Math.cos(mid), elbowY = c.cy + elbowR * Math.sin(mid), stubX = elbowX + dir * 16, lastY = layout.lastY[side];
     lastY !== void 0 && Math.abs(elbowY - lastY) < fontPx + 3 || (layout.lastY[side] = elbowY, renderer.create("polyline", {
@@ -2231,6 +2247,34 @@ var PieSeries = class extends BaseSeries {
       },
       dl
     ));
+  }
+  /**
+   * Return an inside label centre only when the complete (possibly rotated)
+   * text rectangle fits between both radii and both angular edges.
+   */
+  insideLabelPoint(ctx, c, innerR, rimR, a0, a1, text) {
+    let dl = this.options.dataLabels, fontSize = dl.fontSize ?? FONTS.dataLabel["font-size"] ?? "11px", metrics = ctx.renderer.measureText(text, {
+      ...FONTS.dataLabel,
+      "font-size": fontSize,
+      "font-weight": dl.fontWeight
+    }), width = Math.max(
+      metrics.width,
+      dl.backgroundColor ? text.length * 6.5 + 8 : 0
+    ) + 6, height = Math.max(metrics.height, dl.backgroundColor ? 15 : 0) + 4, mid = (a0 + a1) / 2, rotation = (dl.rotation ?? 0) * Math.PI / 180, cos = Math.cos(rotation), sin = Math.sin(rotation), halfSweep = (a1 - a0) / 2, ratios = [innerR === 0 ? 0.68 : 0.5, 0.6, 0.75, 0.5, 0.4];
+    for (let ratio of [...new Set(ratios)]) {
+      let labelR = innerR + (rimR - innerR) * ratio + (dl.distance ?? 0), x = c.cx + labelR * Math.cos(mid), y = c.cy + labelR * Math.sin(mid), centreLocalX = -labelR * Math.cos(mid - rotation), centreLocalY = -labelR * Math.sin(mid - rotation), nearestX = Math.max(Math.abs(centreLocalX) - width / 2, 0), nearestY = Math.max(Math.abs(centreLocalY) - height / 2, 0);
+      if (Math.hypot(nearestX, nearestY) < innerR + 2) continue;
+      let fits = !0;
+      for (let dx of [-width / 2, width / 2])
+        for (let dy of [-height / 2, height / 2]) {
+          let px = x + dx * cos - dy * sin - c.cx, py = y + dx * sin + dy * cos - c.cy;
+          if (Math.hypot(px, py) > rimR - 2 && (fits = !1), halfSweep < Math.PI) {
+            let angle = Math.atan2(py, px), delta = Math.atan2(Math.sin(angle - mid), Math.cos(angle - mid));
+            Math.abs(delta) > halfSweep && (fits = !1);
+          }
+        }
+      if (fits) return { x, y };
+    }
   }
   slicePath(cx, cy, r, ir, a0, a1) {
     if (a1 - a0 >= Math.PI * 2 - 1e-10) {
@@ -3247,8 +3291,8 @@ var Axis = class {
     }
   }
   labelStyle() {
-    let customStyle = sanitizeStyle(this.cfg.options.labels?.style), style = { ...FONTS.axisLabel, ...customStyle }, shortSide = Math.min(this.cfg.plot.width, this.cfg.plot.height);
-    return customStyle["font-size"] || (shortSide < 120 ? style["font-size"] = "9px" : shortSide < 220 && (style["font-size"] = "10px")), style;
+    let customStyle = sanitizeStyle(this.cfg.options.labels?.style);
+    return { ...FONTS.axisLabel, ...customStyle };
   }
   fitLabel(text, style) {
     let maxWidth = this.cfg.options.labels?.maxWidth;
@@ -4717,7 +4761,11 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, FacetViz = class 
     if (this.destroyed) return;
     let restoreResponsive = this.applyResponsiveOverrides();
     try {
-      this.boostHoverCleanups.forEach((cleanup) => cleanup()), this.boostHoverCleanups = [], this.accessiblePoints = [], this.renderer ? (this.renderer.clear(), this.renderer.setSize(this.width, this.height)) : (this.renderer = new Renderer(this.width, this.height), this.renderer.mount(this.container)), applyTheme(this.theme), this.renderer.create(
+      this.boostHoverCleanups.forEach((cleanup) => cleanup()), this.boostHoverCleanups = [], this.accessiblePoints = [], this.renderer ? (this.renderer.clear(), this.renderer.setSize(this.width, this.height)) : (this.renderer = new Renderer(this.width, this.height), this.renderer.mount(this.container)), applyTheme(
+        this.theme,
+        this.options.chart?.responsive === !1 ? 1 : chartFontScale(this.width, this.height),
+        this.options.chart?.scaleFonts !== !1
+      ), this.renderer.create(
         "rect",
         {
           x: 0,
@@ -6928,6 +6976,10 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, FacetViz = class 
     let columnKeys = [], index = /* @__PURE__ */ new Map();
     for (let s of visible) {
       if (!s.capabilities().grouped) continue;
+      if (s.options.grouping === !1 && !s.options.stacking) {
+        index.set(s.index, -1);
+        continue;
+      }
       let key = s.options.stacking ? `stack:${s.options.stack ?? "default"}` : `series:${s.index}`, ci = columnKeys.indexOf(key);
       ci === -1 && (ci = columnKeys.length, columnKeys.push(key)), index.set(s.index, ci);
     }
@@ -6935,6 +6987,7 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, FacetViz = class 
   }
   // -- Series render context --------------------------------------------
   seriesContext(s, plot, xScale, yScale, group, inverted, polar) {
+    let rawIndex = group.index.get(s.index) ?? 0, overlapped = rawIndex === -1;
     return {
       renderer: this.renderer,
       plot,
@@ -6944,8 +6997,8 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, FacetViz = class 
       colors: this.colors,
       inverted,
       polar,
-      groupCount: group.count,
-      groupIndex: group.index.get(s.index) ?? 0,
+      groupCount: overlapped ? 1 : group.count,
+      groupIndex: overlapped ? 0 : rawIndex,
       onPointEvent: (kind, p, dom) => this.handlePointEvent(kind, s, p, dom),
       registerHover: (el, p) => this.bindPointInteraction(el, s, p)
     };

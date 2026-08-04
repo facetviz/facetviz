@@ -55,7 +55,7 @@ import { computeStacks } from "./stacking.js";
 import { captureSeriesState, restoreSeriesState } from "./series-state.js";
 import { enforceConfiguredValidation } from "./validation.js";
 import { paletteColor, alpha, shade } from "./colors.js";
-import { Theme, resolveTheme, applyTheme, THEME } from "./theme.js";
+import { Theme, resolveTheme, applyTheme, chartFontScale, THEME } from "./theme.js";
 import { BaseSeries, SeriesRenderContext } from "../series/base.js";
 import { createSeries } from "../series/registry.js";
 import { drawDataLabel, labelString } from "../series/data-label.js";
@@ -387,8 +387,20 @@ export class FacetViz {
       this.renderer.setSize(this.width, this.height);
     }
 
-    // Apply the theme (updates shared FONTS + the live THEME read by axes etc.).
-    applyTheme(this.theme);
+    // Apply the theme (updates shared FONTS + the live THEME read by axes
+    // etc.), scaling chrome fonts to this render's size -- `responsive:
+    // false` opts out, same flag the data-label/axis-line overrides below
+    // already respect. `scaleFonts` (default on) additionally makes that
+    // scaling apply to a caller's own explicit font sizes, not just the
+    // theme defaults (see theme.ts's FONT_SCALE_STATE); pass `false` to
+    // render every font size verbatim regardless of chart size.
+    applyTheme(
+      this.theme,
+      this.options.chart?.responsive === false
+        ? 1
+        : chartFontScale(this.width, this.height),
+      this.options.chart?.scaleFonts !== false,
+    );
 
     // Background.
     this.renderer.create(
@@ -4084,6 +4096,15 @@ export class FacetViz {
     const index = new Map<number, number>();
     for (const s of visible) {
       if (!s.capabilities().grouped) continue;
+      // `grouping: false` pulls a series out of the side-by-side layout so it
+      // paints across the full category band — overlapping any other
+      // `grouping: false` series instead of taking its own slot. Flagged with
+      // a sentinel index rather than a column key; seriesContext() below
+      // turns it into a solo {count: 1, index: 0} for that series only.
+      if (s.options.grouping === false && !s.options.stacking) {
+        index.set(s.index, -1);
+        continue;
+      }
       const key = s.options.stacking
         ? `stack:${s.options.stack ?? "default"}`
         : `series:${s.index}`;
@@ -4108,6 +4129,8 @@ export class FacetViz {
     inverted: boolean,
     polar: boolean,
   ): SeriesRenderContext {
+    const rawIndex = group.index.get(s.index) ?? 0;
+    const overlapped = rawIndex === -1;
     return {
       renderer: this.renderer,
       plot,
@@ -4117,8 +4140,8 @@ export class FacetViz {
       colors: this.colors,
       inverted,
       polar,
-      groupCount: group.count,
-      groupIndex: group.index.get(s.index) ?? 0,
+      groupCount: overlapped ? 1 : group.count,
+      groupIndex: overlapped ? 0 : rawIndex,
       onPointEvent: (kind, p, dom) => this.handlePointEvent(kind, s, p, dom),
       registerHover: (el, p) => this.bindPointInteraction(el, s, p),
     };
