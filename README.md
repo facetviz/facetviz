@@ -4,6 +4,7 @@ FacetViz is a modular, dependency-free TypeScript and SVG visualization library
 with a declarative configuration API.
 
 **[Documentation](https://facetviz.github.io/facetviz/)** ·
+**[Feature guide](https://facetviz.github.io/facetviz/features.html)** ·
 **[Examples](https://facetviz.github.io/facetviz/examples.html)** ·
 **[Playground](https://facetviz.github.io/facetviz/playground.html)**
 

@@ -240,8 +240,9 @@ describe('configuration option wiring', () => {
       }],
     });
     const marker = rectangle.querySelector<SVGRectElement>('.facet-scatter .facet-point')!;
-    expect(marker.getAttribute('width')).toBe('18');
-    expect(marker.getAttribute('height')).toBe('8');
+    const markerScale = chartFontScale(baseChart.width, baseChart.height);
+    expect(marker.getAttribute('width')).toBe(`${18 * markerScale}`);
+    expect(marker.getAttribute('height')).toBe(`${8 * markerScale}`);
   });
 
   it('applies all pie data-label style options through the shared label renderer', () => {

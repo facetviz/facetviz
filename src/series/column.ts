@@ -9,6 +9,7 @@ import { CategoryScale, Scale } from "../core/scale.js";
 import type { Point } from "../core/point.js";
 import { drawDataLabel, labelString, LabelPlacement } from "./data-label.js";
 import { annularSectorPath, polarCenter, projectPolar } from "./polar.js";
+import { FONT_SCALE_STATE } from "../core/theme.js";
 
 export interface ColumnOptions {
   columnWidth?: number;
@@ -103,11 +104,20 @@ export class ColumnSeries extends BaseSeries {
       const vLo = valScale.scale(loVal);
       const vHi = valScale.scale(hiVal);
       const max_colWidth = Math.max(1, subWidth * 0.9);
+      // Falling back to max_colWidth already scales with chart size for
+      // free (it's a share of bandwidth(), itself proportional to the
+      // plot's live pixel size) -- an author's own explicit columnWidth/
+      // size needs the same FONT_SCALE_STATE multiplier applied by hand, or
+      // it would stay pinned at its author-time px value while every other
+      // unset bar on the same chart grows/shrinks with it. Same
+      // responsive:false / reference-size-render opt-out as fonts, since
+      // FONT_SCALE_STATE.scale is 1 then too.
+      const explicitColWidth =
+        p.options.columnWidth ?? this.options.columnWidth ?? this.options.size;
       let colWidth =
-        p.options.columnWidth ??
-        this.options.columnWidth ??
-        this.options.size ??
-        max_colWidth; // leave a little gap between bars
+        explicitColWidth != null
+          ? explicitColWidth * FONT_SCALE_STATE.scale
+          : max_colWidth; // leave a little gap between bars
 
       const center = catScale.scale(p.x);
       // Keep a narrowed group packed around the category centre. Centering

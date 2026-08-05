@@ -2,7 +2,8 @@
 
 FacetViz is a dependency-free TypeScript/SVG charting library with a declarative
 configuration API. Use this file to generate valid, readable, maintainable chart
-options. Full API: `docs/API.md`. Executable examples: `docs/examples-data.js`.
+options. Capability guide: `docs/features.html`. Full API: `docs/API.md`.
+Executable examples: `docs/examples-data.js`.
 
 ## Agent output contract
 

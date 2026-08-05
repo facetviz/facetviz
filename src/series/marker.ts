@@ -1,6 +1,7 @@
 /** Draws point markers (circle, square, diamond, triangle) for series. */
 
 import type { Renderer } from "../core/renderer.js";
+import { FONT_SCALE_STATE } from "../core/theme.js";
 
 export interface MarkerSpec {
   symbol: "circle" | "square" | "diamond" | "triangle" | "rectangle";
@@ -19,7 +20,15 @@ export function drawMarker(
   cy: number,
   spec: MarkerSpec,
 ): SVGElement {
-  const { symbol, radius: r, fill, stroke, strokeWidth } = spec;
+  const { symbol, fill, stroke, strokeWidth } = spec;
+  // `radius`/`width`/`height` are authored as reference-size px, same
+  // convention as font sizes (theme.ts) and columnWidth (column.ts) --
+  // without the FONT_SCALE_STATE multiplier they'd stay pinned at their
+  // author-time size while every positional thing around them (point
+  // coordinates) grows/shrinks with the chart, so markers drift out of
+  // proportion on any chart that isn't rendered at the reference size.
+  const scale = FONT_SCALE_STATE.scale;
+  const r = spec.radius * scale;
   const common = {
     fill,
     stroke,
@@ -52,18 +61,15 @@ export function drawMarker(
         },
         parent,
       );
-    case "rectangle":
+    case "rectangle": {
+      const w = (spec.width ?? spec.radius * 2) * scale;
+      const h = (spec.height ?? spec.radius * 2) * scale;
       return renderer.create(
         "rect",
-        {
-          x: cx - (spec.width ?? r * 2) / 2,
-          y: cy - (spec.height ?? r * 2) / 2,
-          width: spec.width ?? r * 2,
-          height: spec.height ?? r * 2,
-          ...common,
-        },
+        { x: cx - w / 2, y: cy - h / 2, width: w, height: h, ...common },
         parent,
       );
+    }
     case "circle":
     default:
       return renderer.create("circle", { cx, cy, r, ...common }, parent);

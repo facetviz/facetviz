@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FacetViz — Feature guide</title>
+  <meta name="description" content="Learn every major FacetViz capability through focused explanations, small copyable configurations, and live charts." />
+  <link rel="stylesheet" href="./lib/hljs-github-dark.css" />
+  <link rel="stylesheet" href="./style.css" />
+  <script src="./lib/highlight.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <button class="btn menu-btn" id="menuBtn" aria-label="Menu">☰</button>
+    <a class="brand" href="./"><span class="mark">F</span> FacetViz</a>
+    <nav class="topnav">
+      <a href="./" data-page="guide">Guide</a>
+      <a href="./features.html" data-page="features">Features</a>
+      <a href="./examples.html" data-page="examples">Examples</a>
+      <a href="./api.html" data-page="api">API</a>
+      <a href="./theme.html" data-page="theme">Theme</a>
+      <a href="https://github.com/facetviz/facetviz" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+    </nav>
+    <div class="spacer"></div>
+    <a class="btn primary" href="./playground.html">▶ Playground</a>
+  </header>
+
+  <div class="layout">
+    <aside class="side" id="side">
+      <div class="grouplbl">Feature guide</div>
+      <nav>
+        <a href="#start">Start with data</a>
+        <a href="#compose">Compose a view</a>
+        <a href="#explain">Explain the data</a>
+        <a href="#interact">Add interaction</a>
+        <a href="#ship">Ship to production</a>
+        <a href="#operate">Update &amp; extend</a>
+      </nav>
+      <div class="grouplbl">Reference</div>
+      <nav>
+        <a href="./examples.html">All live examples →</a>
+        <a href="./api.html">Every option →</a>
+      </nav>
+    </aside>
+
+    <main class="content feature-guide">
+      <section class="feature-hero" aria-labelledby="feature-title">
+        <div>
+          <span class="eyebrow">Capability guide</span>
+          <h1 id="feature-title">Learn the tool by building with it.</h1>
+          <p class="lead">Each feature answers three questions: what it solves, which option unlocks it, and what the smallest useful configuration looks like.</p>
+          <div class="btn-row">
+            <a class="btn primary" href="#start">Explore features</a>
+            <a class="btn" href="./examples.html">Browse 50+ live charts</a>
+          </div>
+        </div>
+        <ol class="reading-path" aria-label="Recommended documentation path">
+          <li><span>01</span><div><strong>Choose a data shape</strong><small>Numbers, pairs, or objects</small></div></li>
+          <li><span>02</span><div><strong>Compose the view</strong><small>Series, axes, and layouts</small></div></li>
+          <li><span>03</span><div><strong>Add meaning</strong><small>Labels, context, and interaction</small></div></li>
+          <li><span>04</span><div><strong>Ship confidently</strong><small>Responsive, accessible, validated</small></div></li>
+        </ol>
+      </section>
+
+      <nav class="job-grid" aria-label="Browse features by goal">
+        <a href="#mixed-series"><span>Compare</span><strong>Mix chart types</strong><small>Columns, lines, ranges, and more</small></a>
+        <a href="#small-multiples"><span>Segment</span><strong>Build small multiples</strong><small>Repeat one view across dimensions</small></a>
+        <a href="#annotations"><span>Explain</span><strong>Highlight what matters</strong><small>Annotations, bands, and labels</small></a>
+        <a href="#responsive"><span>Adapt</span><strong>Fit any container</strong><small>Responsive rules and reflow</small></a>
+        <a href="#accessibility"><span>Include</span><strong>Support every user</strong><small>Keyboard and screen readers</small></a>
+        <a href="#large-data"><span>Scale</span><strong>Render dense data</strong><small>Canvas boost for 100k+ points</small></a>
+      </nav>
+
+      <section id="start" class="feature-section">
+        <div class="section-intro">
+          <span class="section-index">01</span>
+          <div><span class="eyebrow">Start with data</span><h2>Use the shape that matches the question.</h2><p>Only <code>series</code> is required. Add explicit coordinates or point objects when the chart needs more meaning.</p></div>
+        </div>
+
+        <article class="feature-doc feature-live" id="data-shapes" data-demo="data-shapes">
+          <div class="feature-copy">
+            <div class="feature-label"><span>Foundation</span><code>series[].data</code></div>
+            <h3>Three input shapes, one consistent API</h3>
+            <p>Use number arrays for categories, coordinate pairs for continuous axes, and objects for names, colors, ranges, metadata, or chart-specific fields.</p>
+            <div class="decision-list">
+              <div><strong><code>12</code></strong><span>Category or index + value</span></div>
+              <div><strong><code>[x, y]</code></strong><span>Explicit coordinates</span></div>
+              <div><strong><code>{ x, y, … }</code></strong><span>Rich point metadata</span></div>
+            </div>
+            <a class="text-link" href="./api.html#point-data-formats">See every point shape →</a>
+          </div>
+          <div class="feature-example">
+            <div class="example-toolbar"><span><i></i> Live result</span><span>Try the config below</span></div>
+            <div class="feature-chart" aria-label="Live chart demonstrating point data shapes"></div>
+            <pre><code class="language-js"></code></pre>
+          </div>
+        </article>
+
+        <div class="feature-pair">
+          <article class="feature-doc compact" id="declarative-config">
+            <div class="feature-label"><span>Configuration</span><code>ChartOptions</code></div>
+            <h3>Describe the result, not the drawing steps</h3>
+            <p>The options tree keeps data, layout, labels, and behavior together. Global defaults go in <code>plotOptions.series</code>; type-specific defaults go in <code>plotOptions.column</code>, <code>plotOptions.line</code>, and so on.</p>
+            <pre><code class="language-js">new FacetViz('#chart', {
+  chart: { type: 'column' },
+  xAxis: { categories: ['A', 'B', 'C'] },
+  plotOptions: { column: { borderRadius: 5 } },
+  series: [{ name: 'Orders', data: [12, 18, 15] }],
+});</code></pre>
+          </article>
+          <article class="feature-doc compact" id="chart-types">
+            <div class="feature-label"><span>Chart families</span><code>chart.type</code></div>
+            <h3>Choose from 35+ focused renderers</h3>
+            <p>Cover comparison, change, distribution, relationship, flow, hierarchy, schedules, finance, and compact KPI views. Set one default type on the chart or override it per series.</p>
+            <div class="type-sampler" aria-label="Chart type examples">
+              <span>column</span><span>line</span><span>scatter</span><span>boxplot</span><span>heatmap</span><span>sankey</span><span>gantt</span><span>gauge</span>
+            </div>
+            <a class="text-link" href="./examples.html">Compare every chart type →</a>
+          </article>
+        </div>
+      </section>
+
+      <section id="compose" class="feature-section">
+        <div class="section-intro">
+          <span class="section-index">02</span>
+          <div><span class="eyebrow">Compose a view</span><h2>Combine marks, scales, and dimensions.</h2><p>Build one chart from several series, or repeat a consistent chart across a grid of categories.</p></div>
+        </div>
+
+        <article class="feature-doc feature-live" id="mixed-series" data-demo="mixed-series">
+          <div class="feature-copy">
+            <div class="feature-label"><span>Composition</span><code>series[].type</code></div>
+            <h3>Mixed series and secondary axes</h3>
+            <p>A column can show volume while a spline shows a rate. Bind the differently scaled series to <code>yAxis: 1</code> and place that axis on the right.</p>
+            <div class="use-when"><strong>Use it when</strong><span>Two measures share categories but not units.</span></div>
+            <a class="text-link" href="./examples.html#ex-dual-axis-combo">Open the full combo example →</a>
+          </div>
+          <div class="feature-example">
+            <div class="example-toolbar"><span><i></i> Live result</span><span>Volume + rate</span></div>
+            <div class="feature-chart" aria-label="Live mixed column and spline chart"></div>
+            <pre><code class="language-js"></code></pre>
+          </div>
+        </article>
+
+        <div class="feature-pair">
+          <article class="feature-doc compact" id="stacking">
+            <div class="feature-label"><span>Series layout</span><code>stacking</code></div>
+            <h3>Group, stack, normalize, or overlap</h3>
+            <p>Series group side-by-side by default. Use <code>'normal'</code> for totals, <code>'percent'</code> for shares, a <code>stack</code> id for independent groups, or <code>grouping: false</code> for target-vs-actual overlays.</p>
+            <pre><code class="language-js">plotOptions: {
+  column: { stacking: 'percent' },
+},
+series: [
+  { name: 'Organic', data: [40, 55, 62] },
+  { name: 'Paid', data: [60, 45, 38] },
+]</code></pre>
+            <a class="text-link" href="./examples.html#ex-100-stacked-bar">See stacking live →</a>
+          </article>
+          <article class="feature-doc compact" id="axes">
+            <div class="feature-label"><span>Scales</span><code>xAxis / yAxis</code></div>
+            <h3>Categories, numbers, dates, and logs</h3>
+            <p>Axes infer sensible scales, while <code>type</code> makes intent explicit. Add a crosshair, reverse a scale, rotate crowded labels, or place reference lines and bands at domain values.</p>
+            <pre><code class="language-js">xAxis: {
+  type: 'datetime',
+  crosshair: true,
+},
+yAxis: {
+  type: 'log', min: 1,
+  labels: { format: '{value:,.0f}' },
+}</code></pre>
+          </article>
+        </div>
+
+        <article class="feature-doc feature-live" id="small-multiples" data-demo="small-multiples">
+          <div class="feature-copy">
+            <div class="feature-label"><span>Multidimensional layout</span><code>trellis</code></div>
+            <h3>Small multiples without manual chart grids</h3>
+            <p>Point fields become row and column headers. FacetViz splits the data, keeps axes aligned, and renders every series inside each cell.</p>
+            <div class="use-when"><strong>Use it when</strong><span>You need to compare the same measure across two dimensions without mixing every group into one plot.</span></div>
+            <a class="text-link" href="./examples.html#ex-trellis-table">Explore trellis combinations →</a>
+          </div>
+          <div class="feature-example">
+            <div class="example-toolbar"><span><i></i> Live result</span><span>Region × channel</span></div>
+            <div class="feature-chart tall" aria-label="Live trellis small-multiples chart"></div>
+            <pre><code class="language-js"></code></pre>
+          </div>
+        </article>
+
+        <article class="feature-doc feature-live" id="polar" data-demo="polar">
+          <div class="feature-copy">
+            <div class="feature-label"><span>Projection</span><code>chart.polar</code></div>
+            <h3>Project familiar series into a polar frame</h3>
+            <p>Line, area, scatter, column, and dumbbell series can share angular and radial axes. Add a center hole, sector grid, or invert the projection for concentric arc bars.</p>
+            <div class="use-when"><strong>Use it when</strong><span>Direction, seasonality, or a circular cycle is part of the data’s meaning.</span></div>
+          </div>
+          <div class="feature-example">
+            <div class="example-toolbar"><span><i></i> Live result</span><span>Same column API, new projection</span></div>
+            <div class="feature-chart" aria-label="Live polar column chart"></div>
+            <pre><code class="language-js"></code></pre>
+          </div>
+        </article>
+      </section>
+
+      <section id="explain" class="feature-section">
+        <div class="section-intro">
+          <span class="section-index">03</span>
+          <div><span class="eyebrow">Explain the data</span><h2>Add context where readers need it.</h2><p>Use one formatting language across axes, tooltips, and labels, then anchor commentary to real data values.</p></div>
+        </div>
+
+        <article class="feature-doc feature-live" id="formatting" data-demo="formatting">
+          <div class="feature-copy">
+            <div class="feature-label"><span>Formatting</span><code>{path:spec}</code></div>
+            <h3>Consistent labels from one token engine</h3>
+            <p>Format currency, percentages, SI abbreviations, dates, and custom point fields without rewriting callbacks. The same syntax works on axes, data labels, and tooltips.</p>
+            <div class="token-list"><code>{y:$,.1s}</code><span>$1.3M</span><code>{percentage:.0f}%</code><span>24%</span><code>{x:%b %d}</code><span>Aug 05</span></div>
+            <a class="text-link" href="./api.html#text--label-formatting">Formatting token reference →</a>
+          </div>
+          <div class="feature-example">
+            <div class="example-toolbar"><span><i></i> Live result</span><span>Currency + data labels</span></div>
+            <div class="feature-chart" aria-label="Live chart demonstrating formatted data labels"></div>
+            <pre><code class="language-js"></code></pre>
+          </div>
+        </article>
+
+        <article class="feature-doc feature-live" id="annotations" data-demo="annotations">
+          <div class="feature-copy">
+            <div class="feature-label"><span>Context</span><code>annotations / plotBands</code></div>
+            <h3>Keep explanations attached to the data</h3>
+            <p>Annotations use axis values, so they survive resizing and domain changes. Plot lines mark a target; plot bands identify a meaningful range; chart text adds watermarks or status notes.</p>
+            <div class="use-when"><strong>Use it when</strong><span>A reader needs to know what changed, where a target sits, or which range is healthy.</span></div>
+          </div>
+          <div class="feature-example">
+            <div class="example-toolbar"><span><i></i> Live result</span><span>Target band + callout</span></div>
+            <div class="feature-chart" aria-label="Live chart demonstrating annotations and plot bands"></div>
+            <pre><code class="language-js"></code></pre>
+          </div>
+        </article>
+
+        <div class="feature-pair">
+          <article class="feature-doc compact" id="themes">
+            <div class="feature-label"><span>Visual system</span><code>theme</code></div>
+            <h3>Start from a theme, then override tokens</h3>
+            <p>Use <code>'light'</code>, <code>'dark'</code>, <code>'high-contrast'</code>, or <code>'pastel'</code>. A custom theme can extend a built-in and define palette, typography, axes, labels, legend, and tooltip colors.</p>
+            <pre><code class="language-js">theme: {
+  base: 'dark',
+  backgroundColor: '#0b1021',
+  colors: ['#00f5d4', '#f15bb5', '#fee440'],
+  axis: { gridLineColor: '#1c2540' },
+}</code></pre>
+            <a class="text-link" href="./theme.html">Build a theme visually →</a>
+          </article>
+          <article class="feature-doc compact" id="legends-tooltips">
+            <div class="feature-label"><span>Reading aids</span><code>legend / tooltip</code></div>
+            <h3>Reveal detail without crowding the chart</h3>
+            <p>Place the legend on any side and click its items to toggle series or slices. Tooltips can be shared across a category or customized per series with a format string or formatter.</p>
+            <pre><code class="language-js">legend: { layout: 'vertical', align: 'right' },
+tooltip: {
+  shared: true,
+  format: '&lt;b&gt;{series.name}&lt;/b&gt;: {y:$,.0f}',
+}</code></pre>
+          </article>
+        </div>
+      </section>
+
+      <section id="interact" class="feature-section">
+        <div class="section-intro">
+          <span class="section-index">04</span>
+          <div><span class="eyebrow">Add interaction</span><h2>Let people inspect and navigate.</h2><p>Start with built-in hover and keyboard behavior, then add callbacks or progressive drill-down only where they help.</p></div>
+        </div>
+
+        <div class="feature-pair">
+          <article class="feature-doc compact" id="zoom-drilldown">
+            <div class="feature-label"><span>Exploration</span><code>zoom / drilldown</code></div>
+            <h3>Move from overview to detail</h3>
+            <p>Enable drag-to-zoom on numeric or datetime axes. For categorical detail, connect a point’s <code>drilldown</code> id to a child series; FacetViz adds the return path.</p>
+            <pre><code class="language-js">chart: { type: 'line', zoom: 'x' },
+xAxis: { type: 'datetime', crosshair: true },
+
+// Or on a point:
+{ name: 'Apples', y: 12, drilldown: 'apples' }</code></pre>
+            <a class="text-link" href="./examples.html#ex-drill-down">Try drill-down →</a>
+          </article>
+          <article class="feature-doc compact" id="events">
+            <div class="feature-label"><span>Application hooks</span><code>seriesEvents / chart.on()</code></div>
+            <h3>Connect chart gestures to your product</h3>
+            <p>Handle point clicks, hover, legend toggles, render cycles, and drill-down. Event payloads include series, point indexes, coordinates, the original point object, and DOM event.</p>
+            <pre><code class="language-js">const chart = new FacetViz('#chart', options);
+
+const off = chart.on('point:click', (event) => {
+  openDetails(event.point.customerId);
+});
+
+// Later: off();</code></pre>
+          </article>
+        </div>
+
+        <article class="feature-doc feature-live" id="accessibility" data-demo="accessibility">
+          <div class="feature-copy">
+            <div class="feature-label"><span>Inclusive interaction</span><code>accessibility</code></div>
+            <h3>Keyboard and screen-reader support by default</h3>
+            <p>One Tab stop enters the chart. Arrow keys move between points, Home and End jump, and Enter or Space activates. Each mark receives a generated description that you can replace with domain language.</p>
+            <div class="use-when"><strong>Try it</strong><span>Tab into the chart on the right, then use the arrow keys. Focus follows the data and opens the matching tooltip.</span></div>
+            <a class="text-link" href="./api.html#accessibility">Accessibility options →</a>
+          </div>
+          <div class="feature-example">
+            <div class="example-toolbar"><span><i></i> Keyboard ready</span><span>Tab, then use ← →</span></div>
+            <div class="feature-chart" aria-label="Live keyboard-navigable chart"></div>
+            <pre><code class="language-js"></code></pre>
+          </div>
+        </article>
+      </section>
+
+      <section id="ship" class="feature-section">
+        <div class="section-intro">
+          <span class="section-index">05</span>
+          <div><span class="eyebrow">Ship to production</span><h2>Design for real containers and real data.</h2><p>Responsive rules adapt information density, while canvas rendering keeps high-volume plots useful.</p></div>
+        </div>
+
+        <div class="feature-pair">
+          <article class="feature-doc compact" id="responsive">
+            <div class="feature-label"><span>Layout</span><code>responsive</code></div>
+            <h3>Change the config when space changes</h3>
+            <p>The SVG never overflows its parent and charts reflow when their container resizes. Add size conditions to hide secondary content, rotate labels, or simplify a small view.</p>
+            <pre><code class="language-js">responsive: [{
+  condition: { maxWidth: 480 },
+  options: {
+    legend: { enabled: false },
+    xAxis: { labels: { autoRotation: [0, -45] } },
+  },
+}]</code></pre>
+          </article>
+          <article class="feature-doc compact" id="large-data">
+            <div class="feature-label"><span>Performance</span><code>chart.boost</code></div>
+            <h3>Switch dense series to canvas automatically</h3>
+            <p>Point and line series cross a configurable threshold into canvas rendering, with line decimation for dense signals. SVG export still embeds the canvas image.</p>
+            <pre><code class="language-js">chart: {
+  type: 'scatter',
+  boost: { enabled: true, threshold: 1500 },
+},
+series: [{ data: oneHundredThousandPoints }]</code></pre>
+            <a class="text-link" href="./examples.html#ex-boost-30-000-points">Open the 30k-point demo →</a>
+          </article>
+        </div>
+
+        <div class="feature-pair">
+          <article class="feature-doc compact" id="validation">
+            <div class="feature-label"><span>Correctness</span><code>validation</code></div>
+            <h3>Catch bad configuration before it renders</h3>
+            <p>Validate unknown input without side effects, or enable automatic checks on construction and data updates. Issues include a stable code, severity, option path, message, and suggested fix.</p>
+            <pre><code class="language-js">import { validateChartOptions } from 'facetviz';
+
+const result = validateChartOptions(candidate);
+if (!result.valid) console.table(result.errors);
+
+new FacetViz('#chart', { ...options, validation: { mode: 'error' } });</code></pre>
+          </article>
+          <article class="feature-doc compact" id="modular-builds">
+            <div class="feature-label"><span>Bundle control</span><code>facetviz/core</code></div>
+            <h3>Ship only the renderer families you use</h3>
+            <p>The full entrypoint registers every chart type. For a smaller application bundle, import the core and register selected series families through side-effect imports.</p>
+            <pre><code class="language-js">import { FacetViz } from 'facetviz/core';
+import 'facetviz/series/line';
+import 'facetviz/series/pie';
+
+new FacetViz('#chart', options);</code></pre>
+          </article>
+        </div>
+      </section>
+
+      <section id="operate" class="feature-section">
+        <div class="section-intro">
+          <span class="section-index">06</span>
+          <div><span class="eyebrow">Update &amp; extend</span><h2>Treat a chart as a living application component.</h2><p>Update data without replacing the chart, export on demand, or register a renderer for a domain-specific mark.</p></div>
+        </div>
+
+        <div class="feature-pair">
+          <article class="feature-doc compact" id="live-updates">
+            <div class="feature-label"><span>Runtime API</span><code>setData / appendData</code></div>
+            <h3>Update a series without rebuilding your UI</h3>
+            <p>Replace, append, or batch several changes into one render. <code>maxPoints</code> makes a rolling window simple, and nested batches roll back safely if an update fails.</p>
+            <pre><code class="language-js">chart.appendData(0, incomingPoints, { maxPoints: 120 });
+
+chart.batchUpdate(() => {
+  chart.setData(0, revenue);
+  chart.update({ title: { text: 'Live revenue' } });
+});</code></pre>
+          </article>
+          <article class="feature-doc compact" id="export">
+            <div class="feature-label"><span>Output</span><code>getSVG / downloadPNG</code></div>
+            <h3>Export the chart your user already sees</h3>
+            <p>Serialize a standalone SVG, trigger SVG or PNG downloads, or receive a PNG Blob for your own upload and sharing flow.</p>
+            <pre><code class="language-js">const svg = chart.getSVG();
+chart.downloadSVG('quarterly-revenue.svg');
+chart.downloadPNG('quarterly-revenue.png', 2);
+
+const blob = await chart.toPNGBlob(2);</code></pre>
+          </article>
+        </div>
+
+        <article class="feature-doc extension-card" id="custom-series">
+          <div>
+            <div class="feature-label"><span>Extensibility</span><code>registerSeriesType</code></div>
+            <h3>Own a renderer when your domain needs one</h3>
+            <p>Extend <code>BaseSeries</code>, declare capabilities, and register a stable type name. Custom types participate in the same scales, tooltips, events, themes, and validation flow as built-ins.</p>
+          </div>
+          <pre><code class="language-js">import { BaseSeries, registerSeriesType } from 'facetviz';
+
+class ThresholdSeries extends BaseSeries {
+  render(context) { /* draw with context.renderer */ }
+}
+
+registerSeriesType('threshold', ThresholdSeries);</code></pre>
+        </article>
+
+        <div class="next-step panel">
+          <div><span class="eyebrow">Ready to build?</span><h2>Move from feature to working chart.</h2><p>Start from a live example, open it in the playground, then keep the API reference nearby for exact types and defaults.</p></div>
+          <div class="btn-row"><a class="btn primary" href="./examples.html">Choose an example</a><a class="btn" href="./api.html">Open API reference</a></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module">
+    import { FacetViz, renderChart, highlight, initChrome, scrollspy } from './site.js';
+
+    const months = ['Jan', 'Feb', 'Mar', 'Apr'];
+    const trellisRows = [
+      { x: 'Jan', y: 12, region: 'East', channel: 'Web' },
+      { x: 'Feb', y: 18, region: 'East', channel: 'Web' },
+      { x: 'Jan', y: 9, region: 'West', channel: 'Web' },
+      { x: 'Feb', y: 14, region: 'West', channel: 'Web' },
+      { x: 'Jan', y: 7, region: 'East', channel: 'Store' },
+      { x: 'Feb', y: 11, region: 'East', channel: 'Store' },
+      { x: 'Jan', y: 10, region: 'West', channel: 'Store' },
+      { x: 'Feb', y: 16, region: 'West', channel: 'Store' },
+    ];
+
+    const DEMOS = {
+      'data-shapes': {
+        cfg: {
+          chart: { type: 'column', height: 250 },
+          xAxis: { categories: ['Starter', 'Team', 'Scale'] },
+          yAxis: { title: { text: 'Accounts' } },
+          legend: { enabled: false },
+          series: [{ name: 'Accounts', data: [12, { y: 18, color: '#8b5cf6' }, 15] }],
+        },
+        snippet: `series: [{
+  name: 'Accounts',
+  data: [
+    12,
+    { y: 18, color: '#8b5cf6' },
+    15,
+  ],
+}]`,
+      },
+      'mixed-series': {
+        cfg: {
+          chart: { type: 'column', height: 280 },
+          title: { text: 'Orders and conversion' },
+          xAxis: { categories: months },
+          yAxis: [{ title: { text: 'Orders' } }, { title: { text: 'Conversion' }, labels: { format: '{value:.0f}%' } }],
+          tooltip: { shared: true },
+          series: [
+            { name: 'Orders', data: [120, 148, 132, 174] },
+            { type: 'spline', name: 'Conversion', yAxis: 1, color: '#f97316', marker: { enabled: true }, data: [12, 15, 14, 19] },
+          ],
+        },
+        snippet: `yAxis: [
+  { title: { text: 'Orders' } },
+  { title: { text: 'Conversion' } },
+],
+series: [
+  { type: 'column', data: [120, 148, 132, 174] },
+  { type: 'spline', yAxis: 1, data: [12, 15, 14, 19] },
+]`,
+      },
+      'small-multiples': {
+        cfg: {
+          chart: { type: 'column', height: 330 },
+          title: { text: 'Orders by region and channel' },
+          xAxis: { title: { text: 'Month' } },
+          yAxis: { title: { text: 'Orders' } },
+          trellis: { columns: 'channel', rows: 'region', gap: 12 },
+          series: [{ name: 'Orders', data: trellisRows }],
+        },
+        snippet: `trellis: {
+  columns: 'channel',
+  rows: 'region',
+},
+series: [{
+  data: rows, // each point includes region + channel
+}]`,
+      },
+      polar: {
+        cfg: {
+          chart: { type: 'column', polar: true, polarInnerSize: '36%', polarGridLineMode: 'sector', height: 300 },
+          title: { text: 'Traffic by direction' },
+          xAxis: { categories: ['North', 'East', 'South', 'West'], labels: { position: 'inner' } },
+          yAxis: { title: { text: 'Visits' } },
+          legend: { enabled: false },
+          series: [{ name: 'Visits', data: [48, 72, 55, 61] }],
+        },
+        snippet: `chart: {
+  type: 'column',
+  polar: true,
+  polarInnerSize: '36%',
+  polarGridLineMode: 'sector',
+},
+xAxis: { categories: ['North', 'East', 'South', 'West'] }`,
+      },
+      formatting: {
+        cfg: {
+          chart: { type: 'column', height: 260 },
+          title: { text: 'Quarterly revenue' },
+          xAxis: { categories: ['Q1', 'Q2', 'Q3', 'Q4'] },
+          yAxis: { labels: { format: '${value:,.0f}' } },
+          tooltip: { format: '<b>{x}</b><br/>{y:$,.0f}' },
+          legend: { enabled: false },
+          series: [{ name: 'Revenue', dataLabels: { enabled: true, format: '{y:$,.1s}' }, data: [820000, 1040000, 1280000, 1510000] }],
+        },
+        snippet: `yAxis: { labels: { format: '\${value:,.0f}' } },
+tooltip: { format: '<b>{x}</b><br/>{y:$,.0f}' },
+series: [{
+  dataLabels: { enabled: true, format: '{y:$,.1s}' },
+  data: [820000, 1040000, 1280000, 1510000],
+}]`,
+      },
+      annotations: {
+        cfg: {
+          chart: { type: 'line', height: 270 },
+          title: { text: 'Activation rate' },
+          xAxis: { categories: months },
+          yAxis: { min: 40, max: 80, labels: { format: '{value:.0f}%' }, plotBands: [{ from: 65, to: 80, color: '#dcfce7', label: { text: 'Target zone' } }] },
+          legend: { enabled: false },
+          annotations: [{ x: 'Mar', y: 68, text: 'Onboarding v2', shape: 'callout', dx: 16, dy: -24 }],
+          series: [{ name: 'Activation', marker: { enabled: true }, data: [52, 58, 68, 74] }],
+        },
+        snippet: `yAxis: {
+  plotBands: [{ from: 65, to: 80, color: '#dcfce7' }],
+},
+annotations: [{
+  x: 'Mar', y: 68,
+  text: 'Onboarding v2',
+  shape: 'callout', dx: 16, dy: -24,
+}]`,
+      },
+      accessibility: {
+        cfg: {
+          chart: { type: 'column', height: 250 },
+          title: { text: 'Tickets resolved' },
+          xAxis: { categories: ['Mon', 'Tue', 'Wed', 'Thu'] },
+          legend: { enabled: false },
+          accessibility: { description: 'Support tickets resolved each weekday.', pointDescriptionFormatter: ({ x, y }) => `${x}: ${y} tickets resolved` },
+          series: [{ name: 'Resolved', data: [18, 24, 21, 31] }],
+        },
+        snippet: `accessibility: {
+  description: 'Support tickets resolved each weekday.',
+  keyboardNavigation: true,
+  pointDescriptionFormatter: ({ x, y }) =>
+    \`${'${x}'}: ${'${y}'} tickets resolved\`,
+}`,
+      },
+    };
+
+    document.querySelectorAll('[data-demo]').forEach((card) => {
+      const demo = DEMOS[card.dataset.demo];
+      renderChart(FacetViz, card.querySelector('.feature-chart'), demo.cfg);
+      card.querySelector('pre code').textContent = demo.snippet;
+    });
+
+    document.querySelectorAll('.feature-doc pre').forEach((pre) => {
+      const button = document.createElement('button');
+      button.type = 'button'; button.className = 'copy-code'; button.textContent = 'Copy';
+      button.setAttribute('aria-label', 'Copy code example');
+      button.addEventListener('click', async () => {
+        const source = pre.querySelector('code')?.textContent || '';
+        try {
+          await navigator.clipboard.writeText(source);
+          button.textContent = 'Copied';
+          setTimeout(() => { button.textContent = 'Copy'; }, 1400);
+        } catch (error) {
+          button.textContent = 'Select code';
+        }
+      });
+      pre.appendChild(button);
+    });
+
+    highlight(document);
+    initChrome('features');
+    scrollspy('#side');
+  </script>
+</body>
+</html>
