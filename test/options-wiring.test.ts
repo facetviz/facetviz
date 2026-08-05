@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FacetViz, validateChartOptions } from '../src/index.js';
+import { chartFontScale } from '../src/core/theme.js';
 
 function container(width = 600, height = 400): HTMLElement {
   const el = document.createElement('div');
@@ -264,7 +265,11 @@ describe('configuration option wiring', () => {
     const label = [...el.querySelectorAll<SVGTextElement>('.facet-pie text')]
       .find((node) => node.textContent === 'Alpha')!;
     expect(label.getAttribute('fill')).toBe('#123456');
-    expect(label.getAttribute('font-size')).toBe('20px');
+    // An explicit dataLabels.fontSize scales with chart.scaleFonts (default
+    // on) the same way yAxis label / legend / title font sizes do, rather
+    // than staying frozen at the literal px the caller wrote.
+    expect(label.getAttribute('font-size'))
+      .toBe(`${20 * chartFontScale(baseChart.width, baseChart.height)}px`);
     expect(label.getAttribute('font-weight')).toBe('700');
     expect(label.getAttribute('transform')).toContain('rotate(12');
     expect(el.querySelector('.facet-pie rect[fill="#ffeeaa"]')).toBeTruthy();

@@ -4,7 +4,7 @@ import type { ChartType } from '../../src/index.js';
 const chartTypes: ChartType[] = [
   'bar', 'column', 'arearange', 'areasplinerange', 'line', 'spline', 'step',
   'area', 'areaspline', 'pie', 'donut', 'scatter', 'jitter', 'boxplot',
-  'dumbbell', 'lollipop', 'slope', 'butterfly', 'columnrange', 'radialbar',
+  'dumbbell', 'lollipop', 'slope', 'butterfly', 'columnrange', 'tick', 'radialbar',
   'heatmap', 'bullet', 'candlestick', 'gauge', 'waterfall', 'histogram',
   'timeline', 'funnel', 'treegraph', 'bubble', 'radar', 'sunburst', 'sankey',
   'calendar', 'gantt', 'marimekko', 'errorbar', 'sparkline',

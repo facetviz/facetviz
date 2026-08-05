@@ -224,7 +224,8 @@ One object per series in the `series` array.
 | `showInLegend`   | `boolean`                                                 | `true`        | Set to `false` to omit this series from the chart legend.                                                                                                                                                                                       |
 | `stack`          | `string \| number`                                        | –             | Series sharing a stack id pile together.                                                                                                                                                                                                        |
 | `stacking`       | `'normal' \| 'percent'`                                   | –             | Enable stacking (`percent` = 100% stacked).                                                                                                                                                                                                     |
-| `grouping`       | `boolean`                                                  | `true`        | Set `false` on a column/bar series to draw it across the full category band instead of its own side-by-side slot, overlapping other `grouping: false` series — see [Overlapping bars](#chart-types).                                          |
+| `grouping`       | `boolean`                                                  | `true`        | Set `false` on a column/bar/tick series to draw it across the full category band instead of its own side-by-side slot, overlapping other `grouping: false` series — see [Overlapping bars](#chart-types).                                     |
+| `borderRadius`   | `number`                                                   | `0`           | Corner radius (px) for a column/bar's outer end, flush at the baseline — see [Rounded bar corners](#chart-types).                                                                                                                              |
 | `startAngle`     | `number`                                                   | `-90`         | Radial-bar arc start in degrees; `-90` is 12 o'clock.                                                                                                                                                                                           |
 | `endAngle`       | `number`                                                   | `180`         | Radial-bar arc end in degrees. Use `90` with the default start for a half circle.                                                                                                                                                               |
 | `xAxis`          | `0 \| 1`                                                  | `0`           | Bound x-axis. `1` uses the secondary x-axis, drawn at the top with its own categories/domain.                                                                                                                                                   |
@@ -361,7 +362,7 @@ arranged left-to-right by default and top-to-bottom with
 | `markers`         | [`GaugeMarkerOptions[]`](#gaugemarkeroptions) | –                   | Reference lines and labels drawn on every dial in the series.        |
 | `showMinMax`      | `boolean`                                     | `true`              | Show the minimum and maximum labels beneath the two band ends.       |
 | `centerFormatter` | `(value: number) => string`                   | `String(value)`     | Formats each dial's centre value.                                    |
-| `centerFontSize`  | `number`                                      | adaptive, 10–22 px  | Centre-value font size.                                              |
+| `centerFontSize`  | `string`                                      | adaptive, 10–22 px  | CSS centre-value font size, e.g. `'20px'`. Scales with chart size.   |
 
 #### GaugeMarkerOptions
 
@@ -371,7 +372,7 @@ arranged left-to-right by default and top-to-bottom with
 | `label`         | `string`                | marker value      | Marker label text.                                                |
 | `color`         | `string`                | value-band colour | Marker line and label colour.                                     |
 | `labelPosition` | `'outside' \| 'inside'` | `'outside'`       | Places the label outside the track or inside the value band.      |
-| `fontSize`      | `number`                | `10`              | Marker-label font size in pixels.                                 |
+| `fontSize`      | `string`                | `'10px'`          | CSS marker-label font size, e.g. `'14px'`. Scales with chart size.|
 
 Defaults can be set through `plotOptions.gauge`; an explicit series value
 replaces the plot-level value:
@@ -381,7 +382,7 @@ plotOptions: {
   gauge: {
     color: '#26a69a',
     markers: [
-      { value: 80, label: 'Target', fontSize: 12 },
+      { value: 80, label: 'Target', fontSize: '12px' },
     ],
   },
 },
@@ -411,7 +412,7 @@ series: [{
 
 ### DataLabelOptions
 
-On-chart value labels; supported on column/bar, line/area/spline/step,
+On-chart value labels; supported on column/bar/tick, line/area/spline/step,
 scatter/jitter, pie/donut and butterfly.
 
 | Key               | Type                            | Default        | Description                                                                                                                                                                                 |
@@ -965,6 +966,7 @@ raw array for boxplots.
 | `boxplot`                       | Five-number distribution; dual-colour, horizontal & groupable.                                 |
 | `dumbbell`                      | Two connected points per category; horizontal & groupable.                                     |
 | `columnrange`                   | Rounded-capsule range bar (vertical; horizontal via `chart.inverted`); groupable.              |
+| `tick`                          | Column-width line at each value; groupable, not zero-anchored (reads like a dot plot).          |
 | `butterfly`                     | Two series mirrored back-to-back around a central axis.                                        |
 | `radialbar`                     | Bars around a polar centre with configurable start/end angles and optional stacking.           |
 | `heatmap`                       | Category × category grid coloured by `value`; draws its own row/column labels.                 |
@@ -995,13 +997,13 @@ calendar `{ date, value }`; gantt `{ name, start, end }`; variable-radius pie ad
 `z` per slice.
 
 Gauge markers can be supplied as defaults through `plotOptions.gauge` and
-replaced for an individual gauge series. Marker labels support a numeric
-`fontSize` in pixels:
+replaced for an individual gauge series. Marker labels support a CSS
+`fontSize`, e.g. `'12px'`:
 
 ```ts
 plotOptions: {
   gauge: {
-    markers: [{ value: 80, label: 'Default target', fontSize: 12 }],
+    markers: [{ value: 80, label: 'Default target', fontSize: '12px' }],
   },
 },
 series: [
@@ -1022,8 +1024,8 @@ the prior series ends. Set `startAngle: -90, endAngle: 90` for a half-circle
 track. Angles are degrees and may define a sweep up to 360°. Mix `type`s across
 series for combination charts.
 
-**Overlapping bars**: set `grouping: false` on a column/bar series to pull it
-out of the side-by-side layout — it draws across the full category band
+**Overlapping bars**: set `grouping: false` on a column/bar/tick series to pull
+it out of the side-by-side layout — it draws across the full category band
 instead of its own slot, so it overlaps other `grouping: false` series in the
 same category rather than sitting next to them. Combine with `columnWidth` (or
 `size`) per series so a narrower bar stays visible in front of a wider one;
@@ -1034,6 +1036,26 @@ series: [
   { type: 'column', name: 'Target', data: [80, 95, 70], grouping: false, columnWidth: 30, color: '#ccc' },
   { type: 'column', name: 'Actual', data: [65, 90, 55], grouping: false, columnWidth: 14 },
 ]
+```
+
+**Tick**: like column/bar but draws only a line at each value — the same
+width the bar would have been, with no fill down to a baseline. Because
+there's no fill to visually truncate, its axis is not forced to start at
+zero, so it reads like a dot plot rather than a bar chart:
+
+```ts
+series: [{ type: 'tick', name: 'Current', data: [42, 38, 51, 29] }]
+```
+
+**Rounded bar corners**: `borderRadius` rounds a column/bar's outer end — the
+two corners away from the zero baseline (the top for an upward column, the
+bottom for a downward one; the far end for a `bar`). The near end stays
+square and flush against the baseline/axis. Radius is clamped to at most half
+the bar's shorter side, so a large enough value gives a full capsule/pill
+shape. Set it per series or override per point:
+
+```ts
+series: [{ type: 'column', borderRadius: 6, data: [5, 3, { y: -4, borderRadius: 0 }] }]
 ```
 
 ---

@@ -7,6 +7,7 @@
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
 import { paletteColor, alpha } from '../core/colors.js';
 import { FONTS } from '../core/defaults.js';
+import { scaledFontPx } from '../core/theme.js';
 
 export interface RadialBarSeriesOptions {
   /** Arc start in degrees (default -90, at 12 o'clock). */
@@ -84,10 +85,13 @@ export class RadialBarSeries extends BaseSeries {
         stroke: 'none',
         class: 'facet-radialbar-track',
       }, g);
+      // Ring geometry always draws; only the label backs off on a chart too
+      // small for data-style labels (see `Chart.suppressDataLabels`).
+      if (ctx.suppressDataLabels) return;
       renderer.text(label, labelX, cy - (rInner + rOuter) / 2 + 4, {
         'text-anchor': 'end',
         ...FONTS.dataLabel,
-        'font-size': '10px',
+        'font-size': scaledFontPx(10),
         class: 'facet-radialbar-label',
       }, g);
     };

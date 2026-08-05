@@ -452,13 +452,16 @@ function labelString(dl, ctx) {
   };
   return formatString(dl.format ?? "{y}", data);
 }
+function dataLabelFontSize(dl) {
+  return dl?.fontSize ? sanitizeStyle({ "font-size": dl.fontSize })["font-size"] : FONTS.dataLabel["font-size"];
+}
 function drawDataLabel(renderer, parent, text, place, dl) {
   if (!text) return;
   let attrs = {
     "text-anchor": place.anchor,
     ...FONTS.dataLabel,
     fill: dl.color ?? FONTS.dataLabel.fill,
-    "font-size": dl.fontSize ? clampFontSize(dl.fontSize) : FONTS.dataLabel["font-size"]
+    "font-size": dataLabelFontSize(dl)
   };
   if (dl.fontWeight && (attrs["font-weight"] = dl.fontWeight), dl.rotation && (attrs.transform = `rotate(${dl.rotation} ${place.x} ${place.y})`), dl.backgroundColor) {
     let w = text.length * 6.5 + 8, anchorX = place.anchor === "start" ? place.x - 4 : place.anchor === "end" ? place.x - w + 4 : place.x - w / 2;
@@ -813,10 +816,20 @@ function resolveTheme(input) {
   let base = THEMES[input.base ?? "light"] ?? LIGHT_THEME;
   return merge(base, input);
 }
-var THEME = { ...LIGHT_THEME }, FONT_SCALE_REFERENCE_PX = 400, FONT_SCALE_MIN = 0.7, FONT_SCALE_MAX = 1.6;
+var THEME = { ...LIGHT_THEME }, FONT_SCALE_REFERENCE_PX = Math.sqrt(640 * 400), FONT_SCALE_MIN = 0.7, FONT_SCALE_MAX = 1.6;
+function sizeRatio(width, height) {
+  let area = Math.max(0, width) * Math.max(0, height);
+  return Math.sqrt(area) / FONT_SCALE_REFERENCE_PX;
+}
 function chartFontScale(width, height) {
-  let raw = Math.min(width, height) / FONT_SCALE_REFERENCE_PX;
-  return Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, raw));
+  return Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, sizeRatio(width, height)));
+}
+var TEXT_SCALE_MIN = 0.3;
+function chartTextScale(width, height) {
+  return Math.min(FONT_SCALE_MAX, Math.max(TEXT_SCALE_MIN, sizeRatio(width, height)));
+}
+function scaledFontPx(px) {
+  return `${px * FONT_SCALE_STATE.scale}px`;
 }
 function applyTheme(theme, fontScale = 1, scaleExplicit = !1) {
   Object.assign(THEME, theme), FONT_SCALE_STATE.scale = fontScale, FONT_SCALE_STATE.scaleExplicit = scaleExplicit;
@@ -946,7 +959,7 @@ var MONTHS2 = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "O
     start.setDate(start.getDate() - start.getDay());
     let dayOrdinal = (d) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / DAY, startDay = dayOrdinal(start), weekIndex = (d) => Math.floor((dayOrdinal(d) - startDay) / 7), topPad = 16, leftPad = 26, weeks = weekIndex(days[days.length - 1].date) + 1, cell = Math.min((plot.width - leftPad) / weeks, (plot.height - topPad) / 7) - 2, step = cell + 2, gridW = weeks * step, gx = plot.x + leftPad + Math.max(0, (plot.width - leftPad - gridW) / 2), gy = plot.y + topPad;
     ["", "Mon", "", "Wed", "", "Fri", ""].forEach((lbl, i) => {
-      lbl && renderer.text(lbl, gx - 5, gy + i * step + cell / 2, { "text-anchor": "end", "dominant-baseline": "middle", ...FONTS.axisLabel, "font-size": "9px" }, g);
+      lbl && renderer.text(lbl, gx - 5, gy + i * step + cell / 2, { "text-anchor": "end", "dominant-baseline": "middle", ...FONTS.axisLabel, "font-size": scaledFontPx(9) }, g);
     });
     let lastMonth = -1;
     for (let d of days) {
@@ -961,7 +974,7 @@ var MONTHS2 = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "O
         "stroke-width": 0.5,
         class: "facet-point"
       }, g);
-      ctx.registerHover(el, d.point), el.addEventListener("click", (e) => ctx.onPointEvent("click", d.point, e)), el.addEventListener("mouseover", (e) => ctx.onPointEvent("mouseOver", d.point, e)), el.addEventListener("mouseout", (e) => ctx.onPointEvent("mouseOut", d.point, e)), d.date.getMonth() !== lastMonth && (lastMonth = d.date.getMonth(), renderer.text(MONTHS2[lastMonth], x, plot.y + 9, { "text-anchor": "start", ...FONTS.axisLabel, "font-size": "9px" }, g));
+      ctx.registerHover(el, d.point), el.addEventListener("click", (e) => ctx.onPointEvent("click", d.point, e)), el.addEventListener("mouseover", (e) => ctx.onPointEvent("mouseOver", d.point, e)), el.addEventListener("mouseout", (e) => ctx.onPointEvent("mouseOut", d.point, e)), d.date.getMonth() !== lastMonth && (lastMonth = d.date.getMonth(), renderer.text(MONTHS2[lastMonth], x, plot.y + 9, { "text-anchor": "start", ...FONTS.axisLabel, "font-size": scaledFontPx(9) }, g));
     }
   }
 };
@@ -1011,6 +1024,20 @@ var registerCandlestickSeries = () => registerSeriesType("candlestick", Candlest
 registerCandlestickSeries();
 
 // src/series/column.ts
+function roundedBarPath(rect, radius, side) {
+  let { x, y, width, height } = rect, r = Math.max(0, Math.min(radius, width / 2, height / 2));
+  if (r === 0) return `M${x},${y} h${width} v${height} h${-width} Z`;
+  switch (side) {
+    case "top":
+      return `M${x},${y + height} V${y + r} A${r},${r} 0 0 1 ${x + r},${y} H${x + width - r} A${r},${r} 0 0 1 ${x + width},${y + r} V${y + height} Z`;
+    case "bottom":
+      return `M${x},${y} H${x + width} V${y + height - r} A${r},${r} 0 0 1 ${x + width - r},${y + height} H${x + r} A${r},${r} 0 0 1 ${x},${y + height - r} V${y} Z`;
+    case "right":
+      return `M${x},${y} H${x + width - r} A${r},${r} 0 0 1 ${x + width},${y + r} V${y + height - r} A${r},${r} 0 0 1 ${x + width - r},${y + height} H${x} Z`;
+    case "left":
+      return `M${x + width},${y} V${y + height} H${x + r} A${r},${r} 0 0 1 ${x},${y + height - r} V${y + r} A${r},${r} 0 0 1 ${x + r},${y} H${x + width} Z`;
+  }
+}
 var ColumnSeries = class extends BaseSeries {
   capabilities() {
     return { grouped: !0, cartesian: !0, stackable: !0 };
@@ -1041,16 +1068,24 @@ var ColumnSeries = class extends BaseSeries {
         width: colWidth,
         height: Math.max(1, Math.abs(vHi - vLo))
       };
-      let el = renderer.create(
-        "rect",
-        {
-          ...rect,
-          rx: 1,
-          fill: p.color ?? this.color,
-          class: "facet-point"
-        },
-        g
-      );
+      let borderRadius = p.options.borderRadius ?? this.options.borderRadius ?? 0, fill = p.color ?? this.color, el;
+      if (borderRadius > 0) {
+        let side = horizontal ? vHi >= vLo ? "right" : "left" : vHi <= vLo ? "top" : "bottom";
+        el = renderer.create(
+          "path",
+          {
+            d: roundedBarPath(rect, borderRadius, side),
+            fill,
+            class: "facet-point"
+          },
+          g
+        );
+      } else
+        el = renderer.create(
+          "rect",
+          { ...rect, rx: 1, fill, class: "facet-point" },
+          g
+        );
       ctx.registerHover(el, p), this.wireEvents(el, p, ctx), this.drawDataLabel(ctx, p, rect, g);
     }
   }
@@ -1729,7 +1764,9 @@ var GaugeSeries = class extends BaseSeries {
         label: m.label ?? String(m.value),
         color: m.color ?? bandColor,
         labelPosition: m.labelPosition ?? "outside",
-        fontSize: m.fontSize ?? 10
+        // Scaled/clamped like any other font-size option (sanitizeStyle),
+        // rather than the literal pixel value rendered verbatim.
+        fontSize: sanitizeStyle({ "font-size": m.fontSize ?? "10px" })["font-size"]
       })).sort((a, b) => a.value - b.value);
       for (let m of markers) {
         let mFrac = max === min ? 0 : (m.value - min) / (max - min), mDeg = START_DEG + SWEEP_DEG * mFrac, lineOuter = rOuter + 2, lineInner = rInner - 2, pOuter = pointOnCircle(cx, cy, lineOuter, mDeg), pInner = pointOnCircle(cx, cy, lineInner, mDeg);
@@ -1755,7 +1792,7 @@ var GaugeSeries = class extends BaseSeries {
           {
             "text-anchor": anchor,
             ...FONTS.dataLabel,
-            "font-size": `${m.fontSize}px`,
+            "font-size": m.fontSize,
             fill: m.color,
             class: "facet-gauge-marker-label"
           },
@@ -1777,7 +1814,7 @@ var GaugeSeries = class extends BaseSeries {
         {
           "text-anchor": "middle",
           ...FONTS.dataLabel,
-          "font-size": "11px",
+          "font-size": scaledFontPx(11),
           fill: THEME.axis.labelColor
         },
         g
@@ -1795,13 +1832,13 @@ var GaugeSeries = class extends BaseSeries {
         {
           "text-anchor": "middle",
           ...FONTS.dataLabel,
-          "font-size": "11px",
+          "font-size": scaledFontPx(11),
           fill: THEME.axis.labelColor
         },
         g
       );
     }
-    let centerValue = opts.centerFormatter ? opts.centerFormatter(value) : String(value), centerFontSize = opts.centerFontSize ?? Math.max(10, Math.min(22, radius * 0.32));
+    let centerValue = opts.centerFormatter ? opts.centerFormatter(value) : String(value), centerFontSize = opts.centerFontSize ? parseFloat(sanitizeStyle({ "font-size": opts.centerFontSize })["font-size"]) : Math.max(10, Math.min(22, radius * 0.32));
     renderer.text(
       centerValue,
       cx,
@@ -1862,12 +1899,12 @@ var HeatmapSeries = class extends BaseSeries {
         fill: p.color ?? colorFor(value),
         class: "facet-point"
       }, g);
-      cw > 26 && ch > 16 && renderer.text(String(value), x + cw / 2, y + ch / 2, {
+      !ctx.suppressDataLabels && cw > 26 && ch > 16 && renderer.text(String(value), x + cw / 2, y + ch / 2, {
         "text-anchor": "middle",
         "dominant-baseline": "middle",
         ...FONTS.dataLabel,
         fill: (value - min) / (max - min || 1) > 0.6 ? "#fff" : shade(hi, -0.4),
-        "font-size": "10px"
+        "font-size": scaledFontPx(10)
       }, g), ctx.registerHover(el, p), el.addEventListener("click", (e) => ctx.onPointEvent("click", p, e)), el.addEventListener("mouseover", (e) => ctx.onPointEvent("mouseOver", p, e)), el.addEventListener("mouseout", (e) => ctx.onPointEvent("mouseOut", p, e));
     }
     cols.forEach((c, i) => {
@@ -2212,7 +2249,7 @@ var PieSeries = class extends BaseSeries {
   drawLabel(ctx, g, c, rimR, innerR, a0, a1, text, sliceColor, layout) {
     let dl = this.options.dataLabels;
     if (!dl?.enabled || !text) return;
-    let { renderer } = ctx, mid = (a0 + a1) / 2, fontPx = parseFloat(dl.fontSize ?? FONTS.dataLabel["font-size"] ?? "11") || 11;
+    let { renderer } = ctx, mid = (a0 + a1) / 2, fontPx = parseFloat(dataLabelFontSize(dl)) || 11;
     if (c.labelMode === "adaptive") {
       let inside = this.insideLabelPoint(ctx, c, innerR, rimR, a0, a1, text);
       if (inside) {
@@ -2253,7 +2290,7 @@ var PieSeries = class extends BaseSeries {
    * text rectangle fits between both radii and both angular edges.
    */
   insideLabelPoint(ctx, c, innerR, rimR, a0, a1, text) {
-    let dl = this.options.dataLabels, fontSize = dl.fontSize ?? FONTS.dataLabel["font-size"] ?? "11px", metrics = ctx.renderer.measureText(text, {
+    let dl = this.options.dataLabels, fontSize = dataLabelFontSize(dl), metrics = ctx.renderer.measureText(text, {
       ...FONTS.dataLabel,
       "font-size": fontSize,
       "font-weight": dl.fontWeight
@@ -2339,10 +2376,10 @@ var RadialBarSeries = class extends BaseSeries {
         fill: alpha(color, 0.15),
         stroke: "none",
         class: "facet-radialbar-track"
-      }, g), renderer.text(label, labelX, cy - (rInner + rOuter) / 2 + 4, {
+      }, g), !ctx.suppressDataLabels && renderer.text(label, labelX, cy - (rInner + rOuter) / 2 + 4, {
         "text-anchor": "end",
         ...FONTS.dataLabel,
-        "font-size": "10px",
+        "font-size": scaledFontPx(10),
         class: "facet-radialbar-label"
       }, g);
     };
@@ -2838,14 +2875,14 @@ var SunburstSeries = class extends BaseSeries {
           "stroke-width": 1,
           class: "facet-point"
         }, g);
-        if (n.point && (ctx.registerHover(el, n.point), el.addEventListener("click", (e) => ctx.onPointEvent("click", n.point, e)), el.addEventListener("mouseover", (e) => ctx.onPointEvent("mouseOver", n.point, e)), el.addEventListener("mouseout", (e) => ctx.onPointEvent("mouseOut", n.point, e))), a1 - a0 > 0.18 && rOut - rIn > 14) {
+        if (n.point && (ctx.registerHover(el, n.point), el.addEventListener("click", (e) => ctx.onPointEvent("click", n.point, e)), el.addEventListener("mouseover", (e) => ctx.onPointEvent("mouseOver", n.point, e)), el.addEventListener("mouseout", (e) => ctx.onPointEvent("mouseOut", n.point, e))), !ctx.suppressDataLabels && a1 - a0 > 0.18 && rOut - rIn > 14) {
           let mid = (a0 + a1) / 2, rMid = (rIn + rOut) / 2;
           renderer.text(n.name, cx + rMid * Math.cos(mid), cy + rMid * Math.sin(mid), {
             "text-anchor": "middle",
             "dominant-baseline": "middle",
             ...FONTS.dataLabel,
             fill: "#fff",
-            "font-size": "10px"
+            "font-size": scaledFontPx(10)
           }, g);
         }
       }
@@ -2866,6 +2903,46 @@ var SunburstSeries = class extends BaseSeries {
 // src/entries/series/sunburst.ts
 var registerSunburstSeries = () => registerSeriesType("sunburst", SunburstSeries);
 registerSunburstSeries();
+
+// src/series/tick.ts
+var TickSeries = class extends BaseSeries {
+  capabilities() {
+    return { grouped: !0, cartesian: !0, stackable: !1 };
+  }
+  render(ctx) {
+    let { renderer, groupCount, groupIndex, inverted } = ctx, catScale = inverted ? ctx.yScale : ctx.xScale, valScale = inverted ? ctx.xScale : ctx.yScale, g = renderer.group(
+      { class: `facet-series facet-tick ${this.name}` },
+      renderer.root
+    ), subWidth = catScale.bandwidth() / groupCount, maxWidth = Math.max(1, subWidth * 0.9), thickness = this.options.lineWidth ?? 4;
+    for (let p of this.points) {
+      if (p.y === void 0) continue;
+      let width = p.options.columnWidth ?? this.options.columnWidth ?? this.options.size ?? maxWidth, center = catScale.scale(p.x), gap = subWidth - maxWidth, groupWidth = groupCount * width + (groupCount - 1) * gap, start = center - groupWidth / 2 + groupIndex * (width + gap), v = valScale.scale(p.y), color = p.color ?? this.color, coords = inverted ? { x1: v, y1: start, x2: v, y2: start + width } : { x1: start, y1: v, x2: start + width, y2: v }, el = renderer.create(
+        "line",
+        { ...coords, stroke: color, "stroke-width": thickness, class: "facet-point" },
+        g
+      );
+      ctx.registerHover(el, p), el.addEventListener("click", (e) => ctx.onPointEvent("click", p, e)), el.addEventListener("mouseover", (e) => ctx.onPointEvent("mouseOver", p, e)), el.addEventListener("mouseout", (e) => ctx.onPointEvent("mouseOut", p, e)), this.drawLabel(ctx, p, start + width / 2, v, inverted);
+    }
+  }
+  drawLabel(ctx, p, mid, v, inverted) {
+    let dl = this.options.dataLabels;
+    if (!dl?.enabled) return;
+    let text = labelString(dl, {
+      x: p.x,
+      y: p.y,
+      point: p.options,
+      series: this.name,
+      name: p.name ?? p.x,
+      index: p.index,
+      color: p.color ?? this.color
+    }), gap = 10 + (dl.distance ?? 0), negative = (p.y ?? 0) < 0, place;
+    inverted ? place = negative ? { x: v - gap, y: mid + 4, anchor: "end" } : { x: v + gap, y: mid + 4, anchor: "start" } : place = negative ? { x: mid, y: v + gap + 4, anchor: "middle" } : { x: mid, y: v - gap, anchor: "middle" }, drawDataLabel(ctx.renderer, ctx.renderer.root, text, place, dl);
+  }
+};
+
+// src/entries/series/tick.ts
+var registerTickSeries = () => registerSeriesType("tick", TickSeries);
+registerTickSeries();
 
 // src/series/timeline.ts
 var TimelineSeries = class extends BaseSeries {
@@ -2929,7 +3006,7 @@ var TreegraphSeries = class extends BaseSeries {
         "dominant-baseline": "middle",
         ...FONTS.dataLabel,
         fill: "#ffffff",
-        "font-size": "11px"
+        "font-size": scaledFontPx(11)
       }, box), ctx.registerHover(box, n.point), box.addEventListener("click", (e) => ctx.onPointEvent("click", n.point, e)), box.addEventListener("mouseover", (e) => ctx.onPointEvent("mouseOver", n.point, e)), box.addEventListener("mouseout", (e) => ctx.onPointEvent("mouseOut", n.point, e));
     }
   }
@@ -2986,7 +3063,7 @@ registerWaterfallSeries();
 
 // src/series/register-all.ts
 function registerAllSeries() {
-  registerAreaSeries(), registerBoxplotSeries(), registerBubbleSeries(), registerBulletSeries(), registerCalendarSeries(), registerCandlestickSeries(), registerColumnSeries(), registerColumnRangeSeries(), registerDumbbellSeries(), registerErrorBarSeries(), registerFunnelSeries(), registerGanttSeries(), registerGaugeSeries(), registerHeatmapSeries(), registerHistogramSeries(), registerLineSeries(), registerLollipopSeries(), registerMarimekkoSeries(), registerPieSeries(), registerRadarSeries(), registerRadialBarSeries(), registerRangeSeries(), registerSankeySeries(), registerScatterSeries(), registerSlopeSeries(), registerSparklineSeries(), registerSunburstSeries(), registerTimelineSeries(), registerTreegraphSeries(), registerWaterfallSeries();
+  registerAreaSeries(), registerBoxplotSeries(), registerBubbleSeries(), registerBulletSeries(), registerCalendarSeries(), registerCandlestickSeries(), registerColumnSeries(), registerColumnRangeSeries(), registerDumbbellSeries(), registerErrorBarSeries(), registerFunnelSeries(), registerGanttSeries(), registerGaugeSeries(), registerHeatmapSeries(), registerHistogramSeries(), registerLineSeries(), registerLollipopSeries(), registerMarimekkoSeries(), registerPieSeries(), registerRadarSeries(), registerRadialBarSeries(), registerRangeSeries(), registerSankeySeries(), registerScatterSeries(), registerSlopeSeries(), registerSparklineSeries(), registerSunburstSeries(), registerTickSeries(), registerTimelineSeries(), registerTreegraphSeries(), registerWaterfallSeries();
 }
 
 // src/core/renderer.ts
@@ -4589,6 +4666,18 @@ function renderAnnotations(ctx) {
 }
 
 // src/core/chart-text.ts
+function resolveChartTextStyle(item, textScale) {
+  let style = {
+    ...FONTS.dataLabel,
+    ...item.color ? { fill: item.color } : {},
+    ...sanitizeStyle(item.style)
+  }, configured = item.style?.fontSize, size = parseFloat(String(configured ?? ""));
+  if (Number.isFinite(size)) {
+    let unit = /[a-z%]+$/i.exec(String(configured))?.[0] ?? "px";
+    style["font-size"] = `${size * textScale}${unit}`;
+  }
+  return style;
+}
 function renderChartTexts(ctx) {
   let items = ctx.texts.filter((item) => item.enabled !== !1);
   if (!items.length) return;
@@ -4598,11 +4687,7 @@ function renderChartTexts(ctx) {
   );
   for (let item of items) {
     if (!item.text) continue;
-    let align = item.align ?? "left", verticalAlign = item.verticalAlign ?? "top", x = (align === "left" ? 0 : align === "right" ? ctx.width : ctx.width / 2) + (item.offsetX ?? 0), y = (verticalAlign === "top" ? 0 : verticalAlign === "bottom" ? ctx.height : ctx.height / 2) + (item.offsetY ?? 0), style = {
-      ...FONTS.dataLabel,
-      ...item.color ? { fill: item.color } : {},
-      ...sanitizeStyle(item.style)
-    }, fontSize = parseFloat(style["font-size"] ?? "11") || 11, lineHeight = item.lineHeight ?? fontSize * 1.2, lines = item.text.split(`
+    let align = item.align ?? "left", verticalAlign = item.verticalAlign ?? "top", x = (align === "left" ? 0 : align === "right" ? ctx.width : ctx.width / 2) + (item.offsetX ?? 0) * ctx.textScale, y = (verticalAlign === "top" ? 0 : verticalAlign === "bottom" ? ctx.height : ctx.height / 2) + (item.offsetY ?? 0) * ctx.textScale, style = resolveChartTextStyle(item, ctx.textScale), fontSize = parseFloat(style["font-size"] ?? "11") || 11, lineHeight = item.lineHeight != null ? item.lineHeight * ctx.textScale : fontSize * 1.2, lines = item.text.split(`
 `), textHeight = fontSize + lineHeight * (lines.length - 1), top = verticalAlign === "top" ? y : verticalAlign === "bottom" ? y - textHeight : y - textHeight / 2, className = item.className ? ` ${item.className}` : "", group = ctx.renderer.group(
       {
         class: `facet-chart-text${className}`,
@@ -4633,7 +4718,7 @@ function renderChartTexts(ctx) {
 }
 
 // src/core/chart.ts
-var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, FacetViz = class _FacetViz {
+var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MARGIN = LAYOUT.titleHeight - 20, SUBTITLE_DEFAULT_MARGIN = LAYOUT.subtitleHeight - 16, TEXT_RESERVE_GAP = 8, MAX_SPACING_SHARE = 0.85, FacetViz = class _FacetViz {
   constructor(container, options) {
     this.events = new EventEmitter();
     this.series = [];
@@ -4726,6 +4811,18 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, FacetViz = class 
   }
   // -- Rendering ---------------------------------------------------------
   /**
+   * True when `chart.responsive` (default on) and this render's pixel size
+   * together call for hiding data-style labels. Drives two things from the
+   * one computation so they can't drift apart: `applyResponsiveOverrides`
+   * clearing a cartesian/pie series' own `dataLabels.enabled`, and the
+   * `suppressDataLabels` flag handed to every series via `seriesContext` for
+   * value labels (heatmap, sunburst, radialbar) that aren't gated by a
+   * `dataLabels` option of their own.
+   */
+  suppressDataLabels() {
+    return this.options.chart?.responsive !== !1 && Math.min(this.width, this.height) < SMALL_CHART_DATA_LABEL_THRESHOLD;
+  }
+  /**
    * Hide data labels on very small charts and drop axis lines at the smallest
    * sizes, leaving more room for the series geometry. Overrides resolved
    * per-instance state for the duration of this render only and returns a
@@ -4747,13 +4844,12 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, FacetViz = class 
         series.options.dataLabels = dataLabels;
     };
     if (this.options.chart?.responsive === !1) return restore;
-    let shortSide = Math.min(this.width, this.height);
-    if (shortSide < SMALL_CHART_DATA_LABEL_THRESHOLD)
+    if (this.suppressDataLabels())
       for (let series of this.series) {
         let dataLabels = series.options.dataLabels;
         dataLabels?.enabled && (originalDataLabels.set(series, dataLabels), series.options.dataLabels = { ...dataLabels, enabled: !1 });
       }
-    if (!(shortSide < 110)) return restore;
+    if (!(Math.min(this.width, this.height) < 110)) return restore;
     let patch = { lineWidth: 0 }, overrideAxis = (a) => Array.isArray(a) ? a.map((ax) => ({ ...ax, ...patch })) : { ...a ?? {}, ...patch };
     return remember("xAxis"), remember("yAxis"), this.options.xAxis = overrideAxis(this.options.xAxis), this.options.yAxis = overrideAxis(this.options.yAxis), restore;
   }
@@ -4781,7 +4877,7 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, FacetViz = class 
         color: this.theme.tooltip.color,
         ...this.options.tooltip
       }));
-      let spacing = this.options.chart?.spacing ?? [5, 5, 5, 5], top = spacing[0];
+      let spacing = this.resolveSpacing(), top = spacing[0];
       top += this.renderTitles(top);
       let legendItems = this.buildLegendItems(), showLegend = this.options.legend?.enabled !== !1 && legendItems.length > 1, legendPlace = this.legendPlacement(), legendVertical = legendPlace === "left" || legendPlace === "right", legendReserveH = 0, legendReserveW = 0;
       if (showLegend) {
@@ -4846,7 +4942,8 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, FacetViz = class 
         renderer: this.renderer,
         width: this.width,
         height: this.height,
-        texts: this.options.texts ?? []
+        texts: this.options.texts ?? [],
+        textScale: this.textScale()
       }), this.applyAccessibility(), this.installZoom(outer), this.drawDrillUp(outer), this.animateNext && this.animateEnter(), this.animateNext = !1, this.events.emit("render", this), this.options.chart?.events?.render?.(this);
     } finally {
       restoreResponsive();
@@ -5031,6 +5128,84 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, FacetViz = class 
     let { min, max, ...rest } = cur;
     this.options[axis] = rest;
   }
+  /**
+   * Font-size multiplier for positioned texts, matching the `scaleFonts` /
+   * `responsive` opt-outs the chrome scale already honours.
+   */
+  textScale() {
+    let chart = this.options.chart;
+    return chart?.responsive === !1 || chart?.scaleFonts === !1 ? 1 : chartTextScale(this.width, this.height);
+  }
+  /** Configured spacing, with text reserves folded in and capped to the chart. */
+  resolveSpacing() {
+    return this.clampSpacing(
+      this.spacingWithTextReserves(
+        this.options.chart?.spacing ?? [5, 5, 5, 5]
+      )
+    );
+  }
+  /**
+   * Spacing is authored in absolute pixels, so a pair tuned on a large card
+   * can exceed a small one outright -- once top + bottom is taller than the
+   * chart the plot rect goes negative, and series fall out of it and lay
+   * themselves out against the full chart instead, as if no spacing had been
+   * set at all. Shrink each opposing pair proportionally so the plot always
+   * keeps a usable share of the chart, whatever size it renders at.
+   */
+  clampSpacing(spacing) {
+    let fit = (a, b, extent2) => {
+      let total = a + b, limit = extent2 * MAX_SPACING_SHARE;
+      if (total <= limit || total <= 0) return [a, b];
+      let scale = limit / total;
+      return [a * scale, b * scale];
+    }, [top, bottom] = fit(spacing[0], spacing[2], this.height), [right, left] = fit(spacing[1], spacing[3], this.width);
+    return [top, right, bottom, left];
+  }
+  /**
+  * `spacing` with each edge-anchored positioned text's own side widened to
+  * hold it, when `chart.autoSpaceTexts` is on. Every text is measured through
+  * the same style and scale renderChartTexts will draw it with, so the
+  * reserve stays correct at any chart size rather than depending on a
+  * `spacing` value that was only right at the one size it was tuned at.
+  *
+  * The reserve *adds to* the configured spacing rather than replacing it, so
+  * the two mean different things and neither silently cancels the other:
+  * fitting the text is this function's job, while `spacing` is the padding
+  * the caller wants on top of that. Replacing instead left `spacing` inert
+  * on exactly the sides a text sat on -- a control that quietly did nothing.
+  */
+  spacingWithTextReserves(spacing) {
+    let texts = this.options.texts ?? [];
+    if (this.options.chart?.autoSpaceTexts !== !0 || !texts.length)
+      return spacing;
+    let textScale = this.textScale(), reserve = [null, null, null, null];
+    for (let item of texts) {
+      if (!item.text || item.enabled === !1) continue;
+      let style = resolveChartTextStyle(item, textScale), fontSize = parseFloat(style["font-size"] ?? "11") || 11, lines = item.text.split(`
+`), align = item.align ?? "left", verticalAlign = item.verticalAlign ?? "top", side, extent2;
+      if (verticalAlign === "top" || verticalAlign === "bottom") {
+        side = verticalAlign === "top" ? 0 : 2;
+        let offsetY = (item.offsetY ?? 0) * textScale, lineHeight = item.lineHeight != null ? item.lineHeight * textScale : fontSize * 1.2;
+        extent2 = fontSize + lineHeight * (lines.length - 1) + (verticalAlign === "top" ? offsetY : -offsetY);
+      } else if (align === "left" || align === "right") {
+        side = align === "left" ? 3 : 1;
+        let offsetX = (item.offsetX ?? 0) * textScale;
+        extent2 = Math.max(
+          ...lines.map(
+            (line) => this.renderer.measureText(line, style).width
+          )
+        ) + (align === "left" ? offsetX : -offsetX);
+      } else
+        continue;
+      reserve[side] = Math.max(
+        reserve[side] ?? 0,
+        Math.max(0, extent2) + TEXT_RESERVE_GAP
+      );
+    }
+    return spacing.map(
+      (configured, side) => (reserve[side] ?? 0) + configured
+    );
+  }
   renderTitles(top) {
     let used = 0, title = this.options.title;
     if (title?.text && title.enabled !== !1) {
@@ -5047,7 +5222,7 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, FacetViz = class 
           ...style
         },
         this.renderer.root
-      ), used += title.margin === void 0 ? LAYOUT.titleHeight : baseline + title.margin + Math.max(0, title.offsetY ?? 0);
+      ), used += baseline + (title.margin ?? TITLE_DEFAULT_MARGIN) + Math.max(0, title.offsetY ?? 0);
     }
     let sub = this.options.subtitle;
     if (sub?.text && sub.enabled !== !1) {
@@ -5064,7 +5239,7 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, FacetViz = class 
           ...style
         },
         this.renderer.root
-      ), used += sub.margin === void 0 ? LAYOUT.subtitleHeight : baseline + sub.margin + Math.max(0, sub.offsetY ?? 0);
+      ), used += baseline + (sub.margin ?? SUBTITLE_DEFAULT_MARGIN) + Math.max(0, sub.offsetY ?? 0);
     }
     return used;
   }
@@ -6953,7 +7128,8 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, FacetViz = class 
       "bullet",
       "dumbbell",
       "butterfly",
-      "lollipop"
+      "lollipop",
+      "tick"
     ]);
   }
   currentCategories(visible, axisIndex = 0) {
@@ -7000,7 +7176,8 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, FacetViz = class 
       groupCount: overlapped ? 1 : group.count,
       groupIndex: overlapped ? 0 : rawIndex,
       onPointEvent: (kind, p, dom) => this.handlePointEvent(kind, s, p, dom),
-      registerHover: (el, p) => this.bindPointInteraction(el, s, p)
+      registerHover: (el, p) => this.bindPointInteraction(el, s, p),
+      suppressDataLabels: this.suppressDataLabels()
     };
   }
   bindPointInteraction(el, s, p) {

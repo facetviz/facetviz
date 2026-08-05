@@ -9,7 +9,7 @@ import { FONTS } from '../core/defaults.js';
 import { formatNumber, formatString, sum } from '../core/utils.js';
 import type { Point } from '../core/point.js';
 import type { LabelContext } from '../core/options.js';
-import { drawDataLabel } from './data-label.js';
+import { drawDataLabel, dataLabelFontSize } from './data-label.js';
 
 /** Hovered-value label drawn inside a pie/donut's hollow centre. */
 export interface PieCenterLabelOptions {
@@ -369,7 +369,7 @@ export class PieSeries extends BaseSeries {
     if (!dl?.enabled || !text) return;
     const { renderer } = ctx;
     const mid = (a0 + a1) / 2;
-    const fontPx = parseFloat(dl.fontSize ?? FONTS.dataLabel['font-size'] ?? '11') || 11;
+    const fontPx = parseFloat(dataLabelFontSize(dl)) || 11;
 
     if (c.labelMode === 'adaptive') {
       const inside = this.insideLabelPoint(ctx, c, innerR, rimR, a0, a1, text);
@@ -438,7 +438,7 @@ export class PieSeries extends BaseSeries {
     text: string,
   ): { x: number; y: number } | undefined {
     const dl = this.options.dataLabels!;
-    const fontSize = dl.fontSize ?? FONTS.dataLabel['font-size'] ?? '11px';
+    const fontSize = dataLabelFontSize(dl);
     const metrics = ctx.renderer.measureText(text, {
       ...FONTS.dataLabel,
       'font-size': fontSize,

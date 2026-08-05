@@ -8,6 +8,7 @@
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
 import { paletteColor } from '../core/colors.js';
 import { FONTS } from '../core/defaults.js';
+import { scaledFontPx } from '../core/theme.js';
 import type { Point } from '../core/point.js';
 
 interface Node { point: Point; id: string; depth: number; y: number; children: Node[]; }
@@ -73,7 +74,7 @@ export class TreegraphSeries extends BaseSeries {
       const box = renderer.group({ class: 'facet-point' }, g);
       renderer.create('rect', { x, y: y - boxH / 2, width: boxW, height: boxH, rx: 5, fill: color }, box);
       renderer.text(String(n.point.name ?? n.id), x + boxW / 2, y, {
-        'text-anchor': 'middle', 'dominant-baseline': 'middle', ...FONTS.dataLabel, fill: '#ffffff', 'font-size': '11px',
+        'text-anchor': 'middle', 'dominant-baseline': 'middle', ...FONTS.dataLabel, fill: '#ffffff', 'font-size': scaledFontPx(11),
       }, box);
       ctx.registerHover(box, n.point);
       box.addEventListener('click', (e: Event) => ctx.onPointEvent('click', n.point, e));

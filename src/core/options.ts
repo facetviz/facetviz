@@ -88,6 +88,7 @@ export type ChartType =
   | "gantt" // duration bars per row
   | "marimekko" // variable-width 100% stacked columns
   | "errorbar" // low/high whiskers, usually overlaid
+  | "tick" // column-width line at each value, not zero-anchored -- a dot plot
   | "sparkline"; // tiny axis-less trend line, one per table cell/row
 
 export type StackingMode = "normal" | "percent";
@@ -165,12 +166,12 @@ export interface SeriesOptions
   lineWidth?: number;
   /**
    * Generic shape-size override, interpreted per series type: rect
-   * width/height for bar/column-family series (`columnWidth` wins if also
-   * set), stroke width for line-family series -- line/spline/step/area/
-   * slope/lollipop (`lineWidth` wins if also set) -- or marker radius for
-   * scatter/jitter series (`radius` wins if also set). Lets a caller reach
-   * for one property without knowing which specific option name a given
-   * chart type uses.
+   * width/height for bar/column-family series, or tick's line length
+   * (`columnWidth` wins if also set), stroke width for line-family series --
+   * line/spline/step/area/slope/lollipop (`lineWidth` wins if also set) -- or
+   * marker radius for scatter/jitter series (`radius` wins if also set). Lets
+   * a caller reach for one property without knowing which specific option
+   * name a given chart type uses.
    */
   size?: number;
   /** Marker configuration for point-based series. */
@@ -750,6 +751,26 @@ export interface ChartOptions {
      * regardless of the chart's own size.
      */
     scaleFonts?: boolean;
+    /**
+     * Keep the plot area clear of edge-anchored `texts` by reserving each
+     * one's measured size on the side it is anchored to, instead of letting
+     * it overlay the plot. The reservation is measured at the text's real
+     * rendered size for *this* chart's dimensions, so it tracks
+     * `scaleFonts`/`responsive` scaling automatically -- a card a quarter the
+     * width reserves what the text actually occupies there, rather than a
+     * hand-tuned `spacing` value that was right at only one size.
+     *
+     * A reserved side's space is added to that side's `spacing`, which stays
+     * what it always was -- padding -- rather than doubling as the room a
+     * text needs. `verticalAlign:
+     * top`/`bottom` takes a band on that edge and wins over `align`, so a
+     * corner text reads as a header or footer rather than spending a
+     * full-height column on one line; `align: left`/`right` takes a side
+     * column only when the text is vertically centred. A centre/centre text
+     * is a deliberate overlay and never reserves. Default `false` -- every
+     * text overlays the plot, as before.
+     */
+    autoSpaceTexts?: boolean;
     /**
      * High-volume "boost" rendering. Cartesian point/line series with more than
      * `threshold` points are drawn to a single canvas overlay instead of one SVG

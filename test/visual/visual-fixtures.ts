@@ -46,6 +46,7 @@ const fixtures: Fixture[] = [
   fixture('slope', { xAxis: { categories: ['2020', '2026'] }, series: [{ name: 'Alpha', data: [30, 45] }, { name: 'Beta', data: [50, 32] }, { name: 'Gamma', data: [20, 38] }] }),
   fixture('butterfly', { xAxis: { categories: ['0–17', '18–34', '35–54', '55+'] }, series: [{ name: 'Left', data: [30, 42, 38, 24] }, { name: 'Right', data: [28, 40, 39, 31] }] }),
   fixture('columnrange', { xAxis: { categories }, series: [{ name: 'Temperature', data: rangeData }] }),
+  fixture('tick', { xAxis: { categories }, series: [{ name: 'North', dataLabels: { enabled: true }, data: [5, 3, 4, 7, 2, 6] }, { name: 'South', data: [2, 4, 6, 3, 5, 4] }] }),
   fixture('radialbar', { series: [{ name: 'Goals', data: [{ name: 'Move', y: 80 }, { name: 'Exercise', y: 55 }, { name: 'Stand', y: 95 }] }] }),
   fixture('heatmap', { series: [{ name: 'Activity', data: ['Mon', 'Tue', 'Wed', 'Thu'].flatMap((x, xi) => ['AM', 'PM', 'Night'].map((y, yi) => ({ x, y, value: 20 + xi * 17 + yi * 11 }))) }] } as unknown as ChartOptions),
   fixture('bullet', { series: [{ name: 'KPIs', data: [{ name: 'Revenue', y: 275, target: 250, ranges: [150, 225, 300] }, { name: 'Profit', y: 22, target: 26, ranges: [20, 25, 30] }] }] }),

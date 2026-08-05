@@ -9,7 +9,7 @@ import type { DataLabelOptions, LabelContext } from '../core/options.js';
 import type { Point } from '../core/point.js';
 import type { Pt } from './paths.js';
 import { FONTS } from '../core/defaults.js';
-import { formatString, clampFontSize } from '../core/utils.js';
+import { formatString, sanitizeStyle } from '../core/utils.js';
 
 /**
  * Resolve the label text from `formatter` or the `{token}` format string.
@@ -33,6 +33,22 @@ export interface LabelPlacement {
   anchor: 'start' | 'middle' | 'end';
 }
 
+/**
+ * The font-size `drawDataLabel` will actually render `dl` at: an explicit
+ * `dl.fontSize` scaled and clamped the same way `sanitizeStyle` handles any
+ * other caller-supplied `style.fontSize` (see its doc comment), so it tracks
+ * `chart.scaleFonts` like the yAxis/legend/title fonts instead of staying
+ * frozen at the literal pixel value the caller wrote. Callers that need the
+ * rendered size for their own layout math (e.g. pie's label-fit checks)
+ * should read it from here rather than `dl.fontSize` directly, so the two
+ * never drift apart.
+ */
+export function dataLabelFontSize(dl: DataLabelOptions | undefined): string {
+  return dl?.fontSize
+    ? sanitizeStyle({ 'font-size': dl.fontSize })['font-size']
+    : FONTS.dataLabel['font-size'];
+}
+
 /** Draw a single data label with the series' styling options. */
 export function drawDataLabel(
   renderer: Renderer,
@@ -46,9 +62,7 @@ export function drawDataLabel(
     'text-anchor': place.anchor,
     ...FONTS.dataLabel,
     fill: dl.color ?? FONTS.dataLabel.fill,
-    'font-size': dl.fontSize
-      ? clampFontSize(dl.fontSize)
-      : FONTS.dataLabel['font-size'],
+    'font-size': dataLabelFontSize(dl),
   };
   if (dl.fontWeight) attrs['font-weight'] = dl.fontWeight;
   if (dl.rotation) attrs.transform = `rotate(${dl.rotation} ${place.x} ${place.y})`;

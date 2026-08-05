@@ -7,7 +7,7 @@
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
 import { lerpColor } from '../core/colors.js';
 import { FONTS } from '../core/defaults.js';
-import { THEME } from '../core/theme.js';
+import { THEME, scaledFontPx } from '../core/theme.js';
 
 /** Calendar's point-level fields — a day (ms timestamp, Date, or ISO string)
  *  plus the shared `value` cell measure (also used by heatmap/sunburst). */
@@ -57,7 +57,7 @@ export class CalendarSeries extends BaseSeries {
 
     // Weekday labels (Mon/Wed/Fri).
     ['', 'Mon', '', 'Wed', '', 'Fri', ''].forEach((lbl, i) => {
-      if (lbl) renderer.text(lbl, gx - 5, gy + i * step + cell / 2, { 'text-anchor': 'end', 'dominant-baseline': 'middle', ...FONTS.axisLabel, 'font-size': '9px' }, g);
+      if (lbl) renderer.text(lbl, gx - 5, gy + i * step + cell / 2, { 'text-anchor': 'end', 'dominant-baseline': 'middle', ...FONTS.axisLabel, 'font-size': scaledFontPx(9) }, g);
     });
 
     let lastMonth = -1;
@@ -77,7 +77,7 @@ export class CalendarSeries extends BaseSeries {
       // Month label at each month's first appearance.
       if (d.date.getMonth() !== lastMonth) {
         lastMonth = d.date.getMonth();
-        renderer.text(MONTHS[lastMonth], x, plot.y + 9, { 'text-anchor': 'start', ...FONTS.axisLabel, 'font-size': '9px' }, g);
+        renderer.text(MONTHS[lastMonth], x, plot.y + 9, { 'text-anchor': 'start', ...FONTS.axisLabel, 'font-size': scaledFontPx(9) }, g);
       }
     }
   }

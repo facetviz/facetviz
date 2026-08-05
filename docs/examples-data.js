@@ -476,7 +476,7 @@ export const EXAMPLES = [
       plotOptions: {
         gauge: {
           color: "#26a69a",
-          markers: [{ value: 80, label: "Target", fontSize: 12 }],
+          markers: [{ value: 80, label: "Target", fontSize: "12px" }],
         },
       },
       series: [

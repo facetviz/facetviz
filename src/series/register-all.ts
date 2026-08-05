@@ -25,6 +25,7 @@ import { registerScatterSeries } from "../entries/series/scatter.js";
 import { registerSlopeSeries } from "../entries/series/slope.js";
 import { registerSparklineSeries } from "../entries/series/sparkline.js";
 import { registerSunburstSeries } from "../entries/series/sunburst.js";
+import { registerTickSeries } from "../entries/series/tick.js";
 import { registerTimelineSeries } from "../entries/series/timeline.js";
 import { registerTreegraphSeries } from "../entries/series/treegraph.js";
 import { registerWaterfallSeries } from "../entries/series/waterfall.js";
@@ -58,6 +59,7 @@ export function registerAllSeries(): void {
   registerSlopeSeries();
   registerSparklineSeries();
   registerSunburstSeries();
+  registerTickSeries();
   registerTimelineSeries();
   registerTreegraphSeries();
   registerWaterfallSeries();

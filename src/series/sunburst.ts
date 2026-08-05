@@ -8,6 +8,7 @@
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
 import { paletteColor, shade } from '../core/colors.js';
 import { FONTS } from '../core/defaults.js';
+import { scaledFontPx } from '../core/theme.js';
 import type { Point } from '../core/point.js';
 
 interface Node { point?: Point; id: string; name: string; value: number; depth: number; children: Node[]; color?: string; }
@@ -67,11 +68,12 @@ export class SunburstSeries extends BaseSeries {
           el.addEventListener('mouseover', (e: Event) => ctx.onPointEvent('mouseOver', n.point!, e));
           el.addEventListener('mouseout', (e: Event) => ctx.onPointEvent('mouseOut', n.point!, e));
         }
-        // Label if the slice is roomy.
-        if (a1 - a0 > 0.18 && rOut - rIn > 14) {
+        // Label if the slice is roomy and the chart itself isn't too small
+        // for data-style labels (see `Chart.suppressDataLabels`).
+        if (!ctx.suppressDataLabels && a1 - a0 > 0.18 && rOut - rIn > 14) {
           const mid = (a0 + a1) / 2, rMid = (rIn + rOut) / 2;
           renderer.text(n.name, cx + rMid * Math.cos(mid), cy + rMid * Math.sin(mid), {
-            'text-anchor': 'middle', 'dominant-baseline': 'middle', ...FONTS.dataLabel, fill: '#fff', 'font-size': '10px',
+            'text-anchor': 'middle', 'dominant-baseline': 'middle', ...FONTS.dataLabel, fill: '#fff', 'font-size': scaledFontPx(10),
           }, g);
         }
       }

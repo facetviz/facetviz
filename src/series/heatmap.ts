@@ -8,7 +8,7 @@
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
 import { lerpColor, shade } from '../core/colors.js';
 import { FONTS } from '../core/defaults.js';
-import { THEME } from '../core/theme.js';
+import { THEME, scaledFontPx } from '../core/theme.js';
 
 export class HeatmapSeries extends BaseSeries {
   override capabilities(): SeriesCapabilities {
@@ -59,11 +59,12 @@ export class HeatmapSeries extends BaseSeries {
         x: x + 1, y: y + 1, width: cw - 2, height: ch - 2, rx: 2,
         fill: p.color ?? colorFor(value), class: 'facet-point',
       }, g);
-      // Value label if the cell is roomy enough.
-      if (cw > 26 && ch > 16) {
+      // Value label if the cell is roomy enough and the chart itself isn't
+      // too small for data-style labels (see `Chart.suppressDataLabels`).
+      if (!ctx.suppressDataLabels && cw > 26 && ch > 16) {
         renderer.text(String(value), x + cw / 2, y + ch / 2, {
           'text-anchor': 'middle', 'dominant-baseline': 'middle', ...FONTS.dataLabel,
-          fill: (value - min) / (max - min || 1) > 0.6 ? '#fff' : shade(hi, -0.4), 'font-size': '10px',
+          fill: (value - min) / (max - min || 1) > 0.6 ? '#fff' : shade(hi, -0.4), 'font-size': scaledFontPx(10),
         }, g);
       }
       ctx.registerHover(el, p);

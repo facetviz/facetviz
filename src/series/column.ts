@@ -21,6 +21,50 @@ export interface ColumnOptions {
    * wider ones; later series in `chart.series` paint on top.
    */
   grouping?: boolean;
+  /**
+   * Corner radius (px) for the bar's outer end — the two corners away from
+   * the zero baseline (the top for an upward column, the bottom for a
+   * downward one; the far end for a `bar`). The near end stays square and
+   * flush against the baseline/axis. Radius is clamped to at most half the
+   * bar's shorter side. `0`/unset keeps the plain rectangular bar.
+   */
+  borderRadius?: number;
+}
+
+/** Rect path with only the two corners on `side` rounded; the opposite pair
+ *  stays square. `side` names the edge whose corners get rounded. */
+function roundedBarPath(
+  rect: { x: number; y: number; width: number; height: number },
+  radius: number,
+  side: "top" | "bottom" | "left" | "right",
+): string {
+  const { x, y, width, height } = rect;
+  const r = Math.max(0, Math.min(radius, width / 2, height / 2));
+  if (r === 0) return `M${x},${y} h${width} v${height} h${-width} Z`;
+  switch (side) {
+    case "top":
+      return (
+        `M${x},${y + height} V${y + r} A${r},${r} 0 0 1 ${x + r},${y} ` +
+        `H${x + width - r} A${r},${r} 0 0 1 ${x + width},${y + r} V${y + height} Z`
+      );
+    case "bottom":
+      return (
+        `M${x},${y} H${x + width} V${y + height - r} ` +
+        `A${r},${r} 0 0 1 ${x + width - r},${y + height} H${x + r} ` +
+        `A${r},${r} 0 0 1 ${x},${y + height - r} V${y} Z`
+      );
+    case "right":
+      return (
+        `M${x},${y} H${x + width - r} A${r},${r} 0 0 1 ${x + width},${y + r} ` +
+        `V${y + height - r} A${r},${r} 0 0 1 ${x + width - r},${y + height} H${x} Z`
+      );
+    case "left":
+      return (
+        `M${x + width},${y} V${y + height} H${x + r} ` +
+        `A${r},${r} 0 0 1 ${x},${y + height - r} V${y + r} ` +
+        `A${r},${r} 0 0 1 ${x + r},${y} H${x + width} Z`
+      );
+  }
 }
 
 export class ColumnSeries extends BaseSeries {
@@ -92,16 +136,36 @@ export class ColumnSeries extends BaseSeries {
         };
       }
 
-      const el = renderer.create(
-        "rect",
-        {
-          ...rect,
-          rx: 1,
-          fill: p.color ?? this.color,
-          class: "facet-point",
-        },
-        g,
-      );
+      const borderRadius =
+        p.options.borderRadius ?? this.options.borderRadius ?? 0;
+      const fill = p.color ?? this.color;
+      let el: SVGElement;
+      if (borderRadius > 0) {
+        // Round only the corners at the far/value end -- the near end stays
+        // flush against the baseline/axis, whichever pixel side that is.
+        const side = horizontal
+          ? vHi >= vLo
+            ? "right"
+            : "left"
+          : vHi <= vLo
+            ? "top"
+            : "bottom";
+        el = renderer.create(
+          "path",
+          {
+            d: roundedBarPath(rect, borderRadius, side),
+            fill,
+            class: "facet-point",
+          },
+          g,
+        );
+      } else {
+        el = renderer.create(
+          "rect",
+          { ...rect, rx: 1, fill, class: "facet-point" },
+          g,
+        );
+      }
       ctx.registerHover(el, p);
       this.wireEvents(el, p, ctx);
 

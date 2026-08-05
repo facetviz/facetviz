@@ -118,27 +118,54 @@ export function resolveTheme(input?: ThemeInput): Theme {
 /** The theme currently in effect, read by the chrome renderers. */
 export const THEME: Theme = { ...LIGHT_THEME };
 
-// Chart chrome (title, axis labels, legend, data labels) is authored at these
-// theme font sizes for a chart whose *shorter* side is this many px -- the
-// chart's own hardcoded 640x400 constructor fallback (chart.ts). Below/above
-// that reference, `chartFontScale` scales every font size in proportion to
-// the container, the same way the KPI free-layout SVG scales via its
-// viewBox: a card half the reference size renders chrome at roughly half the
-// font size, so text stays legible at thumbnail scale and doesn't look
-// comically small on a full-screen chart.
-const FONT_SCALE_REFERENCE_PX = 400;
+// Every font size in a chart -- theme chrome (title, axis labels, legend,
+// data labels) and the caller's own positioned `texts` -- is authored for a
+// chart the size of the 640x400 constructor fallback (chart.ts) and scaled
+// from there in proportion to the container, the same way the KPI
+// free-layout SVG scales via its viewBox.
+//
+// "Size" here is the geometric mean of the two sides, not the shorter one.
+// Cards vary far more in width than in height (a dashboard tile and a list
+// thumbnail are both short), so keying off the shorter side made the scale
+// blind to the dimension that actually changes: a 943x302 card and a 640x302
+// one rendered identical chrome despite 1.5x the area, and -- being short --
+// a 943x302 card came out *smaller* than the 640x400 reference it is
+// larger than. The geometric mean tracks both sides, so a chart's text is
+// sized by how big the chart really is.
+//
+// The reference is that same 640x400 measured the same way, so a chart at
+// the canonical size still renders every font at exactly its authored size.
+const FONT_SCALE_REFERENCE_PX = Math.sqrt(640 * 400);
 const FONT_SCALE_MIN = 0.7;
 const FONT_SCALE_MAX = 1.6;
 
+/** Proportional size of `width` x `height` against the reference chart. */
+function sizeRatio(width: number, height: number): number {
+  const area = Math.max(0, width) * Math.max(0, height);
+  return Math.sqrt(area) / FONT_SCALE_REFERENCE_PX;
+}
+
 /**
  * Proportional font-size multiplier for a chart of this pixel size, clamped
- * so a thumbnail-sized chart keeps legible (if small) text and a very large
+ * so a thumbnail-sized chart keeps legible (if small) chrome and a very large
  * one doesn't blow up its chrome past readability.
  */
 export function chartFontScale(width: number, height: number): number {
-  const shortSide = Math.min(width, height);
-  const raw = shortSide / FONT_SCALE_REFERENCE_PX;
-  return Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, raw));
+  return Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, sizeRatio(width, height)));
+}
+
+// A positioned text is laid out *beside* the plot rather than inside the
+// chrome, so what matters is the share of the card it occupies -- and a text
+// that has to stay proportional cannot also stop shrinking where chrome
+// does. Its floor is therefore low enough to keep the card sizes this
+// renders at (down to a list thumbnail) inside the proportional range,
+// rather than flattening them onto the floor and handing the same text a
+// different share of every card.
+const TEXT_SCALE_MIN = 0.3;
+
+/** Proportional font-size multiplier for a chart's positioned `texts`. */
+export function chartTextScale(width: number, height: number): number {
+  return Math.min(FONT_SCALE_MAX, Math.max(TEXT_SCALE_MIN, sizeRatio(width, height)));
 }
 
 // FONT_SCALE_STATE (imported above): `scale` (from `chartFontScale` below)
@@ -153,6 +180,19 @@ export function chartFontScale(width: number, height: number): number {
 // from double-applying. Read there and in `applyTheme`, both synchronously
 // within the render that wrote them, same contract `FONTS` itself relies on.
 export { FONT_SCALE_STATE };
+
+/**
+ * Scale a literal reference-size px value by the current render's font
+ * scale -- the same unconditional scaling `applyTheme` gives the `FONTS`
+ * defaults themselves. For chrome that hardcodes its own smaller/larger
+ * size instead of spreading a `FONTS` token verbatim (e.g. a heatmap cell
+ * value or calendar day label, deliberately smaller than the shared
+ * `dataLabel`/`axisLabel` default) -- read only during a render, same
+ * contract as `FONTS` and `FONT_SCALE_STATE` itself.
+ */
+export function scaledFontPx(px: number): string {
+  return `${px * FONT_SCALE_STATE.scale}px`;
+}
 
 /**
  * Apply a resolved theme: update the live THEME and the shared FONTS tokens,

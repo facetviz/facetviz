@@ -46,6 +46,16 @@ export interface SeriesRenderContext {
   onPointEvent: (kind: 'click' | 'mouseOver' | 'mouseOut', p: Point, dom: Event) => void;
   /** Registers a hoverable region + its tooltip payload. */
   registerHover: (el: SVGElement, p: Point) => void;
+  /**
+   * True when `chart.responsive` (default on) has decided this render is too
+   * small for data-style labels -- the same signal that clears a cartesian
+   * or pie series' own `dataLabels.enabled` for the render (see `Chart`'s
+   * `suppressDataLabels`/`applyResponsiveOverrides`). A series whose value
+   * labels aren't gated by a `dataLabels` option of their own (heatmap,
+   * sunburst, radialbar) should fold this into their own room-to-fit check,
+   * so they decline at the same chart size a data-label-driven series would.
+   */
+  suppressDataLabels: boolean;
 }
 
 /** Metadata used by the chart's layout engine. */

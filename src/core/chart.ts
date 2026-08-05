@@ -55,13 +55,20 @@ import { computeStacks } from "./stacking.js";
 import { captureSeriesState, restoreSeriesState } from "./series-state.js";
 import { enforceConfiguredValidation } from "./validation.js";
 import { paletteColor, alpha, shade } from "./colors.js";
-import { Theme, resolveTheme, applyTheme, chartFontScale, THEME } from "./theme.js";
+import {
+  Theme,
+  resolveTheme,
+  applyTheme,
+  chartFontScale,
+  chartTextScale,
+  THEME,
+} from "./theme.js";
 import { BaseSeries, SeriesRenderContext } from "../series/base.js";
 import { createSeries } from "../series/registry.js";
 import { drawDataLabel, labelString } from "../series/data-label.js";
 import { drawMarker } from "../series/marker.js";
 import { renderAnnotations } from "./annotations.js";
-import { renderChartTexts } from "./chart-text.js";
+import { renderChartTexts, resolveChartTextStyle } from "./chart-text.js";
 import type { Point } from "./point.js";
 
 // SVG fragment IDs share the surrounding document's namespace. Keep resource
@@ -69,6 +76,27 @@ import type { Point } from "./point.js";
 // text path against an element belonging to a different chart.
 let svgResourceId = 0;
 const SMALL_CHART_DATA_LABEL_THRESHOLD = 180;
+
+// Space below the title/subtitle baseline reserved when the caller doesn't
+// set an explicit `margin`, chosen so the reserved height matches
+// LAYOUT.titleHeight/subtitleHeight exactly at each text's *default*
+// (unscaled) font size -- e.g. title: 18px font -> baseline 20 -> +10 margin
+// = the old fixed 30px. Unlike the old fixed constants, using a margin on
+// top of the (already font-scale-aware) baseline means the reserved space
+// grows with the actual glyph size FacetViz draws at, instead of staying
+// frozen at the reference-size value while the title itself scales up on
+// large containers -- which is what let a scaled-up title bleed into the
+// plot area below it.
+const TITLE_DEFAULT_MARGIN = LAYOUT.titleHeight - (18 + 2);
+const SUBTITLE_DEFAULT_MARGIN = LAYOUT.subtitleHeight - (13 + 3);
+
+// Breathing room between an auto-spaced positioned text and the plot it was
+// moved out of, so the two never read as touching (see `autoSpaceTexts`).
+const TEXT_RESERVE_GAP = 8;
+
+// Most of each dimension that `spacing` (text reserves included) may consume
+// before it is scaled back, so the plot itself never collapses to nothing.
+const MAX_SPACING_SHARE = 0.85;
 
 export class FacetViz {
   readonly container: HTMLElement;
@@ -311,6 +339,22 @@ export class FacetViz {
   // -- Rendering ---------------------------------------------------------
 
   /**
+   * True when `chart.responsive` (default on) and this render's pixel size
+   * together call for hiding data-style labels. Drives two things from the
+   * one computation so they can't drift apart: `applyResponsiveOverrides`
+   * clearing a cartesian/pie series' own `dataLabels.enabled`, and the
+   * `suppressDataLabels` flag handed to every series via `seriesContext` for
+   * value labels (heatmap, sunburst, radialbar) that aren't gated by a
+   * `dataLabels` option of their own.
+   */
+  private suppressDataLabels(): boolean {
+    return (
+      this.options.chart?.responsive !== false &&
+      Math.min(this.width, this.height) < SMALL_CHART_DATA_LABEL_THRESHOLD
+    );
+  }
+
+  /**
    * Hide data labels on very small charts and drop axis lines at the smallest
    * sizes, leaving more room for the series geometry. Overrides resolved
    * per-instance state for the duration of this render only and returns a
@@ -346,8 +390,7 @@ export class FacetViz {
         series.options.dataLabels = dataLabels;
     };
     if (this.options.chart?.responsive === false) return restore;
-    const shortSide = Math.min(this.width, this.height);
-    if (shortSide < SMALL_CHART_DATA_LABEL_THRESHOLD) {
+    if (this.suppressDataLabels()) {
       for (const series of this.series) {
         const dataLabels = series.options.dataLabels;
         if (!dataLabels?.enabled) continue;
@@ -355,7 +398,7 @@ export class FacetViz {
         series.options.dataLabels = { ...dataLabels, enabled: false };
       }
     }
-    const hideAxisLines = shortSide < 110;
+    const hideAxisLines = Math.min(this.width, this.height) < 110;
     if (!hideAxisLines) return restore;
 
     const patch: Partial<AxisOptions> = { lineWidth: 0 };
@@ -425,7 +468,7 @@ export class FacetViz {
       });
     }
 
-    const spacing = this.options.chart?.spacing ?? [5, 5, 5, 5];
+    const spacing = this.resolveSpacing();
     let top = spacing[0];
     top += this.renderTitles(top);
 
@@ -546,6 +589,7 @@ export class FacetViz {
       width: this.width,
       height: this.height,
       texts: this.options.texts ?? [],
+      textScale: this.textScale(),
     });
 
     this.applyAccessibility();
@@ -840,6 +884,120 @@ export class FacetViz {
     this.options[axis] = rest;
   }
 
+  /**
+   * Font-size multiplier for positioned texts, matching the `scaleFonts` /
+   * `responsive` opt-outs the chrome scale already honours.
+   */
+  private textScale(): number {
+    const chart = this.options.chart;
+    if (chart?.responsive === false || chart?.scaleFonts === false) return 1;
+    return chartTextScale(this.width, this.height);
+  }
+
+  /** Configured spacing, with text reserves folded in and capped to the chart. */
+  private resolveSpacing(): [number, number, number, number] {
+    return this.clampSpacing(
+      this.spacingWithTextReserves(
+        this.options.chart?.spacing ?? [5, 5, 5, 5],
+      ),
+    );
+  }
+
+  /**
+   * Spacing is authored in absolute pixels, so a pair tuned on a large card
+   * can exceed a small one outright -- once top + bottom is taller than the
+   * chart the plot rect goes negative, and series fall out of it and lay
+   * themselves out against the full chart instead, as if no spacing had been
+   * set at all. Shrink each opposing pair proportionally so the plot always
+   * keeps a usable share of the chart, whatever size it renders at.
+   */
+  private clampSpacing(
+    spacing: [number, number, number, number],
+  ): [number, number, number, number] {
+    const fit = (a: number, b: number, extent: number): [number, number] => {
+      const total = a + b;
+      const limit = extent * MAX_SPACING_SHARE;
+      if (total <= limit || total <= 0) return [a, b];
+      const scale = limit / total;
+      return [a * scale, b * scale];
+    };
+    const [top, bottom] = fit(spacing[0], spacing[2], this.height);
+    const [right, left] = fit(spacing[1], spacing[3], this.width);
+    return [top, right, bottom, left];
+  }
+
+   /**
+   * `spacing` with each edge-anchored positioned text's own side widened to
+   * hold it, when `chart.autoSpaceTexts` is on. Every text is measured through
+   * the same style and scale renderChartTexts will draw it with, so the
+   * reserve stays correct at any chart size rather than depending on a
+   * `spacing` value that was only right at the one size it was tuned at.
+   *
+   * The reserve *adds to* the configured spacing rather than replacing it, so
+   * the two mean different things and neither silently cancels the other:
+   * fitting the text is this function's job, while `spacing` is the padding
+   * the caller wants on top of that. Replacing instead left `spacing` inert
+   * on exactly the sides a text sat on -- a control that quietly did nothing.
+   */
+  private spacingWithTextReserves(
+    spacing: [number, number, number, number],
+  ): [number, number, number, number] {
+    const texts = this.options.texts ?? [];
+    if (this.options.chart?.autoSpaceTexts !== true || !texts.length) {
+      return spacing;
+    }
+    const textScale = this.textScale();
+    const reserve: Array<number | null> = [null, null, null, null];
+    for (const item of texts) {
+      if (!item.text || item.enabled === false) continue;
+      const style = resolveChartTextStyle(item, textScale);
+      const fontSize = parseFloat(style["font-size"] ?? "11") || 11;
+      const lines = item.text.split("\n");
+      // Defaulted the same way renderChartTexts positions them, so a text
+      // reserves against the edge it is actually drawn at.
+      const align = item.align ?? "left";
+      const verticalAlign = item.verticalAlign ?? "top";
+      // A text pinned to a top or bottom edge takes a band there even when it
+      // is also left- or right-aligned: a corner text is a header or footer,
+      // and a band costs a fraction of what a side column does. Holding a
+      // one-line text at the top-left of a 262x302 card needs either a 42px
+      // band or an 89px full-height column -- 21% of the card against 44%.
+      // A side column is for texts with no vertical edge to sit against,
+      // i.e. vertically centred ones.
+      let side: number;
+      let extent: number;
+      if (verticalAlign === "top" || verticalAlign === "bottom") {
+        side = verticalAlign === "top" ? 0 : 2;
+        const offsetY = (item.offsetY ?? 0) * textScale;
+        const lineHeight =
+          item.lineHeight != null ? item.lineHeight * textScale : fontSize * 1.2;
+        extent =
+          fontSize +
+          lineHeight * (lines.length - 1) +
+          (verticalAlign === "top" ? offsetY : -offsetY);
+      } else if (align === "left" || align === "right") {
+        side = align === "left" ? 3 : 1;
+        const offsetX = (item.offsetX ?? 0) * textScale;
+        extent =
+          Math.max(
+            ...lines.map(
+              (line) => this.renderer.measureText(line, style).width,
+            ),
+          ) + (align === "left" ? offsetX : -offsetX);
+      } else {
+        // Centred on both axes: a deliberate overlay, nothing to reserve.
+        continue;
+      }
+      reserve[side] = Math.max(
+        reserve[side] ?? 0,
+        Math.max(0, extent) + TEXT_RESERVE_GAP,
+      );
+    }
+    return spacing.map(
+      (configured, side) => (reserve[side] ?? 0) + configured,
+    ) as [number, number, number, number];
+  }
+
   private renderTitles(top: number): number {
     let used = 0;
     const title = this.options.title;
@@ -862,9 +1020,9 @@ export class FacetViz {
         this.renderer.root,
       );
       used +=
-        title.margin === undefined
-          ? LAYOUT.titleHeight
-          : baseline + title.margin + Math.max(0, title.offsetY ?? 0);
+        baseline +
+        (title.margin ?? TITLE_DEFAULT_MARGIN) +
+        Math.max(0, title.offsetY ?? 0);
     }
     const sub = this.options.subtitle;
     if (sub?.text && sub.enabled !== false) {
@@ -886,9 +1044,9 @@ export class FacetViz {
         this.renderer.root,
       );
       used +=
-        sub.margin === undefined
-          ? LAYOUT.subtitleHeight
-          : baseline + sub.margin + Math.max(0, sub.offsetY ?? 0);
+        baseline +
+        (sub.margin ?? SUBTITLE_DEFAULT_MARGIN) +
+        Math.max(0, sub.offsetY ?? 0);
     }
     return used;
   }
@@ -4057,6 +4215,7 @@ export class FacetViz {
     "dumbbell",
     "butterfly",
     "lollipop",
+    "tick",
   ]);
 
   private currentCategories(
@@ -4144,6 +4303,7 @@ export class FacetViz {
       groupIndex: overlapped ? 0 : rawIndex,
       onPointEvent: (kind, p, dom) => this.handlePointEvent(kind, s, p, dom),
       registerHover: (el, p) => this.bindPointInteraction(el, s, p),
+      suppressDataLabels: this.suppressDataLabels(),
     };
   }
 

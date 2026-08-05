@@ -9,7 +9,8 @@
 
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from "./base.js";
 import { FONTS } from "../core/defaults.js";
-import { THEME } from "../core/theme.js";
+import { THEME, scaledFontPx } from "../core/theme.js";
+import { sanitizeStyle } from "../core/utils.js";
 import type { Rect } from "../core/axis.js";
 import type { Point } from "../core/point.js";
 
@@ -37,15 +38,15 @@ export interface GaugeSeriesOptions {
     color?: string;
     /** Label position: 'outside' (default) or 'inside' the band. */
     labelPosition?: "outside" | "inside";
-    /** Font Size: Increase or decrease the font size of marker. default 10px*/
-    fontSize?: number;
+    /** CSS font size, e.g. '14px'. Default '10px'. */
+    fontSize?: string;
   }>;
   /** Show min/max labels at bottom corners (default: true). */
   showMinMax?: boolean;
   /** Centre value formatter. Receives the numeric value, returns a string. */
   centerFormatter?: (value: number) => string;
-  /** Centre value font size (default: auto ~22px). */
-  centerFontSize?: number;
+  /** CSS centre value font size, e.g. '20px' (default: auto ~10-22px, from the dial's own radius). */
+  centerFontSize?: string;
   /** Track/bg track opacity (default 0.15). */
   trackOpacity?: number;
 }
@@ -217,7 +218,9 @@ export class GaugeSeries extends BaseSeries {
           label: m.label ?? String(m.value),
           color: m.color ?? bandColor,
           labelPosition: m.labelPosition ?? "outside",
-          fontSize: m.fontSize ?? 10,
+          // Scaled/clamped like any other font-size option (sanitizeStyle),
+          // rather than the literal pixel value rendered verbatim.
+          fontSize: sanitizeStyle({ "font-size": m.fontSize ?? "10px" })["font-size"],
         }))
         .sort((a, b) => a.value - b.value);
 
@@ -260,7 +263,7 @@ export class GaugeSeries extends BaseSeries {
           {
             "text-anchor": anchor,
             ...FONTS.dataLabel,
-            "font-size": `${m.fontSize}px`,
+            "font-size": m.fontSize,
             fill: m.color,
             class: "facet-gauge-marker-label",
           },
@@ -286,7 +289,7 @@ export class GaugeSeries extends BaseSeries {
         {
           "text-anchor": "middle",
           ...FONTS.dataLabel,
-          "font-size": "11px",
+          "font-size": scaledFontPx(11),
           fill: THEME.axis.labelColor,
         },
         g,
@@ -306,7 +309,7 @@ export class GaugeSeries extends BaseSeries {
         {
           "text-anchor": "middle",
           ...FONTS.dataLabel,
-          "font-size": "11px",
+          "font-size": scaledFontPx(11),
           fill: THEME.axis.labelColor,
         },
         g,
@@ -317,8 +320,13 @@ export class GaugeSeries extends BaseSeries {
     const centerValue = opts.centerFormatter
       ? opts.centerFormatter(value)
       : String(value);
-    const centerFontSize =
-      opts.centerFontSize ?? Math.max(10, Math.min(22, radius * 0.32));
+    // An explicit centerFontSize is a caller override, scaled/clamped like
+    // any other font-size option; the auto default instead derives from the
+    // gauge's own rendered radius, which is already proportional to the
+    // chart's size -- scaling it a second time would double-apply.
+    const centerFontSize = opts.centerFontSize
+      ? parseFloat(sanitizeStyle({ "font-size": opts.centerFontSize })["font-size"])
+      : Math.max(10, Math.min(22, radius * 0.32));
     renderer.text(
       centerValue,
       cx,
