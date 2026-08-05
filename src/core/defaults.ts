@@ -34,7 +34,8 @@ export const LAYOUT = {
   subtitleHeight: 20,
   legendHeight: 34,
   axisLabelGap: 8,
-  axisTitleGap: 28,
+  /** Gap between tick labels and the axis title, for horizontal (x) axes. */
+  axisTitleGap: 22,
   tickLength: 5,
   defaultLeftAxisWidth: 44,
   defaultBottomAxisHeight: 34,

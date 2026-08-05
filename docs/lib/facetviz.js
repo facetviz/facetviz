@@ -137,57 +137,6 @@ function stepPath(pts) {
   return d;
 }
 
-// src/series/marker.ts
-function drawMarker(renderer, parent, cx, cy, spec) {
-  let { symbol, radius: r, fill, stroke, strokeWidth } = spec, common = {
-    fill,
-    stroke,
-    "stroke-width": strokeWidth,
-    class: "facet-point"
-  };
-  switch (symbol) {
-    case "square":
-      return renderer.create(
-        "rect",
-        { x: cx - r, y: cy - r, width: r * 2, height: r * 2, ...common },
-        parent
-      );
-    case "diamond":
-      return renderer.create(
-        "polygon",
-        {
-          points: `${cx},${cy - r} ${cx + r},${cy} ${cx},${cy + r} ${cx - r},${cy}`,
-          ...common
-        },
-        parent
-      );
-    case "triangle":
-      return renderer.create(
-        "polygon",
-        {
-          points: `${cx},${cy - r} ${cx + r},${cy + r} ${cx - r},${cy + r}`,
-          ...common
-        },
-        parent
-      );
-    case "rectangle":
-      return renderer.create(
-        "rect",
-        {
-          x: cx - (spec.width ?? r * 2) / 2,
-          y: cy - (spec.height ?? r * 2) / 2,
-          width: spec.width ?? r * 2,
-          height: spec.height ?? r * 2,
-          ...common
-        },
-        parent
-      );
-    case "circle":
-    default:
-      return renderer.create("circle", { cx, cy, r, ...common }, parent);
-  }
-}
-
 // src/core/defaults.ts
 var DEFAULT_OPTIONS = {
   chart: {
@@ -218,7 +167,8 @@ var DEFAULT_OPTIONS = {
   subtitleHeight: 20,
   legendHeight: 34,
   axisLabelGap: 8,
-  axisTitleGap: 28,
+  /** Gap between tick labels and the axis title, for horizontal (x) axes. */
+  axisTitleGap: 22,
   tickLength: 5,
   defaultLeftAxisWidth: 44,
   defaultBottomAxisHeight: 34
@@ -230,6 +180,47 @@ var DEFAULT_OPTIONS = {
   legend: { "font-size": "12px", fill: "#333333" },
   dataLabel: { "font-size": "11px", fill: "#333333" }
 };
+
+// src/core/colors.ts
+var DEFAULT_COLORS = [
+  "#2caffe",
+  "#544fc5",
+  "#00e272",
+  "#fe6a35",
+  "#6b8abc",
+  "#d568fb",
+  "#2ee0ca",
+  "#fa4b42",
+  "#feb56a",
+  "#91e8e1"
+];
+function paletteColor(colors, index) {
+  return colors[index % colors.length];
+}
+function parseHex(hex) {
+  let m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return null;
+  let h = m[1];
+  h.length === 3 && (h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2]);
+  let n = parseInt(h, 16);
+  return [n >> 16 & 255, n >> 8 & 255, n & 255];
+}
+function shade(hex, amount) {
+  let rgb = parseHex(hex);
+  if (!rgb) return hex;
+  let adjust = (c) => Math.round(amount < 0 ? c * (1 + amount) : c + (255 - c) * amount), [r, g, b] = rgb.map(adjust);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+function alpha(hex, a) {
+  let rgb = parseHex(hex);
+  return rgb ? `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${a})` : hex;
+}
+function lerpColor(from, to, t) {
+  let a = parseHex(from), b = parseHex(to);
+  if (!a || !b) return from;
+  let k = Math.max(0, Math.min(1, t)), c = a.map((v, i) => Math.round(v + (b[i] - v) * k));
+  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+}
 
 // src/core/font-scale-state.ts
 var FONT_SCALE_STATE = { scale: 1, scaleExplicit: !1 };
@@ -442,6 +433,138 @@ function sanitizeStyle(style) {
   return clamped === rawFontSize ? normalized : { ...normalized, "font-size": clamped };
 }
 
+// src/core/theme.ts
+var FONT_STACK = 'system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif', LIGHT_THEME = {
+  name: "light",
+  colors: DEFAULT_COLORS,
+  backgroundColor: "#ffffff",
+  fontFamily: FONT_STACK,
+  title: { color: "#333333", fontSize: "18px", fontWeight: "600" },
+  subtitle: { color: "#666666", fontSize: "13px" },
+  axis: { labelColor: "#666666", titleColor: "#444444", lineColor: "#ccd6eb", gridLineColor: "#e6e6e6" },
+  dataLabel: { color: "#333333" },
+  legend: { color: "#333333", hiddenColor: "#999999" },
+  tooltip: { backgroundColor: "rgba(255,255,255,0.96)", borderColor: "#cccccc", color: "#333333" },
+  neutralColor: "#b0b0b0"
+}, DARK_THEME = {
+  name: "dark",
+  colors: ["#2caffe", "#00e272", "#fe6a35", "#d568fb", "#feb56a", "#2ee0ca", "#8a7bff", "#fa4b6b", "#91e8e1", "#a6c1ff"],
+  backgroundColor: "#1e1e2e",
+  fontFamily: FONT_STACK,
+  title: { color: "#f5f5fa", fontSize: "18px", fontWeight: "600" },
+  subtitle: { color: "#a6a6bd", fontSize: "13px" },
+  axis: { labelColor: "#a6a6bd", titleColor: "#c8c8dc", lineColor: "#40405a", gridLineColor: "#2c2c40" },
+  dataLabel: { color: "#e8e8f2" },
+  legend: { color: "#d5d5e5", hiddenColor: "#5a5a70" },
+  tooltip: { backgroundColor: "rgba(38,38,54,0.96)", borderColor: "#4a4a64", color: "#f0f0f8" },
+  neutralColor: "#5a5a72"
+}, HIGH_CONTRAST_THEME = {
+  name: "high-contrast",
+  colors: ["#0050ef", "#e3170a", "#00a300", "#a700d8", "#ff8c00", "#008a8a", "#c8006e", "#5a3d00"],
+  backgroundColor: "#ffffff",
+  fontFamily: FONT_STACK,
+  title: { color: "#000000", fontSize: "18px", fontWeight: "700" },
+  subtitle: { color: "#222222", fontSize: "13px" },
+  axis: { labelColor: "#000000", titleColor: "#000000", lineColor: "#000000", gridLineColor: "#bbbbbb" },
+  dataLabel: { color: "#000000" },
+  legend: { color: "#000000", hiddenColor: "#888888" },
+  tooltip: { backgroundColor: "#ffffff", borderColor: "#000000", color: "#000000" },
+  neutralColor: "#555555"
+}, PASTEL_THEME = {
+  name: "pastel",
+  colors: ["#8ecae6", "#ffb5a7", "#b7e4c7", "#ffd6a5", "#cdb4db", "#a2d2ff", "#fde4cf", "#bde0fe"],
+  backgroundColor: "#fbfbfd",
+  fontFamily: FONT_STACK,
+  title: { color: "#4a4a5a", fontSize: "18px", fontWeight: "600" },
+  subtitle: { color: "#8a8a9a", fontSize: "13px" },
+  axis: { labelColor: "#8a8a9a", titleColor: "#6a6a7a", lineColor: "#dfe3ec", gridLineColor: "#eef0f5" },
+  dataLabel: { color: "#5a5a6a" },
+  legend: { color: "#5a5a6a", hiddenColor: "#b5b5c5" },
+  tooltip: { backgroundColor: "rgba(255,255,255,0.96)", borderColor: "#dfe3ec", color: "#4a4a5a" },
+  neutralColor: "#c7ccd6"
+}, THEMES = {
+  light: LIGHT_THEME,
+  dark: DARK_THEME,
+  "high-contrast": HIGH_CONTRAST_THEME,
+  pastel: PASTEL_THEME
+};
+function registerTheme(name, theme) {
+  THEMES[name] = { ...theme, name };
+}
+function resolveTheme(input) {
+  if (!input) return LIGHT_THEME;
+  if (typeof input == "string") return THEMES[input] ?? LIGHT_THEME;
+  let base = THEMES[input.base ?? "light"] ?? LIGHT_THEME;
+  return merge(base, input);
+}
+var THEME = { ...LIGHT_THEME }, FONT_SCALE_REFERENCE_PX = Math.sqrt(640 * 400), FONT_SCALE_MIN = 0.7, FONT_SCALE_MAX = 1.6;
+function sizeRatio(width, height) {
+  let area = Math.max(0, width) * Math.max(0, height);
+  return Math.sqrt(area) / FONT_SCALE_REFERENCE_PX;
+}
+function chartFontScale(width, height) {
+  return Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, sizeRatio(width, height)));
+}
+var TEXT_SCALE_MIN = 0.3;
+function chartTextScale(width, height) {
+  return Math.min(FONT_SCALE_MAX, Math.max(TEXT_SCALE_MIN, sizeRatio(width, height)));
+}
+function scaledFontPx(px) {
+  return `${px * FONT_SCALE_STATE.scale}px`;
+}
+function applyTheme(theme, fontScale = 1, scaleExplicit = !1) {
+  Object.assign(THEME, theme), FONT_SCALE_STATE.scale = fontScale, FONT_SCALE_STATE.scaleExplicit = scaleExplicit;
+  let ff = theme.fontFamily, scalePx = (px) => `${(parseFloat(px) || 0) * fontScale}px`;
+  FONTS.title = { "font-size": scalePx(theme.title.fontSize), "font-weight": theme.title.fontWeight, fill: theme.title.color, "font-family": ff }, FONTS.subtitle = { "font-size": scalePx(theme.subtitle.fontSize), fill: theme.subtitle.color, "font-family": ff }, FONTS.axisLabel = { "font-size": scalePx("11px"), fill: theme.axis.labelColor, "font-family": ff }, FONTS.axisTitle = { "font-size": scalePx("12px"), fill: theme.axis.titleColor, "font-family": ff }, FONTS.legend = { "font-size": scalePx("12px"), fill: theme.legend.color, "font-family": ff }, FONTS.dataLabel = { "font-size": scalePx("11px"), fill: theme.dataLabel.color, "font-family": ff };
+}
+
+// src/series/marker.ts
+function drawMarker(renderer, parent, cx, cy, spec) {
+  let { symbol, fill, stroke, strokeWidth } = spec, scale = FONT_SCALE_STATE.scale, r = spec.radius * scale, common = {
+    fill,
+    stroke,
+    "stroke-width": strokeWidth,
+    class: "facet-point"
+  };
+  switch (symbol) {
+    case "square":
+      return renderer.create(
+        "rect",
+        { x: cx - r, y: cy - r, width: r * 2, height: r * 2, ...common },
+        parent
+      );
+    case "diamond":
+      return renderer.create(
+        "polygon",
+        {
+          points: `${cx},${cy - r} ${cx + r},${cy} ${cx},${cy + r} ${cx - r},${cy}`,
+          ...common
+        },
+        parent
+      );
+    case "triangle":
+      return renderer.create(
+        "polygon",
+        {
+          points: `${cx},${cy - r} ${cx + r},${cy + r} ${cx - r},${cy + r}`,
+          ...common
+        },
+        parent
+      );
+    case "rectangle": {
+      let w = (spec.width ?? spec.radius * 2) * scale, h = (spec.height ?? spec.radius * 2) * scale;
+      return renderer.create(
+        "rect",
+        { x: cx - w / 2, y: cy - h / 2, width: w, height: h, ...common },
+        parent
+      );
+    }
+    case "circle":
+    default:
+      return renderer.create("circle", { cx, cy, r, ...common }, parent);
+  }
+}
+
 // src/series/data-label.ts
 function labelString(dl, ctx) {
   if (dl.formatter) return dl.formatter(ctx);
@@ -650,47 +773,6 @@ var LineSeries = class extends BaseSeries {
   }
 };
 
-// src/core/colors.ts
-var DEFAULT_COLORS = [
-  "#2caffe",
-  "#544fc5",
-  "#00e272",
-  "#fe6a35",
-  "#6b8abc",
-  "#d568fb",
-  "#2ee0ca",
-  "#fa4b42",
-  "#feb56a",
-  "#91e8e1"
-];
-function paletteColor(colors, index) {
-  return colors[index % colors.length];
-}
-function parseHex(hex) {
-  let m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) return null;
-  let h = m[1];
-  h.length === 3 && (h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2]);
-  let n = parseInt(h, 16);
-  return [n >> 16 & 255, n >> 8 & 255, n & 255];
-}
-function shade(hex, amount) {
-  let rgb = parseHex(hex);
-  if (!rgb) return hex;
-  let adjust = (c) => Math.round(amount < 0 ? c * (1 + amount) : c + (255 - c) * amount), [r, g, b] = rgb.map(adjust);
-  return `rgb(${r}, ${g}, ${b})`;
-}
-function alpha(hex, a) {
-  let rgb = parseHex(hex);
-  return rgb ? `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${a})` : hex;
-}
-function lerpColor(from, to, t) {
-  let a = parseHex(from), b = parseHex(to);
-  if (!a || !b) return from;
-  let k = Math.max(0, Math.min(1, t)), c = a.map((v, i) => Math.round(v + (b[i] - v) * k));
-  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
-}
-
 // src/series/area.ts
 var AreaSeries = class extends LineSeries {
   smooth() {
@@ -751,91 +833,6 @@ function isSeriesTypeRegistered(type) {
 // src/entries/series/area.ts
 var registerAreaSeries = () => registerSeriesTypes(["area", "areaspline"], AreaSeries);
 registerAreaSeries();
-
-// src/core/theme.ts
-var FONT_STACK = 'system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif', LIGHT_THEME = {
-  name: "light",
-  colors: DEFAULT_COLORS,
-  backgroundColor: "#ffffff",
-  fontFamily: FONT_STACK,
-  title: { color: "#333333", fontSize: "18px", fontWeight: "600" },
-  subtitle: { color: "#666666", fontSize: "13px" },
-  axis: { labelColor: "#666666", titleColor: "#444444", lineColor: "#ccd6eb", gridLineColor: "#e6e6e6" },
-  dataLabel: { color: "#333333" },
-  legend: { color: "#333333", hiddenColor: "#999999" },
-  tooltip: { backgroundColor: "rgba(255,255,255,0.96)", borderColor: "#cccccc", color: "#333333" },
-  neutralColor: "#b0b0b0"
-}, DARK_THEME = {
-  name: "dark",
-  colors: ["#2caffe", "#00e272", "#fe6a35", "#d568fb", "#feb56a", "#2ee0ca", "#8a7bff", "#fa4b6b", "#91e8e1", "#a6c1ff"],
-  backgroundColor: "#1e1e2e",
-  fontFamily: FONT_STACK,
-  title: { color: "#f5f5fa", fontSize: "18px", fontWeight: "600" },
-  subtitle: { color: "#a6a6bd", fontSize: "13px" },
-  axis: { labelColor: "#a6a6bd", titleColor: "#c8c8dc", lineColor: "#40405a", gridLineColor: "#2c2c40" },
-  dataLabel: { color: "#e8e8f2" },
-  legend: { color: "#d5d5e5", hiddenColor: "#5a5a70" },
-  tooltip: { backgroundColor: "rgba(38,38,54,0.96)", borderColor: "#4a4a64", color: "#f0f0f8" },
-  neutralColor: "#5a5a72"
-}, HIGH_CONTRAST_THEME = {
-  name: "high-contrast",
-  colors: ["#0050ef", "#e3170a", "#00a300", "#a700d8", "#ff8c00", "#008a8a", "#c8006e", "#5a3d00"],
-  backgroundColor: "#ffffff",
-  fontFamily: FONT_STACK,
-  title: { color: "#000000", fontSize: "18px", fontWeight: "700" },
-  subtitle: { color: "#222222", fontSize: "13px" },
-  axis: { labelColor: "#000000", titleColor: "#000000", lineColor: "#000000", gridLineColor: "#bbbbbb" },
-  dataLabel: { color: "#000000" },
-  legend: { color: "#000000", hiddenColor: "#888888" },
-  tooltip: { backgroundColor: "#ffffff", borderColor: "#000000", color: "#000000" },
-  neutralColor: "#555555"
-}, PASTEL_THEME = {
-  name: "pastel",
-  colors: ["#8ecae6", "#ffb5a7", "#b7e4c7", "#ffd6a5", "#cdb4db", "#a2d2ff", "#fde4cf", "#bde0fe"],
-  backgroundColor: "#fbfbfd",
-  fontFamily: FONT_STACK,
-  title: { color: "#4a4a5a", fontSize: "18px", fontWeight: "600" },
-  subtitle: { color: "#8a8a9a", fontSize: "13px" },
-  axis: { labelColor: "#8a8a9a", titleColor: "#6a6a7a", lineColor: "#dfe3ec", gridLineColor: "#eef0f5" },
-  dataLabel: { color: "#5a5a6a" },
-  legend: { color: "#5a5a6a", hiddenColor: "#b5b5c5" },
-  tooltip: { backgroundColor: "rgba(255,255,255,0.96)", borderColor: "#dfe3ec", color: "#4a4a5a" },
-  neutralColor: "#c7ccd6"
-}, THEMES = {
-  light: LIGHT_THEME,
-  dark: DARK_THEME,
-  "high-contrast": HIGH_CONTRAST_THEME,
-  pastel: PASTEL_THEME
-};
-function registerTheme(name, theme) {
-  THEMES[name] = { ...theme, name };
-}
-function resolveTheme(input) {
-  if (!input) return LIGHT_THEME;
-  if (typeof input == "string") return THEMES[input] ?? LIGHT_THEME;
-  let base = THEMES[input.base ?? "light"] ?? LIGHT_THEME;
-  return merge(base, input);
-}
-var THEME = { ...LIGHT_THEME }, FONT_SCALE_REFERENCE_PX = Math.sqrt(640 * 400), FONT_SCALE_MIN = 0.7, FONT_SCALE_MAX = 1.6;
-function sizeRatio(width, height) {
-  let area = Math.max(0, width) * Math.max(0, height);
-  return Math.sqrt(area) / FONT_SCALE_REFERENCE_PX;
-}
-function chartFontScale(width, height) {
-  return Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, sizeRatio(width, height)));
-}
-var TEXT_SCALE_MIN = 0.3;
-function chartTextScale(width, height) {
-  return Math.min(FONT_SCALE_MAX, Math.max(TEXT_SCALE_MIN, sizeRatio(width, height)));
-}
-function scaledFontPx(px) {
-  return `${px * FONT_SCALE_STATE.scale}px`;
-}
-function applyTheme(theme, fontScale = 1, scaleExplicit = !1) {
-  Object.assign(THEME, theme), FONT_SCALE_STATE.scale = fontScale, FONT_SCALE_STATE.scaleExplicit = scaleExplicit;
-  let ff = theme.fontFamily, scalePx = (px) => `${(parseFloat(px) || 0) * fontScale}px`;
-  FONTS.title = { "font-size": scalePx(theme.title.fontSize), "font-weight": theme.title.fontWeight, fill: theme.title.color, "font-family": ff }, FONTS.subtitle = { "font-size": scalePx(theme.subtitle.fontSize), fill: theme.subtitle.color, "font-family": ff }, FONTS.axisLabel = { "font-size": scalePx("11px"), fill: theme.axis.labelColor, "font-family": ff }, FONTS.axisTitle = { "font-size": scalePx("12px"), fill: theme.axis.titleColor, "font-family": ff }, FONTS.legend = { "font-size": scalePx("12px"), fill: theme.legend.color, "font-family": ff }, FONTS.dataLabel = { "font-size": scalePx("11px"), fill: theme.dataLabel.color, "font-family": ff };
-}
 
 // src/series/boxplot.ts
 var BoxplotSeries = class extends BaseSeries {
@@ -1056,7 +1053,7 @@ var ColumnSeries = class extends BaseSeries {
     for (let p of this.points) {
       let [loVal, hiVal] = this.valuePair(p);
       if (loVal === void 0 || hiVal === void 0) continue;
-      let vLo = valScale.scale(loVal), vHi = valScale.scale(hiVal), max_colWidth = Math.max(1, subWidth * 0.9), colWidth = p.options.columnWidth ?? this.options.columnWidth ?? this.options.size ?? max_colWidth, center = catScale.scale(p.x), columnGap = subWidth - max_colWidth, groupWidth = groupCount * colWidth + (groupCount - 1) * columnGap, catStart = center - groupWidth / 2 + groupIndex * (colWidth + columnGap), rect;
+      let vLo = valScale.scale(loVal), vHi = valScale.scale(hiVal), max_colWidth = Math.max(1, subWidth * 0.9), explicitColWidth = p.options.columnWidth ?? this.options.columnWidth ?? this.options.size, colWidth = explicitColWidth != null ? explicitColWidth * FONT_SCALE_STATE.scale : max_colWidth, center = catScale.scale(p.x), columnGap = subWidth - max_colWidth, groupWidth = groupCount * colWidth + (groupCount - 1) * columnGap, catStart = center - groupWidth / 2 + groupIndex * (colWidth + columnGap), rect;
       horizontal ? rect = {
         x: Math.min(vLo, vHi),
         y: catStart,
@@ -3412,7 +3409,7 @@ var Axis = class {
     let { renderer, plot, position } = this.cfg, style = {
       ...FONTS.axisTitle,
       ...sanitizeStyle(this.cfg.options.title?.style)
-    }, gap = this.cfg.options.labels?.enabled !== !1 ? this.labelExtent() : 0, margin = this.cfg.options.title?.margin ?? (this.horizontal ? 14 : 8), offset = this.cfg.options.title?.offset ?? 0, align = this.cfg.options.title?.align ?? "center", along = align === "start" ? 0 : align === "end" ? 1 : 0.5;
+    }, gap = this.cfg.options.labels?.enabled !== !1 ? this.labelExtent() : 0, margin = this.cfg.options.title?.margin ?? (this.horizontal ? LAYOUT.axisTitleGap : 8), offset = this.cfg.options.title?.offset ?? 0, align = this.cfg.options.title?.align ?? "center", along = align === "start" ? 0 : align === "end" ? 1 : 0.5;
     if (this.horizontal) {
       let x = plot.x + plot.width * along, y = position === "bottom" ? plot.y + plot.height + LAYOUT.tickLength + gap + margin + offset + 8 : plot.y - LAYOUT.tickLength - gap - margin - offset - 4;
       renderer.text(text, x, y, {
@@ -3913,7 +3910,7 @@ var containerAnchors = /* @__PURE__ */ new WeakMap(), Tooltip = class {
 };
 
 // src/core/legend.ts
-var SWATCH = 12, LABEL_GAP = 6, ITEM_GAP = 18, ROW_GAP = 6, HORIZONTAL_PADDING = 14, CHAR_WIDTH_RATIO = 0.6, Legend = class _Legend {
+var SWATCH = 12, LABEL_GAP = 6, ITEM_GAP = 18, ROW_GAP = 6, HORIZONTAL_LEGEND_PADDING = 22, CHAR_WIDTH_RATIO = 0.6, Legend = class _Legend {
   constructor(cfg) {
     this.cfg = cfg;
   }
@@ -3939,7 +3936,7 @@ var SWATCH = 12, LABEL_GAP = 6, ITEM_GAP = 18, ROW_GAP = 6, HORIZONTAL_PADDING =
   }
   /** Height needed for a wrapping horizontal legend. */
   static horizontalHeight(items, width, options) {
-    return HORIZONTAL_PADDING + _Legend.rows(items, width, options).length * _Legend.metrics(options).rowHeight;
+    return HORIZONTAL_LEGEND_PADDING + _Legend.rows(items, width, options).length * _Legend.metrics(options).rowHeight;
   }
   /** Estimated width of a vertical legend column (for space reservation). */
   static verticalWidth(items, options) {
@@ -4925,7 +4922,7 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
           );
       }
       if (showLegend) {
-        let lx = outer.x, ly = outer.y + outer.height + 14, lw = outer.width, lh = legendReserveH;
+        let lx = outer.x, ly = outer.y + outer.height + HORIZONTAL_LEGEND_PADDING, lw = outer.width, lh = legendReserveH;
         legendPlace === "top" ? ly = top + 12 : legendPlace === "left" ? (lx = spacing[3], ly = outer.y, lw = legendReserveW, lh = outer.height) : legendPlace === "right" && (lx = outer.x + outer.width + 8, ly = outer.y, lw = legendReserveW, lh = outer.height), new Legend({
           renderer: this.renderer,
           items: legendItems,
@@ -5324,7 +5321,7 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
   }
   axisReserve(opts, side, labelW) {
     if (opts.visible === !1) return 6;
-    let title = opts.title?.text && opts.title.enabled !== !1 ? 1 : 0, titleExtra = title ? 10 + (opts.title?.margin ?? 8) + Math.max(0, opts.title?.offset ?? 0) : 0, horizontalTitleDelta = title ? Math.max(0, (opts.title?.margin ?? 14) - 14) + Math.max(0, opts.title?.offset ?? 0) : 0, labelsOn = opts.labels?.enabled !== !1;
+    let title = opts.title?.text && opts.title.enabled !== !1 ? 1 : 0, titleExtra = title ? 10 + (opts.title?.margin ?? 8) + Math.max(0, opts.title?.offset ?? 0) : 0, horizontalTitleDelta = title ? Math.max(0, (opts.title?.margin ?? LAYOUT.axisTitleGap) - 14) + Math.max(0, opts.title?.offset ?? 0) : 0, labelsOn = opts.labels?.enabled !== !1;
     if (side === "left" || side === "right") {
       if (!labelsOn) return LAYOUT.tickLength + 6 + titleExtra;
       let floor = title ? LAYOUT.defaultLeftAxisWidth : LAYOUT.defaultLeftAxisWidth - this.smallChartTaper(14);

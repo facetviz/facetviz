@@ -30,7 +30,7 @@ import {
   nestedInnerRotationExtent,
 } from "./nested-axis.js";
 import { Tooltip } from "./tooltip.js";
-import { Legend, LegendItem } from "./legend.js";
+import { Legend, LegendItem, HORIZONTAL_LEGEND_PADDING } from "./legend.js";
 import { EventEmitter } from "./events.js";
 import { LinearScale, LogScale, CategoryScale, Scale } from "./scale.js";
 import { LAYOUT, FONTS } from "./defaults.js";
@@ -555,7 +555,7 @@ export class FacetViz {
     // space between it and the legend instead of just shrinking the chart.
     if (showLegend) {
       let lx = outer.x;
-      let ly = outer.y + outer.height + 14;
+      let ly = outer.y + outer.height + HORIZONTAL_LEGEND_PADDING;
       let lw = outer.width;
       let lh = legendReserveH;
       if (legendPlace === "top") {
@@ -1193,8 +1193,11 @@ export class FacetViz {
         (opts.title?.margin ?? 8) +
         Math.max(0, opts.title?.offset ?? 0)
       : 0;
+    // `- 14` here is not the current default (LAYOUT.axisTitleGap) but the
+    // fixed baseline defaultBottomAxisHeight was calibrated against; only the
+    // fallback above should track axisTitleGap, so this stays a literal.
     const horizontalTitleDelta = title
-      ? Math.max(0, (opts.title?.margin ?? 14) - 14) +
+      ? Math.max(0, (opts.title?.margin ?? LAYOUT.axisTitleGap) - 14) +
         Math.max(0, opts.title?.offset ?? 0)
       : 0;
     const labelsOn = opts.labels?.enabled !== false;

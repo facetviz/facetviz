@@ -545,7 +545,7 @@ export class Axis {
     // regardless of how wide/tall the labels are.
     const labelsEnabled = this.cfg.options.labels?.enabled !== false;
     const gap = labelsEnabled ? this.labelExtent() : 0;
-    const margin = this.cfg.options.title?.margin ?? (this.horizontal ? 14 : 8);
+    const margin = this.cfg.options.title?.margin ?? (this.horizontal ? LAYOUT.axisTitleGap : 8);
     const offset = this.cfg.options.title?.offset ?? 0;
     const align = this.cfg.options.title?.align ?? "center";
     const along = align === "start" ? 0 : align === "end" ? 1 : 0.5;

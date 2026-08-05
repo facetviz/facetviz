@@ -36,7 +36,14 @@ const SWATCH = 12;
 const LABEL_GAP = 6;
 const ITEM_GAP = 18;
 const ROW_GAP = 6;
-const HORIZONTAL_PADDING = 14;
+/**
+ * Vertical padding reserved around a horizontal (top/bottom) legend block.
+ * Exported so the chart can align its own gap to a top-placed legend's
+ * *trailing* edge (see FacetViz#render) with the same constant that sizes
+ * the block's reserve here, instead of two independent magic numbers
+ * drifting apart.
+ */
+export const HORIZONTAL_LEGEND_PADDING = 22;
 const CHAR_WIDTH_RATIO = 0.6;
 
 interface LegendMetrics {
@@ -93,7 +100,7 @@ export class Legend {
     width: number,
     options: LegendOptions,
   ): number {
-    return HORIZONTAL_PADDING +
+    return HORIZONTAL_LEGEND_PADDING +
       Legend.rows(items, width, options).length * Legend.metrics(options).rowHeight;
   }
 
