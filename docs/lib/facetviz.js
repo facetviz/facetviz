@@ -387,7 +387,7 @@ function niceDateTicks(min, max, count = 6) {
 function niceUnit(target, choices) {
   return choices.find((c) => c >= target) ?? choices[choices.length - 1];
 }
-function niceTicks(min, max, count = 6) {
+function niceTicks(min, max, count = 4) {
   if (min === max) {
     let pad = Math.abs(min) || 1;
     min -= pad, max += pad;
@@ -2552,7 +2552,7 @@ registerSankeySeries();
 // src/core/scale.ts
 var LinearScale = class {
   constructor(cfg) {
-    [this.d0, this.d1] = cfg.domain, [this.r0, this.r1] = cfg.reversed ? [cfg.range[1], cfg.range[0]] : cfg.range, this.format = cfg.format, this.tickValues = cfg.ticks ?? niceTicks(this.d0, this.d1, cfg.tickCount ?? 6), cfg.nice !== !1 && this.tickValues.length ? (this.d0 = Math.min(this.d0, this.tickValues[0]), this.d1 = Math.max(this.d1, this.tickValues[this.tickValues.length - 1])) : cfg.nice === !1 && (this.tickValues = this.tickValues.filter((v) => v >= this.d0 && v <= this.d1), this.tickValues.includes(this.d0) || this.tickValues.unshift(this.d0), this.tickValues.includes(this.d1) || this.tickValues.push(this.d1));
+    [this.d0, this.d1] = cfg.domain, [this.r0, this.r1] = cfg.reversed ? [cfg.range[1], cfg.range[0]] : cfg.range, this.format = cfg.format, this.tickValues = cfg.ticks ?? niceTicks(this.d0, this.d1, cfg.tickCount ?? 4), cfg.nice !== !1 && this.tickValues.length ? (this.d0 = Math.min(this.d0, this.tickValues[0]), this.d1 = Math.max(this.d1, this.tickValues[this.tickValues.length - 1])) : cfg.nice === !1 && (this.tickValues = this.tickValues.filter((v) => v >= this.d0 && v <= this.d1), this.tickValues.includes(this.d0) || this.tickValues.unshift(this.d0), this.tickValues.includes(this.d1) || this.tickValues.push(this.d1));
   }
   scale(value) {
     let v = typeof value == "number" ? value : parseFloat(value), t = this.d1 === this.d0 ? 0 : (v - this.d0) / (this.d1 - this.d0);
@@ -3151,6 +3151,10 @@ var Axis = class {
   get horizontal() {
     return this.cfg.position === "bottom" || this.cfg.position === "top";
   }
+  get labelOffset() {
+    let value = this.cfg.options.labels?.offset;
+    return typeof value == "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
+  }
   render(parent) {
     let { renderer, scale, options, position } = this.cfg;
     if (options.visible === !1) return;
@@ -3383,19 +3387,19 @@ var Axis = class {
   drawLabel(g, pos, rawText, options, resolvedRotation) {
     let { renderer, plot, position } = this.cfg, style = this.labelStyle(), text = this.fitLabel(rawText, style);
     if (text === void 0) return;
-    let rotation = resolvedRotation ?? options.labels?.rotation ?? 0, x = 0, y = 0, anchor = "middle", baseline = "middle";
+    let rotation = resolvedRotation ?? options.labels?.rotation ?? 0, offset = this.labelOffset, x = 0, y = 0, anchor = "middle", baseline = "middle";
     switch (position) {
       case "bottom":
-        x = pos, y = plot.y + plot.height + LAYOUT.tickLength + (rotation ? 8 : 7), baseline = rotation ? "middle" : "hanging", anchor = rotation ? rotation < 0 ? "end" : "start" : "middle";
+        x = pos, y = plot.y + plot.height + LAYOUT.tickLength + (rotation ? 8 : 7) + offset, baseline = rotation ? "middle" : "hanging", anchor = rotation ? rotation < 0 ? "end" : "start" : "middle";
         break;
       case "top":
-        x = pos, y = plot.y - LAYOUT.tickLength - (rotation ? 8 : 6), anchor = rotation ? rotation < 0 ? "start" : "end" : "middle";
+        x = pos, y = plot.y - LAYOUT.tickLength - (rotation ? 8 : 6) - offset, anchor = rotation ? rotation < 0 ? "start" : "end" : "middle";
         break;
       case "left":
-        x = plot.x - LAYOUT.tickLength - 4, y = pos, anchor = "end";
+        x = plot.x - LAYOUT.tickLength - 4 - offset, y = pos, anchor = "end";
         break;
       case "right":
-        x = plot.x + plot.width + LAYOUT.tickLength + 4, y = pos, anchor = "start";
+        x = plot.x + plot.width + LAYOUT.tickLength + 4 + offset, y = pos, anchor = "start";
         break;
     }
     let el = renderer.text(text, x, y, {
@@ -3409,7 +3413,7 @@ var Axis = class {
     let { renderer, plot, position } = this.cfg, style = {
       ...FONTS.axisTitle,
       ...sanitizeStyle(this.cfg.options.title?.style)
-    }, gap = this.cfg.options.labels?.enabled !== !1 ? this.labelExtent() : 0, margin = this.cfg.options.title?.margin ?? (this.horizontal ? LAYOUT.axisTitleGap : 8), offset = this.cfg.options.title?.offset ?? 0, align = this.cfg.options.title?.align ?? "center", along = align === "start" ? 0 : align === "end" ? 1 : 0.5;
+    }, gap = this.cfg.options.labels?.enabled !== !1 ? this.labelExtent() + this.labelOffset : 0, defaultMargin = (this.horizontal ? LAYOUT.axisTitleGap : 8) * (this.cfg.spacingScale ?? 1), margin = this.cfg.options.title?.margin ?? defaultMargin, offset = this.cfg.options.title?.offset ?? 0, align = this.cfg.options.title?.align ?? "center", along = align === "start" ? 0 : align === "end" ? 1 : 0.5;
     if (this.horizontal) {
       let x = plot.x + plot.width * along, y = position === "bottom" ? plot.y + plot.height + LAYOUT.tickLength + gap + margin + offset + 8 : plot.y - LAYOUT.tickLength - gap - margin - offset - 4;
       renderer.text(text, x, y, {
@@ -3475,6 +3479,12 @@ var NestedAxis = class {
   }
   get linesOn() {
     return this.cfg.lineWidth !== 0;
+  }
+  /** Positive values move every label tier away from the axis baseline. */
+  get labelOffset() {
+    if (!this.labelsOn) return 0;
+    let value = this.cfg.labels?.offset;
+    return typeof value == "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
   }
   /** No-ops (and returns undefined) when labels are switched off. */
   text(text, x, y, attrs, g) {
@@ -3542,14 +3552,14 @@ var NestedAxis = class {
       "text-anchor": align === "start" ? "start" : align === "end" ? "end" : "middle"
     };
     if (vertical) {
-      let widths = nestedLevelWidths(leaves), sideRight = position === "top", extent2 = position === "split" ? widths[widths.length - 1] ?? 0 : widths.reduce((sum2, width) => sum2 + width, 0), x2 = sideRight ? plot.x + plot.width + LAYOUT.tickLength + extent2 + (title.margin ?? 16) + (title.offset ?? 0) : plot.x - LAYOUT.tickLength - extent2 - (title.margin ?? 16) - (title.offset ?? 0), y2 = plot.y + plot.height * along, rotation2 = sideRight ? 90 : -90;
+      let widths = nestedLevelWidths(leaves), sideRight = position === "top", extent2 = position === "split" ? widths[widths.length - 1] ?? 0 : widths.reduce((sum2, width) => sum2 + width, 0), x2 = sideRight ? plot.x + plot.width + LAYOUT.tickLength + this.labelOffset + extent2 + (title.margin ?? 16 * (this.cfg.spacingScale ?? 1)) + (title.offset ?? 0) : plot.x - LAYOUT.tickLength - this.labelOffset - extent2 - (title.margin ?? 16 * (this.cfg.spacingScale ?? 1)) - (title.offset ?? 0), y2 = plot.y + plot.height * along, rotation2 = sideRight ? 90 : -90;
       this.cfg.renderer.text(title.text, x2, y2, {
         ...style,
         transform: `rotate(${rotation2} ${x2} ${y2})`
       }, g);
       return;
     }
-    let rotation = this.cfg.labels?.rotation ?? 0, rotExtra = nestedInnerRotationExtent(leaves, rotation), top = position === "top", tierCount = position === "split" ? 1 : levels, x = plot.x + plot.width * along, margin = title.margin ?? (top ? 12 : 14), offset = title.offset ?? 0, y = top ? plot.y - LAYOUT.tickLength - tierCount * 18 - rotExtra - margin - offset : plot.y + plot.height + LAYOUT.tickLength + tierCount * 18 + rotExtra + margin + offset;
+    let rotation = this.cfg.labels?.rotation ?? 0, rotExtra = nestedInnerRotationExtent(leaves, rotation), top = position === "top", tierCount = position === "split" ? 1 : levels, x = plot.x + plot.width * along, margin = title.margin ?? (top ? 12 : 14) * (this.cfg.spacingScale ?? 1), offset = title.offset ?? 0, y = top ? plot.y - LAYOUT.tickLength - this.labelOffset - tierCount * 18 - rotExtra - margin - offset : plot.y + plot.height + LAYOUT.tickLength + this.labelOffset + tierCount * 18 + rotExtra + margin + offset;
     this.cfg.renderer.text(title.text, x, y, style, g);
   }
   /** A gridline through the plot at each leaf position, opt-in via `gridLineWidth`. */
@@ -3578,7 +3588,7 @@ var NestedAxis = class {
       g
     );
     for (let level = levels - 1; level >= 0; level--) {
-      let row = levels - 1 - level, rotated = row === 0 && rotation, rowStart = baseY + dir * (LAYOUT.tickLength + rowOffset(row)), segments = this.segmentsForLevel(leaves, level), labelY = rowStart + dir * (rotated ? 8 : 12), labelSegs = row === 0 && !rotated ? this.thinnedInnerSegments(scale.bandwidth()) : segments;
+      let row = levels - 1 - level, rotated = row === 0 && rotation, rowStart = baseY + dir * (LAYOUT.tickLength + this.labelOffset + rowOffset(row)), segments = this.segmentsForLevel(leaves, level), labelY = rowStart + dir * (rotated ? 8 : 12), labelSegs = row === 0 && !rotated ? this.thinnedInnerSegments(scale.bandwidth()) : segments;
       for (let seg of labelSegs) {
         let cx = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2, el = this.text(
           seg.label,
@@ -3617,7 +3627,7 @@ var NestedAxis = class {
           x1: bx,
           y1: topExtent,
           x2: bx,
-          y2: bottomY + LAYOUT.tickLength + 20,
+          y2: bottomY + LAYOUT.tickLength + this.labelOffset + 20,
           stroke: color,
           "stroke-width": 1
         },
@@ -3636,7 +3646,7 @@ var NestedAxis = class {
       { x1: plot.x, y1: bottomY, x2: plot.x + plot.width, y2: bottomY, stroke: color },
       g
     );
-    let rotation = this.cfg.labels?.rotation ?? 0, innerLabelY = bottomY + LAYOUT.tickLength + (rotation ? 8 : 12), innerSegments = rotation ? this.segmentsForLevel(leaves, levels - 1) : this.thinnedInnerSegments(scale.bandwidth());
+    let rotation = this.cfg.labels?.rotation ?? 0, innerLabelY = bottomY + LAYOUT.tickLength + this.labelOffset + (rotation ? 8 : 12), innerSegments = rotation ? this.segmentsForLevel(leaves, levels - 1) : this.thinnedInnerSegments(scale.bandwidth());
     for (let seg of innerSegments) {
       let cx = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2, el = this.text(
         seg.label,
@@ -3651,7 +3661,7 @@ var NestedAxis = class {
       rotation && el && el.setAttribute("transform", `rotate(${rotation} ${cx} ${innerLabelY})`);
     }
     for (let level = levels - 2; level >= 0; level--) {
-      let rowFromTop = levels - 2 - level, labelY = plot.y - LAYOUT.tickLength - rowFromTop * rowH - 4;
+      let rowFromTop = levels - 2 - level, labelY = plot.y - LAYOUT.tickLength - this.labelOffset - rowFromTop * rowH - 4;
       for (let seg of this.segmentsForLevel(leaves, level)) {
         let cx = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2;
         this.text(
@@ -3667,7 +3677,7 @@ var NestedAxis = class {
         );
       }
     }
-    let topExtent = plot.y - LAYOUT.tickLength - (levels - 1) * rowH, outer = this.segmentsForLevel(leaves, 0);
+    let topExtent = plot.y - LAYOUT.tickLength - this.labelOffset - (levels - 1) * rowH, outer = this.segmentsForLevel(leaves, 0);
     for (let s = 1; s < outer.length; s++) {
       let bx = leafCenter(outer[s].startLeaf) - bandHalf;
       this.line(
@@ -3675,7 +3685,7 @@ var NestedAxis = class {
           x1: bx,
           y1: topExtent,
           x2: bx,
-          y2: bottomY + LAYOUT.tickLength + 20,
+          y2: bottomY + LAYOUT.tickLength + this.labelOffset + 20,
           stroke: color,
           "stroke-width": 1
         },
@@ -3698,7 +3708,7 @@ var NestedAxis = class {
     );
     let colWidths = nestedLevelWidths(leaves), offset = 0;
     for (let level = levels - 1; level >= 0; level--) {
-      let w = colWidths[level], colStart = baseX + dir * (LAYOUT.tickLength + offset), segments = this.segmentsForLevel(leaves, level), labelX = colStart + dir * (w / 2);
+      let w = colWidths[level], colStart = baseX + dir * (LAYOUT.tickLength + this.labelOffset + offset), segments = this.segmentsForLevel(leaves, level), labelX = colStart + dir * (w / 2);
       for (let seg of segments) {
         let cy = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2 + 4;
         this.text(
@@ -3730,7 +3740,7 @@ var NestedAxis = class {
         }
       offset += w;
     }
-    let farEdge = baseX + dir * (LAYOUT.tickLength + offset), outer = this.segmentsForLevel(leaves, 0);
+    let farEdge = baseX + dir * (LAYOUT.tickLength + this.labelOffset + offset), outer = this.segmentsForLevel(leaves, 0);
     for (let s = 1; s < outer.length; s++) {
       let by = leafCenter(outer[s].startLeaf) - bandHalf;
       this.line(
@@ -3755,7 +3765,7 @@ var NestedAxis = class {
       let cy = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2 + 4;
       this.text(
         seg.label,
-        plot.x - LAYOUT.tickLength - innerW / 2,
+        plot.x - LAYOUT.tickLength - this.labelOffset - innerW / 2,
         cy,
         { "text-anchor": "middle", ...FONTS.axisLabel },
         g
@@ -3763,7 +3773,7 @@ var NestedAxis = class {
     }
     let offset = 0;
     for (let level = levels - 2; level >= 0; level--) {
-      let w = colWidths[level], labelX = rightX + LAYOUT.tickLength + offset + w / 2;
+      let w = colWidths[level], labelX = rightX + LAYOUT.tickLength + this.labelOffset + offset + w / 2;
       for (let seg of this.segmentsForLevel(leaves, level)) {
         let cy = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2 + 4;
         this.text(
@@ -3780,7 +3790,7 @@ var NestedAxis = class {
       }
       offset += w;
     }
-    let leftExtent = plot.x - LAYOUT.tickLength - innerW, rightExtent = rightX + LAYOUT.tickLength + offset, outer = this.segmentsForLevel(leaves, 0);
+    let leftExtent = plot.x - LAYOUT.tickLength - this.labelOffset - innerW, rightExtent = rightX + LAYOUT.tickLength + this.labelOffset + offset, outer = this.segmentsForLevel(leaves, 0);
     for (let s = 1; s < outer.length; s++) {
       let by = leafCenter(outer[s].startLeaf) - bandHalf;
       this.line(
@@ -3910,7 +3920,10 @@ var containerAnchors = /* @__PURE__ */ new WeakMap(), Tooltip = class {
 };
 
 // src/core/legend.ts
-var SWATCH = 12, LABEL_GAP = 6, ITEM_GAP = 18, ROW_GAP = 6, HORIZONTAL_LEGEND_PADDING = 22, CHAR_WIDTH_RATIO = 0.6, Legend = class _Legend {
+var SWATCH = 12, DEFAULT_SYMBOL_PADDING = 6, DEFAULT_ITEM_GAP = 18, DEFAULT_ROW_GAP = 6, DEFAULT_TOP_MARGIN = 10, DEFAULT_BOTTOM_MARGIN = 22, DEFAULT_SIDE_MARGIN = 8, TOP_LEGEND_INSET = 12, CHAR_WIDTH_RATIO = 0.6, nonNegative = (value, fallback) => typeof value == "number" && Number.isFinite(value) && value >= 0 ? value : fallback, legendPadding = (options) => nonNegative(options.padding, 0), legendMargin = (options, placement, spacingScale = 1) => nonNegative(
+  options.margin,
+  (placement === "top" ? DEFAULT_TOP_MARGIN : placement === "bottom" ? DEFAULT_BOTTOM_MARGIN : DEFAULT_SIDE_MARGIN) * spacingScale
+), Legend = class _Legend {
   constructor(cfg) {
     this.cfg = cfg;
   }
@@ -3919,13 +3932,16 @@ var SWATCH = 12, LABEL_GAP = 6, ITEM_GAP = 18, ROW_GAP = 6, HORIZONTAL_LEGEND_PA
     return {
       charWidth: fontSize * CHAR_WIDTH_RATIO,
       lineHeight,
-      rowHeight: lineHeight + ROW_GAP
+      rowHeight: lineHeight + nonNegative(options.rowGap, DEFAULT_ROW_GAP)
     };
   }
   static itemWidths(items, options) {
-    let { charWidth } = _Legend.metrics(options);
+    let { charWidth } = _Legend.metrics(options), symbolPadding = nonNegative(
+      options.symbolPadding,
+      DEFAULT_SYMBOL_PADDING
+    ), itemGap = nonNegative(options.itemGap, DEFAULT_ITEM_GAP);
     return items.map(
-      (it) => SWATCH + LABEL_GAP + it.label.length * charWidth + ITEM_GAP
+      (it) => SWATCH + symbolPadding + it.label.length * charWidth + itemGap
     );
   }
   static rows(items, width, options) {
@@ -3935,13 +3951,17 @@ var SWATCH = 12, LABEL_GAP = 6, ITEM_GAP = 18, ROW_GAP = 6, HORIZONTAL_LEGEND_PA
     }), rows;
   }
   /** Height needed for a wrapping horizontal legend. */
-  static horizontalHeight(items, width, options) {
-    return HORIZONTAL_LEGEND_PADDING + _Legend.rows(items, width, options).length * _Legend.metrics(options).rowHeight;
+  static horizontalHeight(items, width, options, placement, spacingScale = 1) {
+    let padding = legendPadding(options), contentWidth = Math.max(0, width - padding * 2);
+    return (placement === "top" ? TOP_LEGEND_INSET : 0) + legendMargin(options, placement, spacingScale) + padding * 2 + _Legend.rows(items, contentWidth, options).length * _Legend.metrics(options).rowHeight;
   }
   /** Estimated width of a vertical legend column (for space reservation). */
-  static verticalWidth(items, options) {
-    let longest = items.reduce((m, it) => Math.max(m, it.label.length), 0);
-    return SWATCH + LABEL_GAP + longest * _Legend.metrics(options).charWidth + 8;
+  static verticalWidth(items, options, placement, spacingScale = 1) {
+    let longest = items.reduce((m, it) => Math.max(m, it.label.length), 0), symbolPadding = nonNegative(
+      options.symbolPadding,
+      DEFAULT_SYMBOL_PADDING
+    );
+    return SWATCH + symbolPadding + longest * _Legend.metrics(options).charWidth + legendPadding(options) * 2 + legendMargin(options, placement, spacingScale);
   }
   render(parent) {
     if (this.cfg.options.enabled === !1 || !this.cfg.items.length) return;
@@ -3949,7 +3969,10 @@ var SWATCH = 12, LABEL_GAP = 6, ITEM_GAP = 18, ROW_GAP = 6, HORIZONTAL_LEGEND_PA
     this.cfg.layout === "vertical" ? this.renderVertical(g) : this.renderHorizontal(g);
   }
   drawItem(g, it, index, x, y) {
-    let { renderer, onToggle } = this.cfg, itemStyle = sanitizeStyle(this.cfg.options.itemStyle), { lineHeight } = _Legend.metrics(this.cfg.options), visibleFill = itemStyle.fill ?? FONTS.legend.fill, visibleTextDecoration = itemStyle["text-decoration"] ?? "none", centerY = y + lineHeight / 2, item = renderer.group({ class: "facet-legend-item", style: "cursor:pointer" }, g);
+    let { renderer, onToggle } = this.cfg, itemStyle = sanitizeStyle(this.cfg.options.itemStyle), symbolPadding = nonNegative(
+      this.cfg.options.symbolPadding,
+      DEFAULT_SYMBOL_PADDING
+    ), { lineHeight } = _Legend.metrics(this.cfg.options), visibleFill = itemStyle.fill ?? FONTS.legend.fill, visibleTextDecoration = itemStyle["text-decoration"] ?? "none", centerY = y + lineHeight / 2, item = renderer.group({ class: "facet-legend-item", style: "cursor:pointer" }, g);
     renderer.create("rect", {
       x,
       y: centerY - SWATCH / 2,
@@ -3958,7 +3981,7 @@ var SWATCH = 12, LABEL_GAP = 6, ITEM_GAP = 18, ROW_GAP = 6, HORIZONTAL_LEGEND_PA
       rx: 2,
       fill: it.visible ? it.color : THEME.legend.hiddenColor
     }, item);
-    let label = renderer.text(it.label, x + SWATCH + LABEL_GAP, centerY, {
+    let label = renderer.text(it.label, x + SWATCH + symbolPadding, centerY, {
       ...FONTS.legend,
       ...itemStyle,
       fill: it.visible ? visibleFill : THEME.legend.hiddenColor,
@@ -3968,18 +3991,20 @@ var SWATCH = 12, LABEL_GAP = 6, ITEM_GAP = 18, ROW_GAP = 6, HORIZONTAL_LEGEND_PA
     label.style.userSelect = "none", item.addEventListener("click", () => onToggle(index));
   }
   renderHorizontal(g) {
-    let { items, options, width, x: originX, y } = this.cfg, widths = _Legend.itemWidths(items, options), rows = _Legend.rows(items, width, options), { rowHeight } = _Legend.metrics(options);
+    let { items, options, width, x: originX, y } = this.cfg, padding = legendPadding(options), contentWidth = Math.max(0, width - padding * 2), widths = _Legend.itemWidths(items, options), rows = _Legend.rows(items, contentWidth, options), { rowHeight } = _Legend.metrics(options);
     rows.forEach((row, r) => {
-      let totalW = row.reduce((s, i) => s + widths[i], 0), startX = originX;
-      options.align === "right" ? startX = originX + width - totalW : options.align !== "left" && (startX = originX + (width - totalW) / 2);
-      let cx = startX, rowY = y + r * rowHeight;
+      let totalW = row.reduce((s, i) => s + widths[i], 0), startX = originX + padding;
+      options.align === "right" ? startX = originX + padding + contentWidth - totalW : options.align !== "left" && (startX = originX + padding + (contentWidth - totalW) / 2);
+      let cx = startX, rowY = y + padding + r * rowHeight;
       for (let i of row)
         this.drawItem(g, items[i], i, cx, rowY), cx += widths[i];
     });
   }
   renderVertical(g) {
-    let { items, options, x, y } = this.cfg, { rowHeight } = _Legend.metrics(options);
-    items.forEach((it, i) => this.drawItem(g, it, i, x, y + i * rowHeight));
+    let { items, options, x, y } = this.cfg, padding = legendPadding(options), { rowHeight } = _Legend.metrics(options);
+    items.forEach(
+      (it, i) => this.drawItem(g, it, i, x + padding, y + padding + i * rowHeight)
+    );
   }
 };
 
@@ -4229,7 +4254,7 @@ function validateChartOptions(options) {
     "error",
     "chart.polarGridLineMode",
     "polarGridLineMode must be spoke or sector."
-  ), validateTitle(options.title, "title", add), validateTitle(options.subtitle, "subtitle", add), validateAnnotations(options.annotations, add), validateChartTexts(options.texts, add), validateResponsive(options.responsive, add);
+  ), validateTitle(options.title, "title", add), validateTitle(options.subtitle, "subtitle", add), validateLegend(options.legend, add), validateAnnotations(options.annotations, add), validateChartTexts(options.texts, add), validateResponsive(options.responsive, add);
   for (let [path, palette] of [
     ["colors", options.colors],
     ["chart.colors", chartRecord.colors]
@@ -4365,7 +4390,7 @@ function validateAxes(value, path, add) {
       "axis.labels.offset.non_negative",
       "error",
       `${axisPath}.labels.offset`,
-      "Polar label offset must be a non-negative number."
+      "Label offset must be a non-negative number."
     ), axis.labels.step !== void 0 && (typeof axis.labels.step != "number" || !Number.isSafeInteger(axis.labels.step) || axis.labels.step <= 0) && add(
       "axis.labels.step.positive_integer",
       "error",
@@ -4403,6 +4428,43 @@ function validateTitle(value, path, add, axis = !1) {
         "error",
         `${path}.${key}`,
         "margin must be non-negative."
+      );
+    }
+  }
+}
+function validateLegend(value, add) {
+  if (value !== void 0) {
+    if (!isRecord(value)) {
+      add(
+        "legend.object",
+        "error",
+        "legend",
+        "Legend configuration must be an object."
+      );
+      return;
+    }
+    for (let key of [
+      "margin",
+      "padding",
+      "symbolPadding",
+      "itemGap",
+      "rowGap"
+    ]) {
+      let item = value[key];
+      item !== void 0 && (typeof item != "number" || !Number.isFinite(item) || item < 0) && add(
+        "legend.spacing.non_negative",
+        "error",
+        `legend.${key}`,
+        `${key} must be a non-negative finite number.`
+      );
+    }
+    for (let key of ["offsetX", "offsetY"]) {
+      let item = value[key];
+      item !== void 0 && (typeof item != "number" || !Number.isFinite(item)) && add(
+        "legend.offset.number",
+        "error",
+        `legend.${key}`,
+        `${key} must be a finite number.`
       );
     }
   }
@@ -4715,7 +4777,11 @@ function renderChartTexts(ctx) {
 }
 
 // src/core/chart.ts
-var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MARGIN = LAYOUT.titleHeight - 20, SUBTITLE_DEFAULT_MARGIN = LAYOUT.subtitleHeight - 16, TEXT_RESERVE_GAP = 8, MAX_SPACING_SHARE = 0.85, FacetViz = class _FacetViz {
+var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MARGIN = LAYOUT.titleHeight - 20, SUBTITLE_DEFAULT_MARGIN = LAYOUT.subtitleHeight - 16, TEXT_RESERVE_GAP = 8, MAX_SPACING_SHARE = 0.85, VALUE_DOMAIN_PADDING = 0.05, CHROME_SPACING_REFERENCE_WIDTH = 960, CHROME_SPACING_REFERENCE_HEIGHT = 600, MIN_CHROME_SPACING_SCALE = 0.35, axisLabelOffset = (options) => {
+  if (options.labels?.enabled === !1) return 0;
+  let value = options.labels?.offset;
+  return typeof value == "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
+}, FacetViz = class _FacetViz {
   constructor(container, options) {
     this.events = new EventEmitter();
     this.series = [];
@@ -4878,15 +4944,22 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
       top += this.renderTitles(top);
       let legendItems = this.buildLegendItems(), showLegend = this.options.legend?.enabled !== !1 && legendItems.length > 1, legendPlace = this.legendPlacement(), legendVertical = legendPlace === "left" || legendPlace === "right", legendReserveH = 0, legendReserveW = 0;
       if (showLegend) {
-        let legendOptions = this.options.legend ?? {};
+        let legendOptions = this.options.legend ?? {}, legendSpacingScale = this.chromeSpacingScale(legendPlace);
         if (legendVertical)
-          legendReserveW = Legend.verticalWidth(legendItems, legendOptions);
+          legendReserveW = Legend.verticalWidth(
+            legendItems,
+            legendOptions,
+            legendPlace,
+            legendSpacingScale
+          );
         else {
           let legendWidth = this.width - spacing[1] - spacing[3];
           legendReserveH = Legend.horizontalHeight(
             legendItems,
             legendWidth,
-            legendOptions
+            legendOptions,
+            legendPlace,
+            legendSpacingScale
           );
         }
       }
@@ -4922,11 +4995,15 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
           );
       }
       if (showLegend) {
-        let lx = outer.x, ly = outer.y + outer.height + HORIZONTAL_LEGEND_PADDING, lw = outer.width, lh = legendReserveH;
-        legendPlace === "top" ? ly = top + 12 : legendPlace === "left" ? (lx = spacing[3], ly = outer.y, lw = legendReserveW, lh = outer.height) : legendPlace === "right" && (lx = outer.x + outer.width + 8, ly = outer.y, lw = legendReserveW, lh = outer.height), new Legend({
+        let legendOptions = this.options.legend ?? {}, margin = legendMargin(
+          legendOptions,
+          legendPlace,
+          this.chromeSpacingScale(legendPlace)
+        ), lx = outer.x, ly = outer.y + outer.height + margin, lw = outer.width, lh = legendReserveH;
+        legendPlace === "top" ? ly = top + TOP_LEGEND_INSET : legendPlace === "left" ? (lx = spacing[3], ly = outer.y, lw = legendReserveW, lh = outer.height) : legendPlace === "right" && (lx = outer.x + outer.width + margin, ly = outer.y, lw = legendReserveW, lh = outer.height), lx += Number.isFinite(legendOptions.offsetX) ? legendOptions.offsetX ?? 0 : 0, ly += Number.isFinite(legendOptions.offsetY) ? legendOptions.offsetY ?? 0 : 0, new Legend({
           renderer: this.renderer,
           items: legendItems,
-          options: this.options.legend ?? {},
+          options: legendOptions,
           x: lx,
           y: ly,
           width: lw,
@@ -5316,19 +5393,29 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
    * 100px and below.
    */
   smallChartTaper(maxReduce) {
+    if (this.options.chart?.responsive === !1) return 0;
     let shortSide = Math.min(this.width, this.height);
     return Math.max(0, Math.min(1, (300 - shortSide) / 200)) * maxReduce;
   }
+  /** Responsive multiplier for default gaps perpendicular to a chart side. */
+  chromeSpacingScale(side) {
+    if (this.options.chart?.responsive === !1) return 1;
+    let ratio = side === "top" || side === "bottom" ? this.height / CHROME_SPACING_REFERENCE_HEIGHT : this.width / CHROME_SPACING_REFERENCE_WIDTH;
+    return Math.max(MIN_CHROME_SPACING_SCALE, Math.min(1, ratio));
+  }
   axisReserve(opts, side, labelW) {
     if (opts.visible === !1) return 6;
-    let title = opts.title?.text && opts.title.enabled !== !1 ? 1 : 0, titleExtra = title ? 10 + (opts.title?.margin ?? 8) + Math.max(0, opts.title?.offset ?? 0) : 0, horizontalTitleDelta = title ? Math.max(0, (opts.title?.margin ?? LAYOUT.axisTitleGap) - 14) + Math.max(0, opts.title?.offset ?? 0) : 0, labelsOn = opts.labels?.enabled !== !1;
+    let title = opts.title?.text && opts.title.enabled !== !1 ? 1 : 0, titleMargin = opts.title?.margin ?? (side === "top" || side === "bottom" ? LAYOUT.axisTitleGap : 8) * this.chromeSpacingScale(side), titleExtra = title ? 10 + titleMargin + Math.max(0, opts.title?.offset ?? 0) : 0, horizontalTitleDelta = title ? titleMargin - 14 + Math.max(0, opts.title?.offset ?? 0) : 0, labelsOn = opts.labels?.enabled !== !1, labelOffset = axisLabelOffset(opts);
     if (side === "left" || side === "right") {
       if (!labelsOn) return LAYOUT.tickLength + 6 + titleExtra;
-      let floor = title ? LAYOUT.defaultLeftAxisWidth : LAYOUT.defaultLeftAxisWidth - this.smallChartTaper(14);
-      return Math.max(floor, LAYOUT.tickLength + 8 + labelW + titleExtra);
+      let floor = title ? LAYOUT.defaultLeftAxisWidth - Math.max(0, 8 - titleMargin) : LAYOUT.defaultLeftAxisWidth - this.smallChartTaper(14);
+      return Math.max(
+        floor + labelOffset,
+        LAYOUT.tickLength + 8 + labelW + labelOffset + titleExtra
+      );
     }
     let rot = opts.labels?.rotation ?? (opts.labels?.autoRotation?.length ? Math.max(...opts.labels.autoRotation.map((value) => Math.abs(value))) : 0), rotExtra = rot ? Math.abs(Math.sin(rot * Math.PI / 180)) * labelW : 0;
-    return labelsOn ? (title ? LAYOUT.defaultBottomAxisHeight : LAYOUT.defaultBottomAxisHeight - this.smallChartTaper(10)) + (title ? 8 : 0) + horizontalTitleDelta + rotExtra : title ? LAYOUT.tickLength + 22 + 8 + horizontalTitleDelta : LAYOUT.tickLength + 6;
+    return labelsOn ? (title ? LAYOUT.defaultBottomAxisHeight : LAYOUT.defaultBottomAxisHeight - this.smallChartTaper(10)) + (title ? 8 : 0) + horizontalTitleDelta + rotExtra + labelOffset : title ? LAYOUT.tickLength + titleMargin + 10 + Math.max(0, opts.title?.offset ?? 0) : LAYOUT.tickLength + 6;
   }
   renderPanel(panel, shared) {
     let visible = panel.series.filter((s) => s.visible && s.points.length);
@@ -5399,6 +5486,7 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
       renderer: this.renderer,
       scale: catScale,
       position: catSide,
+      spacingScale: this.chromeSpacingScale(catSide),
       plot: axisPlot,
       options: isSlope ? {
         ...catOpts,
@@ -5417,6 +5505,7 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
       renderer: this.renderer,
       scale: xScale2,
       position: secondaryXSide,
+      spacingScale: this.chromeSpacingScale(secondaryXSide),
       plot: axisPlot,
       options: {
         ...catOpts2,
@@ -5428,6 +5517,7 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
       renderer: this.renderer,
       scale: valScale,
       position: valSide,
+      spacingScale: this.chromeSpacingScale(valSide),
       plot: axisPlot,
       options: isSlope ? { ...valOpts, lineWidth: 0 } : valOpts,
       grid: !isSlope
@@ -5438,6 +5528,7 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
       renderer: this.renderer,
       scale: yScale2,
       position: secondaryYSide,
+      spacingScale: this.chromeSpacingScale(secondaryYSide),
       plot: axisPlot,
       options: valOpts2,
       grid: !1
@@ -5698,19 +5789,13 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
     let [vMin, vMax] = this.valueDomain(
       primaryVisible.length ? primaryVisible : allVisible
     );
-    if ((primaryVisible.length ? primaryVisible : allVisible).some(
+    (primaryVisible.length ? primaryVisible : allVisible).some(
       (s) => ["column", "bar", "area", "areaspline", "lollipop"].includes(s.type)
-    ) && (vMin = Math.min(vMin, 0), vMax = Math.max(vMax, 0)), yOpts0.max === void 0) {
-      let span = vMax - vMin || Math.abs(vMax) || 1;
-      vMax += span * 0.08;
-    }
+    ) && (vMin = Math.min(vMin, 0), vMax = Math.max(vMax, 0));
     let vMin2 = 0, vMax2 = 1;
-    if (hasSecondary && yOpts1 && ([vMin2, vMax2] = this.valueDomain(secondaryVisible), secondaryVisible.some(
+    hasSecondary && yOpts1 && ([vMin2, vMax2] = this.valueDomain(secondaryVisible), secondaryVisible.some(
       (s) => ["column", "bar", "area", "areaspline", "lollipop"].includes(s.type)
-    ) && (vMin2 = Math.min(vMin2, 0), vMax2 = Math.max(vMax2, 0)), yOpts1.max === void 0)) {
-      let span2 = vMax2 - vMin2 || Math.abs(vMax2) || 1;
-      vMax2 += span2 * 0.08;
-    }
+    ) && (vMin2 = Math.min(vMin2, 0), vMax2 = Math.max(vMax2, 0)));
     let dimNameRowH = 16, rowValueColW = rowDim ? Math.max(
       32,
       Math.max(
@@ -5718,10 +5803,10 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
         ...rowVals.filter((v) => v !== void 0).map((v) => String(v).length),
         0
       ) * 6.6 + 4
-    ) : 0, leftTitle = inverted ? xOpts.title : yOpts0.title, titleReserveLeft = leftTitle?.text && leftTitle.enabled !== !1 ? 18 + Math.max(0, (leftTitle.margin ?? 8) - 8) + Math.max(0, leftTitle.offset ?? 0) : 0, tickLabelW = LAYOUT.tickLength + 8 + (inverted ? this.catLabelWidth(allVisible) : this.valueLabelWidth(
+    ) : 0, leftTitle = inverted ? xOpts.title : yOpts0.title, titleReserveLeft = leftTitle?.text && leftTitle.enabled !== !1 ? 18 + Math.max(0, (leftTitle.margin ?? 8) - 8) + Math.max(0, leftTitle.offset ?? 0) : 0, tickLabelW = LAYOUT.tickLength + 8 + axisLabelOffset(inverted ? xOpts : yOpts0) + (inverted ? this.catLabelWidth(allVisible) : this.valueLabelWidth(
       primaryVisible.length ? primaryVisible : allVisible,
       yOpts0
-    )), colHeaderH = colDim ? dimNameRowH + 20 : rowDim ? dimNameRowH : 0, rowHeaderW = rowDim ? rowValueColW : 0, leftReserve = rowHeaderW + tickLabelW + titleReserveLeft, titleReserveRight = hasSecondary && yOpts1?.title?.text && yOpts1.title.enabled !== !1 ? 18 + Math.max(0, (yOpts1.title.margin ?? 8) - 8) + Math.max(0, yOpts1.title.offset ?? 0) : 0, rightReserve = hasSecondary && yOpts1 ? LAYOUT.tickLength + 8 + this.valueLabelWidth(secondaryVisible, yOpts1) + titleReserveRight : 0, bottomReserve = LAYOUT.defaultBottomAxisHeight, gridX = outer.x + leftReserve, gridY = outer.y + colHeaderH, gridW = outer.width - leftReserve - rightReserve, gridH = outer.height - colHeaderH - bottomReserve, cellW = (gridW - gap * (colVals.length - 1)) / colVals.length, cellH = (gridH - gap * (rowVals.length - 1)) / rowVals.length, lineColor = THEME.axis.lineColor, headerLayer = this.renderer.group(
+    )), colHeaderH = colDim ? dimNameRowH + 20 : rowDim ? dimNameRowH : 0, rowHeaderW = rowDim ? rowValueColW : 0, leftReserve = rowHeaderW + tickLabelW + titleReserveLeft, titleReserveRight = hasSecondary && yOpts1?.title?.text && yOpts1.title.enabled !== !1 ? 18 + Math.max(0, (yOpts1.title.margin ?? 8) - 8) + Math.max(0, yOpts1.title.offset ?? 0) : 0, rightReserve = hasSecondary && yOpts1 ? LAYOUT.tickLength + 8 + axisLabelOffset(yOpts1) + this.valueLabelWidth(secondaryVisible, yOpts1) + titleReserveRight : 0, bottomReserve = LAYOUT.defaultBottomAxisHeight + axisLabelOffset(inverted ? yOpts0 : xOpts), gridX = outer.x + leftReserve, gridY = outer.y + colHeaderH, gridW = outer.width - leftReserve - rightReserve, gridH = outer.height - colHeaderH - bottomReserve, cellW = (gridW - gap * (colVals.length - 1)) / colVals.length, cellH = (gridH - gap * (rowVals.length - 1)) / rowVals.length, lineColor = THEME.axis.lineColor, headerLayer = this.renderer.group(
       { class: "facet-trellis-headers" },
       this.renderer.root
     ), dividerBottom = gridY + gridH + LAYOUT.tickLength + 12;
@@ -5892,6 +5977,9 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
           renderer: this.renderer,
           scale: catScale,
           position: inverted ? "left" : "bottom",
+          spacingScale: this.chromeSpacingScale(
+            inverted ? "left" : "bottom"
+          ),
           plot: cell,
           grid: !!xOpts.gridLineWidth,
           options: catLabelled ? { ...xOpts, title: void 0, ticks: !1 } : { labels: { enabled: !1 }, lineWidth: 0, ticks: !1 }
@@ -5901,6 +5989,9 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
           renderer: this.renderer,
           scale: valScale,
           position: inverted ? "bottom" : "left",
+          spacingScale: this.chromeSpacingScale(
+            inverted ? "bottom" : "left"
+          ),
           plot: cell,
           grid: !0,
           options: valLabelled ? inverted ? { ...yOpts0, title: void 0 } : yOpts0 : { labels: { enabled: !1 }, lineWidth: 0 }
@@ -5911,6 +6002,7 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
           renderer: this.renderer,
           scale: yScale2,
           position: "right",
+          spacingScale: this.chromeSpacingScale("right"),
           plot: cell,
           grid: !1,
           options: isRight ? yOpts1 : { labels: { enabled: !1 }, lineWidth: 0 }
@@ -6023,13 +6115,14 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
     }) : this.valueScale(
       xOptions,
       this.xNumericDomain(series),
-      inverted ? [innerRadius, radius] : [-Math.PI / 2, Math.PI * 1.5]
+      inverted ? [innerRadius, radius] : [-Math.PI / 2, Math.PI * 1.5],
+      !1
     ), onSecondary = (item) => (item.options.yAxis ?? 0) === 1, primary = series.filter((item) => !onSecondary(item)), secondary = series.filter(onSecondary), polarValueScale = (items, options) => {
       let domain = this.valueDomain(items.length ? items : series);
       return items.some(
         (item) => ["column", "area", "areaspline"].includes(item.type)
       ) && options.type !== "log" && (domain = [Math.min(0, domain[0]), Math.max(0, domain[1])]), this.valueScale(
-        inverted && options.tickCount === void 0 ? { ...options, tickCount: 6 } : options,
+        options,
         domain,
         inverted ? [-Math.PI / 2, Math.PI * 1.5] : [innerRadius, radius]
       );
@@ -6412,12 +6505,12 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
     if (!keys.length) return;
     let aggSeries = visible.map(
       (s) => s.withPoints(seriesPoints.get(s.index) ?? [])
-    ), inverted = this.isInverted(visible), yOpts0 = axisAt(this.options.yAxis, 0), yOpts1 = axisAt(this.options.yAxis, 1), onAxis = (s, i) => (s.options.yAxis ?? 0) === i, secondary = aggSeries.filter((s) => onAxis(s, 1)), hasSecondary = !inverted && secondary.length > 0, xOpts = firstAxis(this.options.xAxis) ?? {}, split = !!xOpts.opposite, catVisible = xOpts.visible !== !1, rowH = 18, rotExtra = inverted ? 0 : nestedInnerRotationExtent(leaves, xOpts.labels?.rotation ?? 0), plot, catScale, valScale0, valScale1, axisLayer = this.renderer.group(
+    ), inverted = this.isInverted(visible), yOpts0 = axisAt(this.options.yAxis, 0), yOpts1 = axisAt(this.options.yAxis, 1), onAxis = (s, i) => (s.options.yAxis ?? 0) === i, secondary = aggSeries.filter((s) => onAxis(s, 1)), hasSecondary = !inverted && secondary.length > 0, xOpts = firstAxis(this.options.xAxis) ?? {}, split = !!xOpts.opposite, catVisible = xOpts.visible !== !1, rowH = 18, rotExtra = inverted ? 0 : nestedInnerRotationExtent(leaves, xOpts.labels?.rotation ?? 0), catLabelOffset = catVisible ? axisLabelOffset(xOpts) : 0, bottomSpacingScale = this.chromeSpacingScale("bottom"), leftSpacingScale = this.chromeSpacingScale("left"), rightSpacingScale = this.chromeSpacingScale("right"), plot, catScale, valScale0, valScale1, axisLayer = this.renderer.group(
       { class: "facet-axes" },
       this.renderer.root
     ), valAxis0, valAxis1;
     if (inverted) {
-      let colWidths = nestedLevelWidths(leaves), innerW = colWidths[colWidths.length - 1] ?? 0, outerW = colWidths.slice(0, -1).reduce((a, b) => a + b, 0), totalW = colWidths.reduce((a, b) => a + b, 0), leftReserve = catVisible ? LAYOUT.tickLength + 8 + (split ? innerW : totalW) + (xOpts.title?.text && xOpts.title.enabled !== !1 ? 22 + Math.max(0, (xOpts.title.margin ?? 14) - 14) + Math.max(0, xOpts.title.offset ?? 0) : 0) : 6, rightReserve = catVisible && split ? LAYOUT.tickLength + 8 + outerW : 8, bottomReserve = LAYOUT.defaultBottomAxisHeight + (yOpts0.title?.text && yOpts0.title.enabled !== !1 ? 32 + Math.max(0, (yOpts0.title.margin ?? 14) - 14) + Math.max(0, yOpts0.title.offset ?? 0) : 0), topReserve = 6;
+      let colWidths = nestedLevelWidths(leaves), innerW = colWidths[colWidths.length - 1] ?? 0, outerW = colWidths.slice(0, -1).reduce((a, b) => a + b, 0), totalW = colWidths.reduce((a, b) => a + b, 0), leftReserve = catVisible ? LAYOUT.tickLength + 8 + catLabelOffset + (split ? innerW : totalW) + (xOpts.title?.text && xOpts.title.enabled !== !1 ? 22 + ((xOpts.title.margin ?? 16 * leftSpacingScale) - 14) + Math.max(0, xOpts.title.offset ?? 0) : 0) : 6, rightReserve = catVisible && split ? LAYOUT.tickLength + 8 + catLabelOffset + outerW : 8, bottomReserve = LAYOUT.defaultBottomAxisHeight + axisLabelOffset(yOpts0) + (yOpts0.title?.text && yOpts0.title.enabled !== !1 ? 32 + ((yOpts0.title.margin ?? LAYOUT.axisTitleGap * bottomSpacingScale) - 14) + Math.max(0, yOpts0.title.offset ?? 0) : 0), topReserve = 6;
       plot = {
         x: outer.x + leftReserve,
         y: outer.y + topReserve,
@@ -6436,6 +6529,7 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
         renderer: this.renderer,
         scale: valScale0,
         position: "bottom",
+        spacingScale: this.chromeSpacingScale("bottom"),
         plot,
         options: yOpts0,
         grid: !0
@@ -6447,6 +6541,7 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
         keys,
         position: split ? "split" : "bottom",
         vertical: !0,
+        spacingScale: this.chromeSpacingScale("left"),
         labels: xOpts.labels,
         title: xOpts.title,
         lineColor: xOpts.lineColor,
@@ -6456,10 +6551,10 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
         alternateGridColor: xOpts.alternateGridColor
       }).render(axisLayer);
     } else {
-      let leftReserve = LAYOUT.tickLength + 8 + this.valueLabelWidth(
+      let leftReserve = LAYOUT.tickLength + 8 + axisLabelOffset(yOpts0) + this.valueLabelWidth(
         aggSeries.filter((s) => onAxis(s, 0)),
         yOpts0
-      ) + (yOpts0.title?.text && yOpts0.title.enabled !== !1 ? 18 + Math.max(0, (yOpts0.title.margin ?? 8) - 8) + Math.max(0, yOpts0.title.offset ?? 0) : 0), rightReserve = hasSecondary ? LAYOUT.tickLength + 8 + this.valueLabelWidth(secondary, yOpts1) + (yOpts1.title?.text && yOpts1.title.enabled !== !1 ? 18 + Math.max(0, (yOpts1.title.margin ?? 8) - 8) + Math.max(0, yOpts1.title.offset ?? 0) : 0) : 8, bottomReserve = catVisible ? LAYOUT.tickLength + (split ? 1 : dims.length) * rowH + 12 + rotExtra + (xOpts.title?.text && xOpts.title.enabled !== !1 ? 22 + Math.max(0, (xOpts.title.margin ?? 14) - 14) + Math.max(0, xOpts.title.offset ?? 0) : 0) : 6, topReserve = catVisible && split ? LAYOUT.tickLength + (dims.length - 1) * rowH + 8 : 6;
+      ) + (yOpts0.title?.text && yOpts0.title.enabled !== !1 ? 18 + ((yOpts0.title.margin ?? 8 * leftSpacingScale) - 8) + Math.max(0, yOpts0.title.offset ?? 0) : 0), rightReserve = hasSecondary ? LAYOUT.tickLength + 8 + axisLabelOffset(yOpts1) + this.valueLabelWidth(secondary, yOpts1) + (yOpts1.title?.text && yOpts1.title.enabled !== !1 ? 18 + ((yOpts1.title.margin ?? 8 * rightSpacingScale) - 8) + Math.max(0, yOpts1.title.offset ?? 0) : 0) : 8, bottomReserve = catVisible ? LAYOUT.tickLength + catLabelOffset + (split ? 1 : dims.length) * rowH + 12 + rotExtra + (xOpts.title?.text && xOpts.title.enabled !== !1 ? 22 + ((xOpts.title.margin ?? 14 * bottomSpacingScale) - 14) + Math.max(0, xOpts.title.offset ?? 0) : 0) : 6, topReserve = catVisible && split ? LAYOUT.tickLength + catLabelOffset + (dims.length - 1) * rowH + 8 : 6;
       plot = {
         x: outer.x + leftReserve,
         y: outer.y + topReserve,
@@ -6480,6 +6575,7 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
         renderer: this.renderer,
         scale: valScale0,
         position: "left",
+        spacingScale: this.chromeSpacingScale("left"),
         plot,
         options: yOpts0,
         grid: !0
@@ -6487,6 +6583,7 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
         renderer: this.renderer,
         scale: valScale1,
         position: "right",
+        spacingScale: this.chromeSpacingScale("right"),
         plot,
         options: yOpts1,
         grid: !1
@@ -6497,6 +6594,7 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
         leaves,
         keys,
         position: split ? "split" : "bottom",
+        spacingScale: this.chromeSpacingScale("bottom"),
         labels: xOpts.labels,
         title: xOpts.title,
         lineColor: xOpts.lineColor,
@@ -6554,7 +6652,7 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
     for (let s of pair)
       for (let p of s.points) maxVal = Math.max(maxVal, p.y ?? 0);
     maxVal = yOpts.max ?? (maxVal || 1);
-    let bottomReserve = LAYOUT.defaultBottomAxisHeight, gutter = 84, plot = {
+    let bottomReserve = LAYOUT.defaultBottomAxisHeight + axisLabelOffset(yOpts), gutter = 84, plot = {
       x: outer.x,
       y: outer.y + 6,
       width: outer.width,
@@ -6575,6 +6673,7 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
       renderer: this.renderer,
       scale: leftVal,
       position: "bottom",
+      spacingScale: this.chromeSpacingScale("bottom"),
       grid: !1,
       plot: { x: plot.x, y: plot.y, width: halfW, height: plot.height },
       options: { ...yOpts, title: void 0 }
@@ -6584,6 +6683,7 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
       renderer: this.renderer,
       scale: rightVal,
       position: "bottom",
+      spacingScale: this.chromeSpacingScale("bottom"),
       grid: !1,
       plot: { x: rightZeroX, y: plot.y, width: halfW, height: plot.height },
       options: { ...yOpts, title: void 0 }
@@ -7077,19 +7177,22 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
     }
     return { xScale, xScale2, yScale, yScale2 };
   }
-  valueScale(opts, domain, range) {
+  valueScale(opts, domain, range, padDomain = !0) {
     let min = opts.min ?? domain[0], max = opts.max ?? domain[1];
     if (opts.type === "log")
-      return new LogScale({
+      return padDomain && opts.min === void 0 && (min /= 1 + VALUE_DOMAIN_PADDING), padDomain && opts.max === void 0 && (max *= 1 + VALUE_DOMAIN_PADDING), new LogScale({
         domain: [min, max],
         range,
         reversed: opts.reversed
       });
-    let span = Math.abs(range[1] - range[0]), tickCount = opts.tickCount ?? (span < 100 ? 3 : span < 200 ? 4 : 6);
+    if (padDomain) {
+      let padding = (max - min || Math.abs(max) || Math.abs(min) || 1) * VALUE_DOMAIN_PADDING;
+      opts.min === void 0 && (min -= padding), opts.max === void 0 && (max += padding);
+    }
     return new LinearScale({
       domain: [min, max],
       range,
-      tickCount,
+      tickCount: opts.tickCount ?? 4,
       reversed: opts.reversed,
       nice: opts.min === void 0 && opts.max === void 0
     });

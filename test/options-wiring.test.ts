@@ -77,6 +77,158 @@ describe('configuration option wiring', () => {
     expect(legend.getAttribute('fill')).toBe('#445566');
   });
 
+  it('offsets Cartesian labels away from the axis line and reserves the gap', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: baseChart,
+      xAxis: {
+        categories: ['A', 'B'],
+        labels: { offset: 20 },
+        title: { text: 'Category', margin: 9 },
+      },
+      series: [{ data: [2, 4] }],
+    });
+
+    const axis = el.querySelector<SVGGElement>('.facet-axis-bottom')!;
+    const baseline = axis.querySelector<SVGLineElement>('line')!;
+    const label = [...axis.querySelectorAll<SVGTextElement>('text')]
+      .find((node) => node.textContent === 'A')!;
+    const title = [...axis.querySelectorAll<SVGTextElement>('text')]
+      .find((node) => node.textContent === 'Category')!;
+    const axisY = Number(baseline.getAttribute('y1'));
+
+    expect(Number(label.getAttribute('y')) - axisY).toBe(32);
+    expect(Number(title.getAttribute('y'))).toBeGreaterThan(
+      Number(label.getAttribute('y')),
+    );
+    expect(Number(label.getAttribute('y'))).toBeLessThan(400);
+  });
+
+  it('controls legend margin, padding, offsets, and internal gaps', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: baseChart,
+      legend: {
+        layout: 'vertical',
+        align: 'left',
+        margin: 20,
+        padding: 7,
+        offsetX: 5,
+        offsetY: 4,
+        symbolPadding: 13,
+        rowGap: 15,
+      },
+      series: [
+        { name: 'First', data: [2, 4] },
+        { name: 'Second', data: [3, 5] },
+      ],
+    });
+
+    const items = [
+      ...el.querySelectorAll<SVGGElement>('.facet-legend-item'),
+    ];
+    const firstRect = items[0].querySelector<SVGRectElement>('rect')!;
+    const firstText = items[0].querySelector<SVGTextElement>('text')!;
+    const secondText = items[1].querySelector<SVGTextElement>('text')!;
+
+    // Left chart spacing (16) + offsetX (5) + legend padding (7).
+    expect(firstRect.getAttribute('x')).toBe('28');
+    expect(
+      Number(firstText.getAttribute('x')) - Number(firstRect.getAttribute('x')),
+    ).toBe(25);
+    expect(
+      Number(secondText.getAttribute('y')) - Number(firstText.getAttribute('y')),
+    ).toBeCloseTo(
+      12 * chartFontScale(baseChart.width, baseChart.height) * 1.2 + 15,
+    );
+    expect(Number(firstText.getAttribute('y'))).toBeGreaterThan(16 + 4);
+  });
+
+  it('uses itemGap when spacing a horizontal legend row', () => {
+    const positions = (itemGap: number): number[] => {
+      const el = container();
+      new FacetViz(el, {
+        chart: baseChart,
+        legend: { align: 'left', itemGap },
+        series: [
+          { name: 'One', data: [1] },
+          { name: 'Two', data: [2] },
+        ],
+      });
+      return [...el.querySelectorAll<SVGRectElement>('.facet-legend-item rect')]
+        .map((rect) => Number(rect.getAttribute('x')));
+    };
+
+    const compact = positions(0);
+    const spaced = positions(24);
+    expect(spaced[1] - spaced[0]).toBe((compact[1] - compact[0]) + 24);
+  });
+
+  it('compacts default axis-title and legend gaps to prioritize a small plot', () => {
+    const layout = (
+      responsive: boolean,
+      margins?: { axis: number; legend: number },
+    ) => {
+      const el = container(320, 220);
+      new FacetViz(el, {
+        chart: {
+          ...baseChart,
+          width: 320,
+          height: 220,
+          responsive,
+          scaleFonts: false,
+        },
+        xAxis: {
+          categories: ['A', 'B', 'C'],
+          labels: { style: { fontSize: '11px' } },
+          title: {
+            text: 'Route',
+            margin: margins?.axis,
+            style: { fontSize: '12px' },
+          },
+        },
+        legend: {
+          margin: margins?.legend,
+          itemStyle: { fontSize: '12px' },
+        },
+        series: [
+          { name: 'Cab', data: [2, 4, 3] },
+          { name: 'Train', data: [3, 2, 5] },
+        ],
+      });
+
+      const axis = el.querySelector<SVGGElement>('.facet-axis-bottom')!;
+      const baseline = [...axis.querySelectorAll<SVGLineElement>('line')]
+        .find((line) => line.getAttribute('x1') !== line.getAttribute('x2'))!;
+      const text = (value: string, root: ParentNode = el) =>
+        [...root.querySelectorAll<SVGTextElement>('text')]
+          .find((node) => node.textContent === value)!;
+      return {
+        plotBottom: Number(baseline.getAttribute('y1')),
+        labelY: Number(text('A', axis).getAttribute('y')),
+        titleY: Number(text('Route', axis).getAttribute('y')),
+        legendY: Number(text('Cab').getAttribute('y')),
+      };
+    };
+
+    const compact = layout(true);
+    const full = layout(false);
+
+    expect(compact.plotBottom - full.plotBottom).toBeGreaterThan(25);
+    expect(compact.titleY - compact.labelY).toBeLessThan(
+      full.titleY - full.labelY - 10,
+    );
+    expect(compact.legendY - compact.titleY).toBeLessThan(
+      full.legendY - full.titleY - 10,
+    );
+
+    // User-authored margins stay literal even when responsive layout is on.
+    const explicit = layout(true, { axis: 22, legend: 22 });
+    expect(explicit.plotBottom).toBeCloseTo(full.plotBottom);
+    expect(explicit.titleY).toBeCloseTo(full.titleY);
+    expect(explicit.legendY).toBeCloseTo(full.legendY);
+  });
+
   it('positions and customizes chart text with alignment and offsets', () => {
     const el = container();
     new FacetViz(el, {
@@ -456,6 +608,32 @@ describe('configuration option wiring', () => {
       line.getAttribute('stroke') === '#99aabb' && line.getAttribute('stroke-width') === '2',
     )).toBe(true);
     expect(el.querySelectorAll('.facet-alternate-grid-band')).toHaveLength(1);
+  });
+
+  it('offsets nested-axis label tiers away from their baselines', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { ...baseChart, type: 'column' },
+      xAxis: {
+        dimensions: ['region', 'quarter'],
+        labels: { offset: 11 },
+      },
+      series: [{
+        data: [
+          { y: 2, region: 'East', quarter: 'Q1' },
+          { y: 3, region: 'East', quarter: 'Q2' },
+        ],
+      }],
+    });
+
+    const nested = el.querySelector<SVGGElement>('.facet-axis-nested')!;
+    const label = [...nested.querySelectorAll<SVGTextElement>('text')]
+      .find((node) => node.textContent === 'Q1')!;
+    const baseline = [...nested.querySelectorAll<SVGLineElement>('line')]
+      .find((line) => line.getAttribute('y1') === line.getAttribute('y2'))!;
+    expect(
+      Number(label.getAttribute('y')) - Number(baseline.getAttribute('y1')),
+    ).toBe(28);
   });
 
   it('renders configurable dashed major and minor grid lines', () => {

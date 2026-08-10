@@ -158,6 +158,7 @@ export function validateChartOptions(options: unknown): ChartValidationResult {
 
   validateTitle(options.title, "title", add);
   validateTitle(options.subtitle, "subtitle", add);
+  validateLegend(options.legend, add);
   validateAnnotations(options.annotations, add);
   validateChartTexts(options.texts, add);
   validateResponsive(options.responsive, add);
@@ -441,7 +442,7 @@ function validateAxes(value: unknown, path: string, add: AddIssue): UnknownRecor
           "axis.labels.offset.non_negative",
           "error",
           `${axisPath}.labels.offset`,
-          "Polar label offset must be a non-negative number.",
+          "Label offset must be a non-negative number.",
         );
       if (
         axis.labels.step !== undefined &&
@@ -515,6 +516,51 @@ function validateTitle(
         "error",
         `${path}.${key}`,
         "margin must be non-negative.",
+      );
+  }
+}
+
+function validateLegend(value: unknown, add: AddIssue): void {
+  if (value === undefined) return;
+  if (!isRecord(value)) {
+    add(
+      "legend.object",
+      "error",
+      "legend",
+      "Legend configuration must be an object.",
+    );
+    return;
+  }
+  for (const key of [
+    "margin",
+    "padding",
+    "symbolPadding",
+    "itemGap",
+    "rowGap",
+  ]) {
+    const item = value[key];
+    if (
+      item !== undefined &&
+      (typeof item !== "number" || !Number.isFinite(item) || item < 0)
+    )
+      add(
+        "legend.spacing.non_negative",
+        "error",
+        `legend.${key}`,
+        `${key} must be a non-negative finite number.`,
+      );
+  }
+  for (const key of ["offsetX", "offsetY"]) {
+    const item = value[key];
+    if (
+      item !== undefined &&
+      (typeof item !== "number" || !Number.isFinite(item))
+    )
+      add(
+        "legend.offset.number",
+        "error",
+        `legend.${key}`,
+        `${key} must be a finite number.`,
       );
   }
 }

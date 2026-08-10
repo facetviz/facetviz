@@ -275,7 +275,7 @@ function niceUnit(target: number, choices: number[]): number {
 }
 
 /** Produce ~`count` "nice" tick values covering [min, max]. */
-export function niceTicks(min: number, max: number, count = 6): number[] {
+export function niceTicks(min: number, max: number, count = 4): number[] {
   if (min === max) {
     // Degenerate range: fabricate a small window around the value.
     const pad = Math.abs(min) || 1;

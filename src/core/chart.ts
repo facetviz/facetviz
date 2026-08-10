@@ -30,7 +30,12 @@ import {
   nestedInnerRotationExtent,
 } from "./nested-axis.js";
 import { Tooltip } from "./tooltip.js";
-import { Legend, LegendItem, HORIZONTAL_LEGEND_PADDING } from "./legend.js";
+import {
+  Legend,
+  LegendItem,
+  TOP_LEGEND_INSET,
+  legendMargin,
+} from "./legend.js";
 import { EventEmitter } from "./events.js";
 import { LinearScale, LogScale, CategoryScale, Scale } from "./scale.js";
 import { LAYOUT, FONTS } from "./defaults.js";
@@ -97,6 +102,28 @@ const TEXT_RESERVE_GAP = 8;
 // Most of each dimension that `spacing` (text reserves included) may consume
 // before it is scaled back, so the plot itself never collapses to nothing.
 const MAX_SPACING_SHARE = 0.85;
+
+// Keep automatically-derived value-axis bounds from landing directly on the
+// dataset extrema. The subsequent tick "nicening" may expand this further to
+// a round value, but this small buffer guarantees breathing room even when an
+// extreme is already a round tick.
+const VALUE_DOMAIN_PADDING = 0.05;
+
+// Default chrome gaps reach their full, comfortable size on a large chart.
+// Below these dimensions they taper with the constrained side so fixed gaps
+// do not crowd the data area in dashboard cards and resized panels.
+const CHROME_SPACING_REFERENCE_WIDTH = 960;
+const CHROME_SPACING_REFERENCE_HEIGHT = 600;
+const MIN_CHROME_SPACING_SCALE = 0.35;
+
+/** Reserved outward distance for a visible Cartesian/nested axis label. */
+const axisLabelOffset = (options: AxisOptions): number => {
+  if (options.labels?.enabled === false) return 0;
+  const value = options.labels?.offset;
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, value)
+    : 0;
+};
 
 export class FacetViz {
   readonly container: HTMLElement;
@@ -483,14 +510,22 @@ export class FacetViz {
     let legendReserveW = 0;
     if (showLegend) {
       const legendOptions = this.options.legend ?? {};
+      const legendSpacingScale = this.chromeSpacingScale(legendPlace);
       if (legendVertical) {
-        legendReserveW = Legend.verticalWidth(legendItems, legendOptions);
+        legendReserveW = Legend.verticalWidth(
+          legendItems,
+          legendOptions,
+          legendPlace,
+          legendSpacingScale,
+        );
       } else {
         const legendWidth = this.width - spacing[1] - spacing[3];
         legendReserveH = Legend.horizontalHeight(
           legendItems,
           legendWidth,
           legendOptions,
+          legendPlace,
+          legendSpacingScale,
         );
       }
     }
@@ -554,27 +589,39 @@ export class FacetViz {
     // in the axis's own reserve (e.g. a short axis title) shows up as dead
     // space between it and the legend instead of just shrinking the chart.
     if (showLegend) {
+      const legendOptions = this.options.legend ?? {};
+      const margin = legendMargin(
+        legendOptions,
+        legendPlace,
+        this.chromeSpacingScale(legendPlace),
+      );
       let lx = outer.x;
-      let ly = outer.y + outer.height + HORIZONTAL_LEGEND_PADDING;
+      let ly = outer.y + outer.height + margin;
       let lw = outer.width;
       let lh = legendReserveH;
       if (legendPlace === "top") {
-        ly = top + 12;
+        ly = top + TOP_LEGEND_INSET;
       } else if (legendPlace === "left") {
         lx = spacing[3];
         ly = outer.y;
         lw = legendReserveW;
         lh = outer.height;
       } else if (legendPlace === "right") {
-        lx = outer.x + outer.width + 8;
+        lx = outer.x + outer.width + margin;
         ly = outer.y;
         lw = legendReserveW;
         lh = outer.height;
       }
+      lx += Number.isFinite(legendOptions.offsetX)
+        ? (legendOptions.offsetX ?? 0)
+        : 0;
+      ly += Number.isFinite(legendOptions.offsetY)
+        ? (legendOptions.offsetY ?? 0)
+        : 0;
       new Legend({
         renderer: this.renderer,
         items: legendItems,
-        options: this.options.legend ?? {},
+        options: legendOptions,
         x: lx,
         y: ly,
         width: lw,
@@ -1176,9 +1223,21 @@ export class FacetViz {
    * 100px and below.
    */
   private smallChartTaper(maxReduce: number): number {
+    if (this.options.chart?.responsive === false) return 0;
     const shortSide = Math.min(this.width, this.height);
     const t = Math.max(0, Math.min(1, (300 - shortSide) / 200));
     return t * maxReduce;
+  }
+
+  /** Responsive multiplier for default gaps perpendicular to a chart side. */
+  private chromeSpacingScale(
+    side: "top" | "bottom" | "left" | "right",
+  ): number {
+    if (this.options.chart?.responsive === false) return 1;
+    const ratio = side === "top" || side === "bottom"
+      ? this.height / CHROME_SPACING_REFERENCE_HEIGHT
+      : this.width / CHROME_SPACING_REFERENCE_WIDTH;
+    return Math.max(MIN_CHROME_SPACING_SCALE, Math.min(1, ratio));
   }
 
   private axisReserve(
@@ -1188,25 +1247,32 @@ export class FacetViz {
   ): number {
     if (opts.visible === false) return 6;
     const title = opts.title?.text && opts.title.enabled !== false ? 1 : 0;
+    const titleMargin = opts.title?.margin ??
+      (side === "top" || side === "bottom" ? LAYOUT.axisTitleGap : 8) *
+        this.chromeSpacingScale(side);
     const titleExtra = title
       ? 10 +
-        (opts.title?.margin ?? 8) +
+        titleMargin +
         Math.max(0, opts.title?.offset ?? 0)
       : 0;
-    // `- 14` here is not the current default (LAYOUT.axisTitleGap) but the
-    // fixed baseline defaultBottomAxisHeight was calibrated against; only the
-    // fallback above should track axisTitleGap, so this stays a literal.
+    // `14` is the title margin already represented by the fixed baseline
+    // reserve. Let the delta be negative too: responsive compaction should
+    // return that saved space to the plot, not leave an invisible reserve.
     const horizontalTitleDelta = title
-      ? Math.max(0, (opts.title?.margin ?? LAYOUT.axisTitleGap) - 14) +
+      ? titleMargin - 14 +
         Math.max(0, opts.title?.offset ?? 0)
       : 0;
     const labelsOn = opts.labels?.enabled !== false;
+    const labelOffset = axisLabelOffset(opts);
     if (side === "left" || side === "right") {
       if (!labelsOn) return LAYOUT.tickLength + 6 + titleExtra;
       const floor = title
-        ? LAYOUT.defaultLeftAxisWidth
+        ? LAYOUT.defaultLeftAxisWidth - Math.max(0, 8 - titleMargin)
         : LAYOUT.defaultLeftAxisWidth - this.smallChartTaper(14);
-      return Math.max(floor, LAYOUT.tickLength + 8 + labelW + titleExtra);
+      return Math.max(
+        floor + labelOffset,
+        LAYOUT.tickLength + 8 + labelW + labelOffset + titleExtra,
+      );
     }
     // Horizontal axis: rotated labels project downward, so grow the band by the
     // label's vertical extent at that angle.
@@ -1219,12 +1285,11 @@ export class FacetViz {
       ? Math.abs(Math.sin((rot * Math.PI) / 180)) * labelW
       : 0;
     if (!labelsOn) {
-      // Axis#drawTitle still offsets by its fixed `tickLength + 22` even
-      // with no labels (its own label-gap term collapses to 0 there) — a
-      // title still needs that room. Only the label band itself collapses
-      // to just the tick mark.
+      // With no labels, reserve the title's responsive default margin and
+      // its baseline allowance; the label band itself collapses to the tick.
       return title
-        ? LAYOUT.tickLength + 22 + 8 + horizontalTitleDelta
+        ? LAYOUT.tickLength + titleMargin + 10 +
+          Math.max(0, opts.title?.offset ?? 0)
         : LAYOUT.tickLength + 6;
     }
     // The title's own placement (see Axis#drawTitle) already reaches past
@@ -1233,12 +1298,18 @@ export class FacetViz {
     // only needs a small top-up for the title's own text height, not that
     // whole distance again (that used to double-count it and leave a big
     // gap below the title before anything else, like a legend, started).
-    // The band itself only tapers when there's no title, since the title's
-    // placement above isn't itself responsive to chart size.
+    // With a title, `horizontalTitleDelta` applies the same responsive margin
+    // used by Axis#drawTitle so the reserve and rendered position stay aligned.
     const base = title
       ? LAYOUT.defaultBottomAxisHeight
       : LAYOUT.defaultBottomAxisHeight - this.smallChartTaper(10);
-    return base + (title ? 8 : 0) + horizontalTitleDelta + rotExtra;
+    return (
+      base +
+      (title ? 8 : 0) +
+      horizontalTitleDelta +
+      rotExtra +
+      labelOffset
+    );
   }
 
   private renderPanel(
@@ -1396,6 +1467,7 @@ export class FacetViz {
       renderer: this.renderer,
       scale: catScale,
       position: catSide,
+      spacingScale: this.chromeSpacingScale(catSide),
       plot: axisPlot,
       options: isSlope
         ? {
@@ -1417,6 +1489,7 @@ export class FacetViz {
         renderer: this.renderer,
         scale: xScale2,
         position: secondaryXSide,
+        spacingScale: this.chromeSpacingScale(secondaryXSide),
         plot: axisPlot,
         options: {
           ...catOpts2,
@@ -1430,6 +1503,7 @@ export class FacetViz {
       renderer: this.renderer,
       scale: valScale,
       position: valSide,
+      spacingScale: this.chromeSpacingScale(valSide),
       plot: axisPlot,
       options: isSlope ? { ...valOpts, lineWidth: 0 } : valOpts,
       grid: !isSlope,
@@ -1441,6 +1515,7 @@ export class FacetViz {
         renderer: this.renderer,
         scale: yScale2,
         position: secondaryYSide,
+        spacingScale: this.chromeSpacingScale(secondaryYSide),
         plot: axisPlot,
         options: valOpts2,
         grid: false,
@@ -1943,15 +2018,6 @@ export class FacetViz {
       vMin = Math.min(vMin, 0);
       vMax = Math.max(vMax, 0);
     }
-    // Headroom above the tallest bar/point — without it, a data max that
-    // happens to land exactly on a "nice" tick (e.g. 10) maps to the very
-    // top of the shared axis with nothing above it. Skipped when the user
-    // sets an explicit max.
-    if (yOpts0.max === undefined) {
-      const span = vMax - vMin || Math.abs(vMax) || 1;
-      vMax += span * 0.08;
-    }
-
     let vMin2 = 0;
     let vMax2 = 1;
     if (hasSecondary && yOpts1) {
@@ -1963,10 +2029,6 @@ export class FacetViz {
       ) {
         vMin2 = Math.min(vMin2, 0);
         vMax2 = Math.max(vMax2, 0);
-      }
-      if (yOpts1.max === undefined) {
-        const span2 = vMax2 - vMin2 || Math.abs(vMax2) || 1;
-        vMax2 += span2 * 0.08;
       }
     }
 
@@ -2008,6 +2070,7 @@ export class FacetViz {
     const tickLabelW =
       LAYOUT.tickLength +
       8 +
+      axisLabelOffset(inverted ? xOpts : yOpts0) +
       (inverted
         ? this.catLabelWidth(allVisible)
         : this.valueLabelWidth(
@@ -2027,10 +2090,13 @@ export class FacetViz {
       hasSecondary && yOpts1
         ? LAYOUT.tickLength +
           8 +
+          axisLabelOffset(yOpts1) +
           this.valueLabelWidth(secondaryVisible, yOpts1) +
           titleReserveRight
         : 0;
-    const bottomReserve = LAYOUT.defaultBottomAxisHeight;
+    const bottomReserve =
+      LAYOUT.defaultBottomAxisHeight +
+      axisLabelOffset(inverted ? yOpts0 : xOpts);
 
     const gridX = outer.x + leftReserve;
     const gridY = outer.y + colHeaderH;
@@ -2304,6 +2370,9 @@ export class FacetViz {
           renderer: this.renderer,
           scale: catScale,
           position: inverted ? "left" : "bottom",
+          spacingScale: this.chromeSpacingScale(
+            inverted ? "left" : "bottom",
+          ),
           plot: cell,
           grid: !!xOpts.gridLineWidth,
           options: catLabelled
@@ -2320,6 +2389,9 @@ export class FacetViz {
           renderer: this.renderer,
           scale: valScale,
           position: inverted ? "bottom" : "left",
+          spacingScale: this.chromeSpacingScale(
+            inverted ? "bottom" : "left",
+          ),
           plot: cell,
           grid: true,
           options: valLabelled
@@ -2339,6 +2411,7 @@ export class FacetViz {
             renderer: this.renderer,
             scale: yScale2,
             position: "right",
+            spacingScale: this.chromeSpacingScale("right"),
             plot: cell,
             grid: false,
             options: isRight
@@ -2511,6 +2584,7 @@ export class FacetViz {
           inverted
             ? [innerRadius, radius]
             : [-Math.PI / 2, Math.PI * 1.5],
+          false,
         );
 
     const onSecondary = (item: BaseSeries) => (item.options.yAxis ?? 0) === 1;
@@ -2526,9 +2600,7 @@ export class FacetViz {
       )
         domain = [Math.min(0, domain[0]), Math.max(0, domain[1])];
       return this.valueScale(
-        inverted && options.tickCount === undefined
-          ? { ...options, tickCount: 6 }
-          : options,
+        options,
         domain,
         inverted
           ? [-Math.PI / 2, Math.PI * 1.5]
@@ -3097,6 +3169,10 @@ export class FacetViz {
     const rotExtra = !inverted
       ? nestedInnerRotationExtent(leaves, xOpts.labels?.rotation ?? 0)
       : 0;
+    const catLabelOffset = catVisible ? axisLabelOffset(xOpts) : 0;
+    const bottomSpacingScale = this.chromeSpacingScale("bottom");
+    const leftSpacingScale = this.chromeSpacingScale("left");
+    const rightSpacingScale = this.chromeSpacingScale("right");
 
     let plot: Rect;
     let catScale: CategoryScale;
@@ -3113,39 +3189,45 @@ export class FacetViz {
       const leftReserve =
         LAYOUT.tickLength +
         8 +
+        axisLabelOffset(yOpts0) +
         this.valueLabelWidth(
           aggSeries.filter((s) => onAxis(s, 0)),
           yOpts0,
         ) +
         (yOpts0.title?.text && yOpts0.title.enabled !== false
           ? 18 +
-            Math.max(0, (yOpts0.title.margin ?? 8) - 8) +
+            ((yOpts0.title.margin ?? 8 * leftSpacingScale) - 8) +
             Math.max(0, yOpts0.title.offset ?? 0)
           : 0);
       const rightReserve = hasSecondary
         ? LAYOUT.tickLength +
           8 +
+          axisLabelOffset(yOpts1) +
           this.valueLabelWidth(secondary, yOpts1) +
           (yOpts1.title?.text && yOpts1.title.enabled !== false
             ? 18 +
-              Math.max(0, (yOpts1.title.margin ?? 8) - 8) +
+              ((yOpts1.title.margin ?? 8 * rightSpacingScale) - 8) +
               Math.max(0, yOpts1.title.offset ?? 0)
             : 0)
         : 8;
       const bottomReserve = catVisible
         ? LAYOUT.tickLength +
+          catLabelOffset +
           (split ? 1 : dims.length) * rowH +
           12 +
           rotExtra +
           (xOpts.title?.text && xOpts.title.enabled !== false
             ? 22 +
-              Math.max(0, (xOpts.title.margin ?? 14) - 14) +
+              ((xOpts.title.margin ?? 14 * bottomSpacingScale) - 14) +
               Math.max(0, xOpts.title.offset ?? 0)
             : 0)
         : 6;
       const topReserve =
         catVisible && split
-          ? LAYOUT.tickLength + (dims.length - 1) * rowH + 8
+          ? LAYOUT.tickLength +
+            catLabelOffset +
+            (dims.length - 1) * rowH +
+            8
           : 6;
       plot = {
         x: outer.x + leftReserve,
@@ -3175,6 +3257,7 @@ export class FacetViz {
         renderer: this.renderer,
         scale: valScale0,
         position: "left",
+        spacingScale: this.chromeSpacingScale("left"),
         plot,
         options: yOpts0,
         grid: true,
@@ -3185,6 +3268,7 @@ export class FacetViz {
           renderer: this.renderer,
           scale: valScale1,
           position: "right",
+          spacingScale: this.chromeSpacingScale("right"),
           plot,
           options: yOpts1,
           grid: false,
@@ -3199,6 +3283,7 @@ export class FacetViz {
           leaves,
           keys,
           position: split ? "split" : "bottom",
+          spacingScale: this.chromeSpacingScale("bottom"),
           labels: xOpts.labels,
           title: xOpts.title,
           lineColor: xOpts.lineColor,
@@ -3219,20 +3304,25 @@ export class FacetViz {
       const leftReserve = catVisible
         ? LAYOUT.tickLength +
           8 +
+          catLabelOffset +
           (split ? innerW : totalW) +
           (xOpts.title?.text && xOpts.title.enabled !== false
             ? 22 +
-              Math.max(0, (xOpts.title.margin ?? 14) - 14) +
+              ((xOpts.title.margin ?? 16 * leftSpacingScale) - 14) +
               Math.max(0, xOpts.title.offset ?? 0)
             : 0)
         : 6;
       const rightReserve =
-        catVisible && split ? LAYOUT.tickLength + 8 + outerW : 8;
+        catVisible && split
+          ? LAYOUT.tickLength + 8 + catLabelOffset + outerW
+          : 8;
       const bottomReserve =
         LAYOUT.defaultBottomAxisHeight +
+        axisLabelOffset(yOpts0) +
         (yOpts0.title?.text && yOpts0.title.enabled !== false
           ? 32 +
-            Math.max(0, (yOpts0.title.margin ?? 14) - 14) +
+            ((yOpts0.title.margin ??
+              LAYOUT.axisTitleGap * bottomSpacingScale) - 14) +
             Math.max(0, yOpts0.title.offset ?? 0)
           : 0);
       const topReserve = 6;
@@ -3261,6 +3351,7 @@ export class FacetViz {
         renderer: this.renderer,
         scale: valScale0,
         position: "bottom",
+        spacingScale: this.chromeSpacingScale("bottom"),
         plot,
         options: yOpts0,
         grid: true,
@@ -3275,6 +3366,7 @@ export class FacetViz {
           keys,
           position: split ? "split" : "bottom",
           vertical: true,
+          spacingScale: this.chromeSpacingScale("left"),
           labels: xOpts.labels,
           title: xOpts.title,
           lineColor: xOpts.lineColor,
@@ -3367,7 +3459,9 @@ export class FacetViz {
     maxVal = yOpts.max ?? (maxVal || 1);
 
     // Reserve: bottom for the two value axes, a central gutter for category names.
-    const bottomReserve = LAYOUT.defaultBottomAxisHeight;
+    const bottomReserve =
+      LAYOUT.defaultBottomAxisHeight +
+      axisLabelOffset(yOpts);
     const gutter = 84;
     const plot: Rect = {
       x: outer.x,
@@ -3403,6 +3497,7 @@ export class FacetViz {
       renderer: this.renderer,
       scale: leftVal,
       position: "bottom",
+      spacingScale: this.chromeSpacingScale("bottom"),
       grid: false,
       plot: { x: plot.x, y: plot.y, width: halfW, height: plot.height },
       options: { ...yOpts, title: undefined },
@@ -3412,6 +3507,7 @@ export class FacetViz {
       renderer: this.renderer,
       scale: rightVal,
       position: "bottom",
+      spacingScale: this.chromeSpacingScale("bottom"),
       grid: false,
       plot: { x: rightZeroX, y: plot.y, width: halfW, height: plot.height },
       options: { ...yOpts, title: undefined },
@@ -4160,23 +4256,35 @@ export class FacetViz {
     opts: AxisOptions,
     domain: [number, number],
     range: [number, number],
+    padDomain = true,
   ): Scale {
-    const min = opts.min ?? domain[0];
-    const max = opts.max ?? domain[1];
-    if (opts.type === "log")
+    let min = opts.min ?? domain[0];
+    let max = opts.max ?? domain[1];
+    if (opts.type === "log") {
+      // A logarithmic axis needs multiplicative padding so its lower bound
+      // remains positive. Explicit bounds continue to opt out independently.
+      if (padDomain && opts.min === undefined)
+        min /= 1 + VALUE_DOMAIN_PADDING;
+      if (padDomain && opts.max === undefined)
+        max *= 1 + VALUE_DOMAIN_PADDING;
       return new LogScale({
         domain: [min, max],
         range,
         reversed: opts.reversed,
       });
-    // Fewer ticks on a short/cramped axis — the default of 6 was sized for a
-    // full-width chart, not a small card, and produces label clutter there.
-    const span = Math.abs(range[1] - range[0]);
-    const tickCount = opts.tickCount ?? (span < 100 ? 3 : span < 200 ? 4 : 6);
+    }
+
+    if (padDomain) {
+      const domainSpan = max - min || Math.abs(max) || Math.abs(min) || 1;
+      const padding = domainSpan * VALUE_DOMAIN_PADDING;
+      if (opts.min === undefined) min -= padding;
+      if (opts.max === undefined) max += padding;
+    }
+
     return new LinearScale({
       domain: [min, max],
       range,
-      tickCount,
+      tickCount: opts.tickCount ?? 4,
       reversed: opts.reversed,
       nice: opts.min === undefined && opts.max === undefined,
     });

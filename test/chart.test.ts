@@ -19,6 +19,21 @@ describe('FacetViz rendering', () => {
     expect(el.querySelectorAll('.facet-column .facet-point').length).toBe(2);
   });
 
+  it('adds breathing room beyond automatic y-axis data extrema', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { type: 'line', animation: false },
+      xAxis: { categories: ['Low', 'High'] },
+      series: [{ data: [-10, 10] }],
+    });
+
+    const ticks = [...el.querySelectorAll('.facet-axis-left text')]
+      .map((node) => Number(node.textContent))
+      .filter(Number.isFinite);
+    expect(Math.min(...ticks)).toBeLessThan(-10);
+    expect(Math.max(...ticks)).toBeGreaterThan(10);
+  });
+
   it('uses document-unique clip paths when multiple charts are rendered', () => {
     const first = container();
     const second = container();

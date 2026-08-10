@@ -20,6 +20,10 @@ describe('LinearScale', () => {
     expect(s.scale(9)).toBe(80);
     expect(s.ticks().every((tick) => tick >= 1 && tick <= 9)).toBe(true);
   });
+  it('defaults to approximately four ticks', () => {
+    const s = new LinearScale({ domain: [0, 30], range: [0, 100] });
+    expect(s.ticks()).toEqual([0, 10, 20, 30]);
+  });
 });
 
 describe('CategoryScale', () => {

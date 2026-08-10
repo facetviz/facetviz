@@ -105,8 +105,12 @@ if (requestedTheme) {
   const item = fixture('line', {
     chart: { width: 218, height: 178, responsive: true },
     title: { text: 'Compact' },
-    xAxis: { categories },
-    series: [{ name: 'Trend', data: lineData }],
+    xAxis: { categories, title: { text: 'Month' } },
+    yAxis: { title: { text: 'Value' } },
+    series: [
+      { name: 'Actual', data: lineData },
+      { name: 'Plan', data: lineData.map((value) => value + 1) },
+    ],
   });
   mount('responsive', 'responsive 218 × 178', item, 'compact');
 } else if (mode === 'update') {

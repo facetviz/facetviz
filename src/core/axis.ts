@@ -25,6 +25,8 @@ export interface AxisConfig {
   options: AxisOptions;
   /** Draw gridlines spanning the plot area. */
   grid?: boolean;
+  /** Scale applied to default outward chrome gaps on constrained charts. */
+  spacingScale?: number;
 }
 
 /**
@@ -82,6 +84,13 @@ export class Axis {
 
   private get horizontal(): boolean {
     return this.cfg.position === 'bottom' || this.cfg.position === 'top';
+  }
+
+  private get labelOffset(): number {
+    const value = this.cfg.options.labels?.offset;
+    return typeof value === 'number' && Number.isFinite(value)
+      ? Math.max(0, value)
+      : 0;
   }
 
   render(parent: SVGGElement): void {
@@ -495,6 +504,7 @@ export class Axis {
     const text = this.fitLabel(rawText, style);
     if (text === undefined) return;
     const rotation = resolvedRotation ?? options.labels?.rotation ?? 0;
+    const offset = this.labelOffset;
     let x = 0;
     let y = 0;
     let anchor = 'middle';
@@ -505,23 +515,28 @@ export class Axis {
         x = pos;
         // Rotated labels pivot from a point right below the tick; unrotated ones
         // hang from their top edge.
-        y = plot.y + plot.height + LAYOUT.tickLength + (rotation ? 8 : 7);
+        y =
+          plot.y +
+          plot.height +
+          LAYOUT.tickLength +
+          (rotation ? 8 : 7) +
+          offset;
         baseline = rotation ? 'middle' : 'hanging';
         // Anchor the tick-side end of the label at the tick so it reads cleanly.
         anchor = rotation ? (rotation < 0 ? 'end' : 'start') : 'middle';
         break;
       case 'top':
         x = pos;
-        y = plot.y - LAYOUT.tickLength - (rotation ? 8 : 6);
+        y = plot.y - LAYOUT.tickLength - (rotation ? 8 : 6) - offset;
         anchor = rotation ? (rotation < 0 ? 'start' : 'end') : 'middle';
         break;
       case 'left':
-        x = plot.x - LAYOUT.tickLength - 4;
+        x = plot.x - LAYOUT.tickLength - 4 - offset;
         y = pos;
         anchor = 'end';
         break;
       case 'right':
-        x = plot.x + plot.width + LAYOUT.tickLength + 4;
+        x = plot.x + plot.width + LAYOUT.tickLength + 4 + offset;
         y = pos;
         anchor = 'start';
         break;
@@ -544,8 +559,12 @@ export class Axis {
     // Place the title just beyond the tick labels so the two never overlap,
     // regardless of how wide/tall the labels are.
     const labelsEnabled = this.cfg.options.labels?.enabled !== false;
-    const gap = labelsEnabled ? this.labelExtent() : 0;
-    const margin = this.cfg.options.title?.margin ?? (this.horizontal ? LAYOUT.axisTitleGap : 8);
+    const gap = labelsEnabled
+      ? this.labelExtent() + this.labelOffset
+      : 0;
+    const defaultMargin = (this.horizontal ? LAYOUT.axisTitleGap : 8) *
+      (this.cfg.spacingScale ?? 1);
+    const margin = this.cfg.options.title?.margin ?? defaultMargin;
     const offset = this.cfg.options.title?.offset ?? 0;
     const align = this.cfg.options.title?.align ?? "center";
     const along = align === "start" ? 0 : align === "end" ? 1 : 0.5;

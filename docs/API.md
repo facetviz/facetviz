@@ -65,7 +65,7 @@ The root object passed to `new FacetViz(container, options)`.
 | `polarGridLineMode`         | `'spoke' \| 'sector'`              | `'spoke'`        | Draw angular grid lines through category centres or along sector boundaries.                                      |
 | `colors`                    | `string[]`                         | –                | Alias of top-level `colors`.                                                                                      |
 | `events`                    | [`ChartEvents`](#events)           | –                | Chart-level `load` / `render` / `click` callbacks.                                                                |
-| `responsive`                | `boolean`                          | `true`           | Hide data labels below a 180 px short side and axis lines below 110 px; `false` disables this automatic simplification. |
+| `responsive`                | `boolean`                          | `true`           | Compact default axis-title/legend gaps on constrained charts, hide data labels below a 180 px short side, and hide axis lines below 110 px; explicit margins stay fixed and `false` disables automatic simplification. |
 
 > The chart is **responsive**: the SVG scales down (`max-width: 100%`) to never
 > overflow its parent, even when an explicit `width` is larger than the container.
@@ -102,7 +102,7 @@ Applies to both `xAxis` and `yAxis`. A **category axis** is used when
 | `title`                  | [`AxisTitleOptions`](#axis-titles)              | –            | Axis title and its placement.                                                                                                                      |
 | `min`                    | `number`                                        | data min     | Force the axis minimum (value axes).                                                                                                               |
 | `max`                    | `number`                                        | data max     | Force the axis maximum (value axes).                                                                                                               |
-| `tickCount`              | `number`                                        | auto         | Approximate number of ticks (linear axes).                                                                                                         |
+| `tickCount`              | `number`                                        | `4`          | Approximate number of ticks (linear axes).                                                                                                         |
 | `labels`                 | [`AxisLabelOptions`](#axis-labels)              | enabled      | Tick label config.                                                                                                                                 |
 | `gridLineWidth`          | `number`                                        | `1`          | Major grid line thickness (value axis). `0` hides major grid lines.                                                                                |
 | `gridLineColor`          | `string`                                        | `'#e6e6e6'`  | Major grid line colour.                                                                                                                            |
@@ -137,7 +137,7 @@ Applies to both `xAxis` and `yAxis`. A **category axis** is used when
 | `maxWidth`     | `number`                | –            | Maximum measured label width in pixels.                                                                                                                             |
 | `overflow`     | `'ellipsis' \| 'hide'`  | `'ellipsis'` | Truncate or hide labels wider than `maxWidth`.                                                                                                                      |
 | `position`     | `'outer' \| 'inner'`    | `'outer'`    | Non-inverted polar x-axis: place labels outside the plot or curve them around the centre-hole radius.                                                               |
-| `offset`       | `number`                | contextual   | Polar x-axis label gap: 7 for inner, 10 for outer, and 6 beside an inverted radial axis.                                                                            |
+| `offset`       | `number`                | contextual   | Gap from the axis line. Cartesian default is `0`; polar x-axis defaults are 7 for inner, 10 for outer, and 6 beside an inverted radial axis.                         |
 | `style`        | `Record<string,string>` | –            | Extra text attributes.                                                                                                                                              |
 
 ### Axis titles
@@ -569,13 +569,24 @@ The helpers are exported for standalone use:
 
 ## LegendOptions
 
-| Key             | Type                            | Default        | Description                                                            |
-| --------------- | ------------------------------- | -------------- | ---------------------------------------------------------------------- |
-| `enabled`       | `boolean`                       | `true`         | Show the legend.                                                       |
-| `layout`        | `'horizontal' \| 'vertical'`    | `'horizontal'` | `horizontal` → strip at top/bottom; `vertical` → column at left/right. |
-| `verticalAlign` | `'top' \| 'bottom'`             | `'bottom'`     | Placement for a horizontal legend.                                     |
-| `align`         | `'left' \| 'center' \| 'right'` | `'center'`     | Horizontal alignment, or the side for a vertical legend.               |
-| `itemStyle`     | `Record<string,string>`         | –              | Extra item text attributes.                                            |
+| Key             | Type                            | Default        | Description                                                                    |
+| --------------- | ------------------------------- | -------------- | ------------------------------------------------------------------------------ |
+| `enabled`       | `boolean`                       | `true`         | Show the legend.                                                               |
+| `layout`        | `'horizontal' \| 'vertical'`    | `'horizontal'` | `horizontal` → strip at top/bottom; `vertical` → column at left/right.         |
+| `verticalAlign` | `'top' \| 'bottom'`             | `'bottom'`     | Placement for a horizontal legend.                                             |
+| `align`         | `'left' \| 'center' \| 'right'` | `'center'`     | Horizontal alignment, or the side for a vertical legend.                       |
+| `margin`        | `number`                        | contextual     | Gap between the legend and adjacent chart content.                             |
+| `padding`       | `number`                        | `0`            | Padding around the legend items.                                               |
+| `offsetX`       | `number`                        | `0`            | Horizontal translation after layout; does not change reserved space.           |
+| `offsetY`       | `number`                        | `0`            | Vertical translation after layout; does not change reserved space.             |
+| `symbolPadding` | `number`                        | `6`            | Gap between each colour symbol and its label.                                  |
+| `itemGap`       | `number`                        | `18`           | Gap after each item in a horizontal legend.                                    |
+| `rowGap`        | `number`                        | `6`            | Gap between horizontal rows or vertically stacked items.                       |
+| `itemStyle`     | `Record<string,string>`         | –              | Extra item text attributes.                                                    |
+
+The full-size contextual `margin` defaults are `10` for a top legend, `22` for
+a bottom legend, and `8` for a left/right legend. With `chart.responsive` on,
+these defaults taper on constrained charts; an explicit `margin` never tapers.
 
 **Placement matrix**
 

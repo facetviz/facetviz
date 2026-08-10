@@ -299,9 +299,10 @@ export interface AxisLabelOptions {
    */
   position?: "outer" | "inner";
   /**
-   * Polar x-label offset in pixels. Positive values move inner labels toward
-   * the centre, outer labels away from the plot, and inverted radial labels
-   * beside the vertical radius.
+   * Gap from the axis line in pixels. On Cartesian axes, positive values move
+   * labels farther away from the plot. On polar x-axes, positive values move
+   * inner labels toward the centre, outer labels away from the plot, and
+   * inverted radial labels beside the vertical radius.
    */
   offset?: number;
   style?: Record<string, string>;
@@ -322,6 +323,7 @@ export interface AxisOptions {
   min?: number;
   max?: number;
   /** Approximate number of ticks (linear axes). */
+  /** Approximate number of ticks on a linear axis. Default `4`. */
   tickCount?: number;
   labels?: AxisLabelOptions;
   /** SVG dash array for major grid lines, for example `'6 3'`. */
@@ -481,6 +483,20 @@ export interface LegendOptions {
    * a stacked column placed on the left or right (per `align`).
    */
   layout?: "horizontal" | "vertical";
+  /** Gap between the legend and adjacent chart content in pixels. */
+  margin?: number;
+  /** Padding around the legend items in pixels. */
+  padding?: number;
+  /** Horizontal translation applied after the legend is laid out. */
+  offsetX?: number;
+  /** Vertical translation applied after the legend is laid out. */
+  offsetY?: number;
+  /** Gap between the colour symbol and its label. Default `6`. */
+  symbolPadding?: number;
+  /** Gap after each item in a horizontal legend. Default `18`. */
+  itemGap?: number;
+  /** Gap between rows/items. Default `6`. */
+  rowGap?: number;
   itemStyle?: Record<string, string>;
 }
 
@@ -735,9 +751,10 @@ export interface ChartOptions {
     /** Auto re-render when the container resizes (default true). */
     reflow?: boolean;
     /**
-     * Simplify very small charts by hiding data labels and, at the smallest
-     * sizes, axis lines. Default `true`; pass `false` to always render every
-     * configured element regardless of size.
+     * Prioritize the plot on constrained charts by compacting default axis-title
+     * and legend gaps, hiding data labels, and, at the smallest sizes, hiding
+     * axis lines. Explicit margin options are never compacted. Default `true`;
+     * pass `false` to preserve the full-size layout and every configured element.
      */
     responsive?: boolean;
     /**

@@ -133,6 +133,40 @@ describe('configuration validation', () => {
     ]));
   });
 
+  it('validates legend spacing and offsets', () => {
+    const result = validateChartOptions({
+      legend: {
+        margin: -1,
+        padding: Number.NaN,
+        symbolPadding: -2,
+        itemGap: Number.POSITIVE_INFINITY,
+        rowGap: -3,
+        offsetX: 'left',
+        offsetY: Number.NaN,
+      },
+      series: [{ data: [1] }],
+    });
+
+    expect(result.errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'legend.spacing.non_negative',
+        path: 'legend.margin',
+      }),
+      expect.objectContaining({
+        code: 'legend.spacing.non_negative',
+        path: 'legend.padding',
+      }),
+      expect.objectContaining({
+        code: 'legend.offset.number',
+        path: 'legend.offsetX',
+      }),
+      expect.objectContaining({
+        code: 'legend.offset.number',
+        path: 'legend.offsetY',
+      }),
+    ]));
+  });
+
   it('validates specialised statistical, financial, gantt, and gauge data', () => {
     const result = validateChartOptions({
       series: [

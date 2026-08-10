@@ -47,7 +47,7 @@ export class LinearScale implements Scale {
     [this.d0, this.d1] = cfg.domain;
     [this.r0, this.r1] = cfg.reversed ? [cfg.range[1], cfg.range[0]] : cfg.range;
     this.format = cfg.format;
-    this.tickValues = cfg.ticks ?? niceTicks(this.d0, this.d1, cfg.tickCount ?? 6);
+    this.tickValues = cfg.ticks ?? niceTicks(this.d0, this.d1, cfg.tickCount ?? 4);
     // Expand the domain so the outermost ticks sit on the axis ends.
     if (cfg.nice !== false && this.tickValues.length) {
       this.d0 = Math.min(this.d0, this.tickValues[0]);

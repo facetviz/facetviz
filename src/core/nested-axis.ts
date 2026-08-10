@@ -63,6 +63,8 @@ export interface NestedAxisConfig {
    * `top` → right, `split` → innermost at left, outer tiers at right.
    */
   vertical?: boolean;
+  /** Scale applied to default outward chrome gaps on constrained charts. */
+  spacingScale?: number;
 }
 
 interface Segment {
@@ -115,6 +117,15 @@ export class NestedAxis {
 
   private get linesOn(): boolean {
     return this.cfg.lineWidth !== 0;
+  }
+
+  /** Positive values move every label tier away from the axis baseline. */
+  private get labelOffset(): number {
+    if (!this.labelsOn) return 0;
+    const value = this.cfg.labels?.offset;
+    return typeof value === "number" && Number.isFinite(value)
+      ? Math.max(0, value)
+      : 0;
   }
 
   /** No-ops (and returns undefined) when labels are switched off. */
@@ -231,13 +242,15 @@ export class NestedAxis {
         ? plot.x +
           plot.width +
           LAYOUT.tickLength +
+          this.labelOffset +
           extent +
-          (title.margin ?? 16) +
+          (title.margin ?? 16 * (this.cfg.spacingScale ?? 1)) +
           (title.offset ?? 0)
         : plot.x -
           LAYOUT.tickLength -
+          this.labelOffset -
           extent -
-          (title.margin ?? 16) -
+          (title.margin ?? 16 * (this.cfg.spacingScale ?? 1)) -
           (title.offset ?? 0);
       const y = plot.y + plot.height * along;
       const rotation = sideRight ? 90 : -90;
@@ -252,11 +265,12 @@ export class NestedAxis {
     const top = position === "top";
     const tierCount = position === "split" ? 1 : levels;
     const x = plot.x + plot.width * along;
-    const margin = title.margin ?? (top ? 12 : 14);
+    const margin = title.margin ??
+      (top ? 12 : 14) * (this.cfg.spacingScale ?? 1);
     const offset = title.offset ?? 0;
     const y = top
-      ? plot.y - LAYOUT.tickLength - tierCount * 18 - rotExtra - margin - offset
-      : plot.y + plot.height + LAYOUT.tickLength + tierCount * 18 + rotExtra + margin + offset;
+      ? plot.y - LAYOUT.tickLength - this.labelOffset - tierCount * 18 - rotExtra - margin - offset
+      : plot.y + plot.height + LAYOUT.tickLength + this.labelOffset + tierCount * 18 + rotExtra + margin + offset;
     this.cfg.renderer.text(title.text, x, y, style, g);
   }
 
@@ -309,7 +323,9 @@ export class NestedAxis {
     for (let level = levels - 1; level >= 0; level--) {
       const row = levels - 1 - level; // 0 = innermost
       const rotated = row === 0 && rotation;
-      const rowStart = baseY + dir * (LAYOUT.tickLength + rowOffset(row));
+      const rowStart =
+        baseY +
+        dir * (LAYOUT.tickLength + this.labelOffset + rowOffset(row));
       const segments = this.segmentsForLevel(leaves, level);
       const labelY = rowStart + dir * (rotated ? 8 : 12);
       // Only the innermost, unrotated row can overlap from sheer leaf count
@@ -365,7 +381,7 @@ export class NestedAxis {
           x1: bx,
           y1: topExtent,
           x2: bx,
-          y2: bottomY + LAYOUT.tickLength + 20,
+          y2: bottomY + LAYOUT.tickLength + this.labelOffset + 20,
           stroke: color,
           "stroke-width": 1,
         },
@@ -394,7 +410,11 @@ export class NestedAxis {
       g,
     );
     const rotation = this.cfg.labels?.rotation ?? 0;
-    const innerLabelY = bottomY + LAYOUT.tickLength + (rotation ? 8 : 12);
+    const innerLabelY =
+      bottomY +
+      LAYOUT.tickLength +
+      this.labelOffset +
+      (rotation ? 8 : 12);
     const innerSegments = rotation
       ? this.segmentsForLevel(leaves, levels - 1)
       : this.thinnedInnerSegments(scale.bandwidth());
@@ -416,7 +436,12 @@ export class NestedAxis {
     // Outer grouping dimensions on top (outermost furthest up).
     for (let level = levels - 2; level >= 0; level--) {
       const rowFromTop = levels - 2 - level; // 0 = closest to the plot
-      const labelY = plot.y - LAYOUT.tickLength - rowFromTop * rowH - 4;
+      const labelY =
+        plot.y -
+        LAYOUT.tickLength -
+        this.labelOffset -
+        rowFromTop * rowH -
+        4;
       for (const seg of this.segmentsForLevel(leaves, level)) {
         const cx = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2;
         this.text(
@@ -434,7 +459,8 @@ export class NestedAxis {
     }
 
     // Full-height separators between the top-level (outermost) groups.
-    const topExtent = plot.y - LAYOUT.tickLength - (levels - 1) * rowH;
+    const topExtent =
+      plot.y - LAYOUT.tickLength - this.labelOffset - (levels - 1) * rowH;
     const outer = this.segmentsForLevel(leaves, 0);
     for (let s = 1; s < outer.length; s++) {
       const bx = leafCenter(outer[s].startLeaf) - bandHalf;
@@ -443,7 +469,7 @@ export class NestedAxis {
           x1: bx,
           y1: topExtent,
           x2: bx,
-          y2: bottomY + LAYOUT.tickLength + 20,
+          y2: bottomY + LAYOUT.tickLength + this.labelOffset + 20,
           stroke: color,
           "stroke-width": 1,
         },
@@ -477,7 +503,8 @@ export class NestedAxis {
     let offset = 0;
     for (let level = levels - 1; level >= 0; level--) {
       const w = colWidths[level];
-      const colStart = baseX + dir * (LAYOUT.tickLength + offset);
+      const colStart =
+        baseX + dir * (LAYOUT.tickLength + this.labelOffset + offset);
       const segments = this.segmentsForLevel(leaves, level);
       const labelX = colStart + dir * (w / 2);
 
@@ -519,7 +546,8 @@ export class NestedAxis {
     // gutter (axis boundary to the far edge of the label columns), not
     // spanning across the plot itself; a full-width line there reads as an
     // oversized underline slicing through the bars rather than a label divider.
-    const farEdge = baseX + dir * (LAYOUT.tickLength + offset);
+    const farEdge =
+      baseX + dir * (LAYOUT.tickLength + this.labelOffset + offset);
     const outer = this.segmentsForLevel(leaves, 0);
     for (let s = 1; s < outer.length; s++) {
       const by = leafCenter(outer[s].startLeaf) - bandHalf;
@@ -555,7 +583,7 @@ export class NestedAxis {
       const cy = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2 + 4;
       this.text(
         seg.label,
-        plot.x - LAYOUT.tickLength - innerW / 2,
+        plot.x - LAYOUT.tickLength - this.labelOffset - innerW / 2,
         cy,
         { "text-anchor": "middle", ...FONTS.axisLabel },
         g,
@@ -566,7 +594,8 @@ export class NestedAxis {
     let offset = 0;
     for (let level = levels - 2; level >= 0; level--) {
       const w = colWidths[level];
-      const labelX = rightX + LAYOUT.tickLength + offset + w / 2;
+      const labelX =
+        rightX + LAYOUT.tickLength + this.labelOffset + offset + w / 2;
       for (const seg of this.segmentsForLevel(leaves, level)) {
         const cy = (leafCenter(seg.startLeaf) + leafCenter(seg.endLeaf)) / 2 + 4;
         this.text(
@@ -585,8 +614,10 @@ export class NestedAxis {
     }
 
     // Full-width separators between the outermost (rightmost) groups.
-    const leftExtent = plot.x - LAYOUT.tickLength - innerW;
-    const rightExtent = rightX + LAYOUT.tickLength + offset;
+    const leftExtent =
+      plot.x - LAYOUT.tickLength - this.labelOffset - innerW;
+    const rightExtent =
+      rightX + LAYOUT.tickLength + this.labelOffset + offset;
     const outer = this.segmentsForLevel(leaves, 0);
     for (let s = 1; s < outer.length; s++) {
       const by = leafCenter(outer[s].startLeaf) - bandHalf;

@@ -33,18 +33,44 @@ export interface LegendConfig {
 }
 
 const SWATCH = 12;
-const LABEL_GAP = 6;
-const ITEM_GAP = 18;
-const ROW_GAP = 6;
+const DEFAULT_SYMBOL_PADDING = 6;
+const DEFAULT_ITEM_GAP = 18;
+const DEFAULT_ROW_GAP = 6;
 /**
- * Vertical padding reserved around a horizontal (top/bottom) legend block.
- * Exported so the chart can align its own gap to a top-placed legend's
- * *trailing* edge (see FacetViz#render) with the same constant that sizes
- * the block's reserve here, instead of two independent magic numbers
- * drifting apart.
+ * The legacy legend layout used different content-side gaps for each
+ * placement. Keep those values as contextual defaults while allowing callers
+ * to replace them with `legend.margin`.
  */
-export const HORIZONTAL_LEGEND_PADDING = 22;
+const DEFAULT_TOP_MARGIN = 10;
+const DEFAULT_BOTTOM_MARGIN = 22;
+const DEFAULT_SIDE_MARGIN = 8;
+/** Fixed leading inset that preserves the established top-legend baseline. */
+export const TOP_LEGEND_INSET = 12;
 const CHAR_WIDTH_RATIO = 0.6;
+
+export type LegendPlacement = 'top' | 'bottom' | 'left' | 'right';
+
+const nonNegative = (value: number | undefined, fallback: number): number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? value
+    : fallback;
+
+export const legendPadding = (options: LegendOptions): number =>
+  nonNegative(options.padding, 0);
+
+export const legendMargin = (
+  options: LegendOptions,
+  placement: LegendPlacement,
+  spacingScale = 1,
+): number =>
+  nonNegative(
+    options.margin,
+    (placement === 'top'
+      ? DEFAULT_TOP_MARGIN
+      : placement === 'bottom'
+        ? DEFAULT_BOTTOM_MARGIN
+        : DEFAULT_SIDE_MARGIN) * spacingScale,
+  );
 
 interface LegendMetrics {
   charWidth: number;
@@ -62,7 +88,7 @@ export class Legend {
     return {
       charWidth: fontSize * CHAR_WIDTH_RATIO,
       lineHeight,
-      rowHeight: lineHeight + ROW_GAP,
+      rowHeight: lineHeight + nonNegative(options.rowGap, DEFAULT_ROW_GAP),
     };
   }
 
@@ -71,8 +97,13 @@ export class Legend {
     options: LegendOptions,
   ): number[] {
     const { charWidth } = Legend.metrics(options);
+    const symbolPadding = nonNegative(
+      options.symbolPadding,
+      DEFAULT_SYMBOL_PADDING,
+    );
+    const itemGap = nonNegative(options.itemGap, DEFAULT_ITEM_GAP);
     return items.map(
-      (it) => SWATCH + LABEL_GAP + it.label.length * charWidth + ITEM_GAP,
+      (it) => SWATCH + symbolPadding + it.label.length * charWidth + itemGap,
     );
   }
 
@@ -99,16 +130,35 @@ export class Legend {
     items: LegendItem[],
     width: number,
     options: LegendOptions,
+    placement: LegendPlacement,
+    spacingScale = 1,
   ): number {
-    return HORIZONTAL_LEGEND_PADDING +
-      Legend.rows(items, width, options).length * Legend.metrics(options).rowHeight;
+    const padding = legendPadding(options);
+    const contentWidth = Math.max(0, width - padding * 2);
+    const inset = placement === 'top' ? TOP_LEGEND_INSET : 0;
+    return inset +
+      legendMargin(options, placement, spacingScale) +
+      padding * 2 +
+      Legend.rows(items, contentWidth, options).length *
+        Legend.metrics(options).rowHeight;
   }
 
   /** Estimated width of a vertical legend column (for space reservation). */
-  static verticalWidth(items: LegendItem[], options: LegendOptions): number {
+  static verticalWidth(
+    items: LegendItem[],
+    options: LegendOptions,
+    placement: LegendPlacement,
+    spacingScale = 1,
+  ): number {
     const longest = items.reduce((m, it) => Math.max(m, it.label.length), 0);
-    return SWATCH + LABEL_GAP +
-      longest * Legend.metrics(options).charWidth + 8;
+    const symbolPadding = nonNegative(
+      options.symbolPadding,
+      DEFAULT_SYMBOL_PADDING,
+    );
+    return SWATCH + symbolPadding +
+      longest * Legend.metrics(options).charWidth +
+      legendPadding(options) * 2 +
+      legendMargin(options, placement, spacingScale);
   }
 
   render(parent: SVGGElement): void {
@@ -121,6 +171,10 @@ export class Legend {
   private drawItem(g: SVGGElement, it: LegendItem, index: number, x: number, y: number): void {
     const { renderer, onToggle } = this.cfg;
     const itemStyle = sanitizeStyle(this.cfg.options.itemStyle);
+    const symbolPadding = nonNegative(
+      this.cfg.options.symbolPadding,
+      DEFAULT_SYMBOL_PADDING,
+    );
     const { lineHeight } = Legend.metrics(this.cfg.options);
     const visibleFill = itemStyle.fill ?? FONTS.legend.fill;
     const visibleTextDecoration = itemStyle['text-decoration'] ?? 'none';
@@ -130,7 +184,7 @@ export class Legend {
       x, y: centerY - SWATCH / 2, width: SWATCH, height: SWATCH, rx: 2,
       fill: it.visible ? it.color : THEME.legend.hiddenColor,
     }, item);
-    const label = renderer.text(it.label, x + SWATCH + LABEL_GAP, centerY, {
+    const label = renderer.text(it.label, x + SWATCH + symbolPadding, centerY, {
       ...FONTS.legend,
       ...itemStyle,
       fill: it.visible ? visibleFill : THEME.legend.hiddenColor,
@@ -143,18 +197,22 @@ export class Legend {
 
   private renderHorizontal(g: SVGGElement): void {
     const { items, options, width, x: originX, y } = this.cfg;
+    const padding = legendPadding(options);
+    const contentWidth = Math.max(0, width - padding * 2);
     const widths = Legend.itemWidths(items, options);
-    const rows = Legend.rows(items, width, options);
+    const rows = Legend.rows(items, contentWidth, options);
     const { rowHeight } = Legend.metrics(options);
 
     rows.forEach((row, r) => {
       const totalW = row.reduce((s, i) => s + widths[i], 0);
-      let startX = originX;
-      if (options.align === 'right') startX = originX + width - totalW;
-      else if (options.align !== 'left') startX = originX + (width - totalW) / 2;
+      let startX = originX + padding;
+      if (options.align === 'right')
+        startX = originX + padding + contentWidth - totalW;
+      else if (options.align !== 'left')
+        startX = originX + padding + (contentWidth - totalW) / 2;
 
       let cx = startX;
-      const rowY = y + r * rowHeight;
+      const rowY = y + padding + r * rowHeight;
       for (const i of row) {
         this.drawItem(g, items[i], i, cx, rowY);
         cx += widths[i];
@@ -164,7 +222,10 @@ export class Legend {
 
   private renderVertical(g: SVGGElement): void {
     const { items, options, x, y } = this.cfg;
+    const padding = legendPadding(options);
     const { rowHeight } = Legend.metrics(options);
-    items.forEach((it, i) => this.drawItem(g, it, i, x, y + i * rowHeight));
+    items.forEach((it, i) =>
+      this.drawItem(g, it, i, x + padding, y + padding + i * rowHeight),
+    );
   }
 }
