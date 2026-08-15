@@ -682,6 +682,44 @@ describe('configuration option wiring', () => {
     ).toBe(28);
   });
 
+  it('draws a separator at every horizontal nested-axis category boundary', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { ...baseChart, type: 'column' },
+      xAxis: {
+        dimensions: ['product', 'category', 'city'],
+        lineColor: '#123456',
+      },
+      series: [{
+        data: [
+          { y: 2, product: 'Bread', category: 'Beverages', city: 'Chennai' },
+          { y: 3, product: 'Bread', category: 'Beverages', city: 'Bengaluru' },
+          { y: 4, product: 'Bread', category: 'Grocery', city: 'Chennai' },
+          { y: 5, product: 'Eggs', category: 'Grocery', city: 'Chennai' },
+        ],
+      }],
+    });
+
+    const separators = [...el.querySelectorAll<SVGLineElement>(
+      '.facet-axis-nested .facet-nested-category-separator',
+    )];
+    expect(separators).toHaveLength(3);
+    expect(separators.every((line) =>
+      line.getAttribute('x1') === line.getAttribute('x2') &&
+      line.getAttribute('stroke') === '#123456'
+    )).toBe(true);
+
+    // A leaf-only boundary crosses the innermost row, a category boundary
+    // reaches the next row, and an outer-group boundary spans the plot.
+    const extents = separators
+      .map((line) => Math.abs(
+        Number(line.getAttribute('y2')) - Number(line.getAttribute('y1')),
+      ))
+      .sort((a, b) => a - b);
+    expect(extents[0]).toBeLessThan(extents[1]);
+    expect(extents[1]).toBeLessThan(extents[2]);
+  });
+
   it('renders configurable dashed major and minor grid lines', () => {
     const el = container();
     new FacetViz(el, {

@@ -314,6 +314,28 @@ export class NestedAxis {
     const leafCenter = (i: number) => scale.scale(keys[i]);
     const bandHalf = scale.fullStep() / 2;
     const bottomY = plot.y + plot.height;
+    const outer = this.segmentsForLevel(leaves, 0);
+    const outerBoundaries = new Set(
+      outer.slice(1).map((segment) => segment.startLeaf),
+    );
+
+    // Every leaf needs a cell boundary, even when two adjacent leaves share
+    // all of their parent dimension values. Parent changes extend that same
+    // boundary through the corresponding outer label rows; top-level changes
+    // are drawn separately below because they span the plot as well.
+    const boundaryRows = new Map<number, number>();
+    for (let leaf = 1; leaf < leaves.length; leaf++) boundaryRows.set(leaf, 0);
+    for (let level = levels - 2; level > 0; level--) {
+      const row = levels - 1 - level;
+      for (const segment of this.segmentsForLevel(leaves, level).slice(1)) {
+        if (!outerBoundaries.has(segment.startLeaf)) {
+          boundaryRows.set(
+            segment.startLeaf,
+            Math.max(boundaryRows.get(segment.startLeaf) ?? 0, row),
+          );
+        }
+      }
+    }
 
     this.line(
       { x1: plot.x, y1: baseY, x2: plot.x + plot.width, y2: baseY, stroke: color },
@@ -353,27 +375,33 @@ export class NestedAxis {
         if (rotated && el) el.setAttribute("transform", `rotate(${rotation} ${cx} ${labelY})`);
       }
 
-      if (level < levels - 1) {
-        for (let s = 1; s < segments.length; s++) {
-          const bx = leafCenter(segments[s].startLeaf) - bandHalf;
-          this.line(
-            {
-              x1: bx,
-              y1: baseY,
-              x2: bx,
-              y2: rowStart + dir * rowHeight(row),
-              stroke: color,
-              "stroke-width": 1,
-            },
-            g,
-          );
-        }
-      }
+    }
+
+    for (const [leaf, row] of boundaryRows) {
+      if (outerBoundaries.has(leaf)) continue;
+      const bx = leafCenter(leaf) - bandHalf;
+      this.line(
+        {
+          x1: bx,
+          y1: baseY,
+          x2: bx,
+          y2:
+            baseY +
+            dir *
+              (LAYOUT.tickLength +
+                this.labelOffset +
+                rowOffset(row) +
+                rowHeight(row)),
+          stroke: color,
+          "stroke-width": 1,
+          class: "facet-nested-category-separator",
+        },
+        g,
+      );
     }
 
     // Full-height separators between the top-level groups.
     const topExtent = plot.y;
-    const outer = this.segmentsForLevel(leaves, 0);
     for (let s = 1; s < outer.length; s++) {
       const bx = leafCenter(outer[s].startLeaf) - bandHalf;
       this.line(
@@ -384,6 +412,8 @@ export class NestedAxis {
           y2: bottomY + LAYOUT.tickLength + this.labelOffset + 20,
           stroke: color,
           "stroke-width": 1,
+          class:
+            "facet-nested-category-separator facet-nested-group-separator",
         },
         g,
       );
@@ -433,6 +463,27 @@ export class NestedAxis {
       if (rotation && el) el.setAttribute("transform", `rotate(${rotation} ${cx} ${innerLabelY})`);
     }
 
+    const outer = this.segmentsForLevel(leaves, 0);
+    const outerBoundaries = new Set(
+      outer.slice(1).map((segment) => segment.startLeaf),
+    );
+    for (let leaf = 1; leaf < leaves.length; leaf++) {
+      if (outerBoundaries.has(leaf)) continue;
+      const bx = leafCenter(leaf) - bandHalf;
+      this.line(
+        {
+          x1: bx,
+          y1: bottomY,
+          x2: bx,
+          y2: bottomY + LAYOUT.tickLength + this.labelOffset + 20,
+          stroke: color,
+          "stroke-width": 1,
+          class: "facet-nested-category-separator",
+        },
+        g,
+      );
+    }
+
     // Outer grouping dimensions on top (outermost furthest up).
     for (let level = levels - 2; level >= 0; level--) {
       const rowFromTop = levels - 2 - level; // 0 = closest to the plot
@@ -461,7 +512,6 @@ export class NestedAxis {
     // Full-height separators between the top-level (outermost) groups.
     const topExtent =
       plot.y - LAYOUT.tickLength - this.labelOffset - (levels - 1) * rowH;
-    const outer = this.segmentsForLevel(leaves, 0);
     for (let s = 1; s < outer.length; s++) {
       const bx = leafCenter(outer[s].startLeaf) - bandHalf;
       this.line(
@@ -472,6 +522,8 @@ export class NestedAxis {
           y2: bottomY + LAYOUT.tickLength + this.labelOffset + 20,
           stroke: color,
           "stroke-width": 1,
+          class:
+            "facet-nested-category-separator facet-nested-group-separator",
         },
         g,
       );

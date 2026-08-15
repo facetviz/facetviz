@@ -559,7 +559,6 @@ function drawMarker(renderer, parent, cx, cy, spec) {
         parent
       );
     }
-    case "circle":
     default:
       return renderer.create("circle", { cx, cy, r, ...common }, parent);
   }
@@ -3597,7 +3596,18 @@ var NestedAxis = class {
       let sum2 = 0;
       for (let r = 0; r < row; r++) sum2 += rowHeight(r);
       return sum2;
-    }, leafCenter = (i) => scale.scale(keys[i]), bandHalf = scale.fullStep() / 2, bottomY = plot.y + plot.height;
+    }, leafCenter = (i) => scale.scale(keys[i]), bandHalf = scale.fullStep() / 2, bottomY = plot.y + plot.height, outer = this.segmentsForLevel(leaves, 0), outerBoundaries = new Set(
+      outer.slice(1).map((segment) => segment.startLeaf)
+    ), boundaryRows = /* @__PURE__ */ new Map();
+    for (let leaf = 1; leaf < leaves.length; leaf++) boundaryRows.set(leaf, 0);
+    for (let level = levels - 2; level > 0; level--) {
+      let row = levels - 1 - level;
+      for (let segment of this.segmentsForLevel(leaves, level).slice(1))
+        outerBoundaries.has(segment.startLeaf) || boundaryRows.set(
+          segment.startLeaf,
+          Math.max(boundaryRows.get(segment.startLeaf) ?? 0, row)
+        );
+    }
     this.line(
       { x1: plot.x, y1: baseY, x2: plot.x + plot.width, y2: baseY, stroke: color },
       g
@@ -3618,23 +3628,24 @@ var NestedAxis = class {
         );
         rotated && el && el.setAttribute("transform", `rotate(${rotation} ${cx} ${labelY})`);
       }
-      if (level < levels - 1)
-        for (let s = 1; s < segments.length; s++) {
-          let bx = leafCenter(segments[s].startLeaf) - bandHalf;
-          this.line(
-            {
-              x1: bx,
-              y1: baseY,
-              x2: bx,
-              y2: rowStart + dir * rowHeight(row),
-              stroke: color,
-              "stroke-width": 1
-            },
-            g
-          );
-        }
     }
-    let topExtent = plot.y, outer = this.segmentsForLevel(leaves, 0);
+    for (let [leaf, row] of boundaryRows) {
+      if (outerBoundaries.has(leaf)) continue;
+      let bx = leafCenter(leaf) - bandHalf;
+      this.line(
+        {
+          x1: bx,
+          y1: baseY,
+          x2: bx,
+          y2: baseY + dir * (LAYOUT.tickLength + this.labelOffset + rowOffset(row) + rowHeight(row)),
+          stroke: color,
+          "stroke-width": 1,
+          class: "facet-nested-category-separator"
+        },
+        g
+      );
+    }
+    let topExtent = plot.y;
     for (let s = 1; s < outer.length; s++) {
       let bx = leafCenter(outer[s].startLeaf) - bandHalf;
       this.line(
@@ -3644,7 +3655,8 @@ var NestedAxis = class {
           x2: bx,
           y2: bottomY + LAYOUT.tickLength + this.labelOffset + 20,
           stroke: color,
-          "stroke-width": 1
+          "stroke-width": 1,
+          class: "facet-nested-category-separator facet-nested-group-separator"
         },
         g
       );
@@ -3675,6 +3687,25 @@ var NestedAxis = class {
       );
       rotation && el && el.setAttribute("transform", `rotate(${rotation} ${cx} ${innerLabelY})`);
     }
+    let outer = this.segmentsForLevel(leaves, 0), outerBoundaries = new Set(
+      outer.slice(1).map((segment) => segment.startLeaf)
+    );
+    for (let leaf = 1; leaf < leaves.length; leaf++) {
+      if (outerBoundaries.has(leaf)) continue;
+      let bx = leafCenter(leaf) - bandHalf;
+      this.line(
+        {
+          x1: bx,
+          y1: bottomY,
+          x2: bx,
+          y2: bottomY + LAYOUT.tickLength + this.labelOffset + 20,
+          stroke: color,
+          "stroke-width": 1,
+          class: "facet-nested-category-separator"
+        },
+        g
+      );
+    }
     for (let level = levels - 2; level >= 0; level--) {
       let rowFromTop = levels - 2 - level, labelY = plot.y - LAYOUT.tickLength - this.labelOffset - rowFromTop * rowH - 4;
       for (let seg of this.segmentsForLevel(leaves, level)) {
@@ -3692,7 +3723,7 @@ var NestedAxis = class {
         );
       }
     }
-    let topExtent = plot.y - LAYOUT.tickLength - this.labelOffset - (levels - 1) * rowH, outer = this.segmentsForLevel(leaves, 0);
+    let topExtent = plot.y - LAYOUT.tickLength - this.labelOffset - (levels - 1) * rowH;
     for (let s = 1; s < outer.length; s++) {
       let bx = leafCenter(outer[s].startLeaf) - bandHalf;
       this.line(
@@ -3702,7 +3733,8 @@ var NestedAxis = class {
           x2: bx,
           y2: bottomY + LAYOUT.tickLength + this.labelOffset + 20,
           stroke: color,
-          "stroke-width": 1
+          "stroke-width": 1,
+          class: "facet-nested-category-separator facet-nested-group-separator"
         },
         g
       );
