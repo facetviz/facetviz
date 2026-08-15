@@ -682,13 +682,14 @@ describe('configuration option wiring', () => {
     ).toBe(28);
   });
 
-  it('draws a separator at every horizontal nested-axis category boundary', () => {
+  it('extends every nested category separator through the plot', () => {
     const el = container();
     new FacetViz(el, {
-      chart: { ...baseChart, type: 'column' },
+      chart: { ...baseChart, type: 'column', responsive: false },
       xAxis: {
         dimensions: ['product', 'category', 'city'],
         lineColor: '#123456',
+        title: { text: 'Product / Category / City' },
       },
       series: [{
         data: [
@@ -700,24 +701,89 @@ describe('configuration option wiring', () => {
       }],
     });
 
-    const separators = [...el.querySelectorAll<SVGLineElement>(
-      '.facet-axis-nested .facet-nested-category-separator',
+    const nested = el.querySelector<SVGGElement>('.facet-axis-nested')!;
+    const separators = [...nested.querySelectorAll<SVGLineElement>(
+      '.facet-nested-group-separator',
     )];
+    const baseline = [...nested.querySelectorAll<SVGLineElement>('line')]
+      .find((line) =>
+        line.getAttribute('y1') === line.getAttribute('y2') &&
+        line.getAttribute('stroke') === '#123456'
+      )!;
+    const baselineY = Number(baseline.getAttribute('y1'));
+
     expect(separators).toHaveLength(3);
+    expect(new Set(separators.map((line) => line.getAttribute('y1'))).size).toBe(1);
     expect(separators.every((line) =>
       line.getAttribute('x1') === line.getAttribute('x2') &&
-      line.getAttribute('stroke') === '#123456'
+      Number(line.getAttribute('y1')) < baselineY
     )).toBe(true);
 
-    // A leaf-only boundary crosses the innermost row, a category boundary
-    // reaches the next row, and an outer-group boundary spans the plot.
-    const extents = separators
-      .map((line) => Math.abs(
-        Number(line.getAttribute('y2')) - Number(line.getAttribute('y1')),
-      ))
+    // A city-only boundary stops at the x-axis baseline. Category and product
+    // boundaries extend progressively farther through their grouping rows.
+    const labelExtents = separators
+      .map((line) => Number(line.getAttribute('y2')) - baselineY)
       .sort((a, b) => a - b);
-    expect(extents[0]).toBeLessThan(extents[1]);
-    expect(extents[1]).toBeLessThan(extents[2]);
+    expect(labelExtents[0]).toBe(0);
+    expect(labelExtents[0]).toBeLessThan(labelExtents[1]);
+    expect(labelExtents[1]).toBeLessThan(labelExtents[2]);
+
+    const title = [...nested.querySelectorAll<SVGTextElement>('text')]
+      .find((node) => node.textContent === 'Product / Category / City')!;
+    const farthestSeparator = Math.max(
+      ...separators.map((line) => Number(line.getAttribute('y2'))),
+    );
+    expect(Number(title.getAttribute('y')) - farthestSeparator).toBe(22);
+  });
+
+  it('keeps the nested-axis title clear of separators when opposite is true', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { ...baseChart, type: 'column', responsive: false },
+      xAxis: {
+        dimensions: ['product', 'category', 'city'],
+        opposite: true,
+        title: { text: 'Split nested title' },
+      },
+      series: [{
+        data: [
+          { y: 2, product: 'Bread', category: 'Beverages', city: 'Chennai' },
+          { y: 3, product: 'Bread', category: 'Beverages', city: 'Bengaluru' },
+          { y: 4, product: 'Bread', category: 'Grocery', city: 'Chennai' },
+          { y: 5, product: 'Eggs', category: 'Grocery', city: 'Chennai' },
+        ],
+      }],
+    });
+
+    const nested = el.querySelector<SVGGElement>('.facet-axis-nested')!;
+    const title = [...nested.querySelectorAll<SVGTextElement>('text')]
+      .find((node) => node.textContent === 'Split nested title')!;
+    const separators = [...nested.querySelectorAll<SVGLineElement>(
+      '.facet-nested-group-separator',
+    )];
+    const farthestSeparator = Math.max(
+      ...separators.map((line) => Number(line.getAttribute('y2'))),
+    );
+    const productLabel = [...nested.querySelectorAll<SVGTextElement>('text')]
+      .find((node) => node.textContent === 'Bread')!;
+    const categoryLabel = [...nested.querySelectorAll<SVGTextElement>('text')]
+      .find((node) => node.textContent === 'Beverages')!;
+    const baseline = [...nested.querySelectorAll<SVGLineElement>('line')]
+      .find((line) => line.getAttribute('y1') === line.getAttribute('y2'))!;
+    const baselineY = Number(baseline.getAttribute('y1'));
+    const separatorExtensions = separators
+      .map((line) => Number(line.getAttribute('y2')) - baselineY)
+      .sort((a, b) => a - b);
+
+    expect(
+      Number(title.getAttribute('y')) - farthestSeparator,
+    ).toBeGreaterThanOrEqual(22);
+    expect(
+      Number(categoryLabel.getAttribute('y')) -
+      Number(productLabel.getAttribute('y')),
+    ).toBe(24);
+    expect(separatorExtensions[0]).toBe(0);
+    expect(separatorExtensions[2] - separatorExtensions[1]).toBe(6);
   });
 
   it('renders configurable dashed major and minor grid lines', () => {

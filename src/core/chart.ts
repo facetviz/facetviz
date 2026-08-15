@@ -28,6 +28,8 @@ import {
   NestedAxis,
   nestedLevelWidths,
   nestedInnerRotationExtent,
+  NESTED_SPLIT_TIER_GAP,
+  NESTED_SPLIT_TIER_PITCH,
 } from "./nested-axis.js";
 import { Tooltip } from "./tooltip.js";
 import {
@@ -3193,6 +3195,9 @@ export class FacetViz {
     // space reserved beyond the same minimal 6px sliver.
     const catVisible = xOpts.visible !== false;
     const rowH = 18;
+    const splitSeparatorExtra = split
+      ? Math.max(0, dims.length - 2) * NESTED_SPLIT_TIER_GAP
+      : 0;
     const rotExtra = !inverted
       ? nestedInnerRotationExtent(leaves, xOpts.labels?.rotation ?? 0)
       : 0;
@@ -3243,9 +3248,12 @@ export class FacetViz {
           (split ? 1 : dims.length) * rowH +
           12 +
           rotExtra +
+          splitSeparatorExtra +
           (xOpts.title?.text && xOpts.title.enabled !== false
-            ? 22 +
-              ((xOpts.title.margin ?? 14 * bottomSpacingScale) - 14) +
+            ? 30 +
+              ((xOpts.title.margin ??
+                LAYOUT.axisTitleGap * bottomSpacingScale) -
+                LAYOUT.axisTitleGap) +
               Math.max(0, xOpts.title.offset ?? 0)
             : 0)
         : 6;
@@ -3253,7 +3261,7 @@ export class FacetViz {
         catVisible && split
           ? LAYOUT.tickLength +
             catLabelOffset +
-            (dims.length - 1) * rowH +
+            (dims.length - 1) * NESTED_SPLIT_TIER_PITCH +
             8
           : 6;
       plot = {

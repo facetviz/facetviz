@@ -4,7 +4,7 @@
  *
  * Given the ordered leaf combinations (each an array of dimension values) and a
  * {@link CategoryScale} placing those leaves, this renders one label row per
- * dimension level with divider lines separating the outer groups:
+ * dimension level with divider lines separating every nested group:
  *
  *      Tech   Furniture  │  Tech   Furniture     ← inner dimension (row 0)
  *   ────────────────────────────────────────
@@ -18,6 +18,11 @@ import type { AxisOptions } from "./options.js";
 import { FONTS, LAYOUT } from "./defaults.js";
 import { THEME } from "./theme.js";
 import { formatString, sanitizeStyle } from "./utils.js";
+
+/** Extra separation between successive grouping tiers on a split nested axis. */
+export const NESTED_SPLIT_TIER_GAP = 6;
+/** Baseline-to-baseline spacing for grouping tiers above a split nested axis. */
+export const NESTED_SPLIT_TIER_PITCH = 18 + NESTED_SPLIT_TIER_GAP;
 
 export interface NestedAxisConfig {
   renderer: Renderer;
@@ -263,14 +268,22 @@ export class NestedAxis {
     const rotation = this.cfg.labels?.rotation ?? 0;
     const rotExtra = nestedInnerRotationExtent(leaves, rotation);
     const top = position === "top";
-    const tierCount = position === "split" ? 1 : levels;
+    // Split axes keep only the innermost label row below the plot, but their
+    // category separators extend beyond the baseline, progressively farther
+    // for each outer tier. Keep the existing 10px clearance beyond the longest
+    // separator so the title retains its full margin from labels and lines.
+    const splitSeparatorExtra =
+      Math.max(0, levels - 2) * NESTED_SPLIT_TIER_GAP;
+    const labelExtent = position === "split"
+      ? Math.max(30 + splitSeparatorExtra, 18 + rotExtra)
+      : levels * 18 + rotExtra;
     const x = plot.x + plot.width * along;
     const margin = title.margin ??
-      (top ? 12 : 14) * (this.cfg.spacingScale ?? 1);
+      LAYOUT.axisTitleGap * (this.cfg.spacingScale ?? 1);
     const offset = title.offset ?? 0;
     const y = top
-      ? plot.y - LAYOUT.tickLength - this.labelOffset - tierCount * 18 - rotExtra - margin - offset
-      : plot.y + plot.height + LAYOUT.tickLength + this.labelOffset + tierCount * 18 + rotExtra + margin + offset;
+      ? plot.y - LAYOUT.tickLength - this.labelOffset - labelExtent - margin - offset
+      : plot.y + plot.height + LAYOUT.tickLength + this.labelOffset + labelExtent + margin + offset;
     this.cfg.renderer.text(title.text, x, y, style, g);
   }
 
@@ -313,29 +326,6 @@ export class NestedAxis {
     };
     const leafCenter = (i: number) => scale.scale(keys[i]);
     const bandHalf = scale.fullStep() / 2;
-    const bottomY = plot.y + plot.height;
-    const outer = this.segmentsForLevel(leaves, 0);
-    const outerBoundaries = new Set(
-      outer.slice(1).map((segment) => segment.startLeaf),
-    );
-
-    // Every leaf needs a cell boundary, even when two adjacent leaves share
-    // all of their parent dimension values. Parent changes extend that same
-    // boundary through the corresponding outer label rows; top-level changes
-    // are drawn separately below because they span the plot as well.
-    const boundaryRows = new Map<number, number>();
-    for (let leaf = 1; leaf < leaves.length; leaf++) boundaryRows.set(leaf, 0);
-    for (let level = levels - 2; level > 0; level--) {
-      const row = levels - 1 - level;
-      for (const segment of this.segmentsForLevel(leaves, level).slice(1)) {
-        if (!outerBoundaries.has(segment.startLeaf)) {
-          boundaryRows.set(
-            segment.startLeaf,
-            Math.max(boundaryRows.get(segment.startLeaf) ?? 0, row),
-          );
-        }
-      }
-    }
 
     this.line(
       { x1: plot.x, y1: baseY, x2: plot.x + plot.width, y2: baseY, stroke: color },
@@ -352,8 +342,8 @@ export class NestedAxis {
       const labelY = rowStart + dir * (rotated ? 8 : 12);
       // Only the innermost, unrotated row can overlap from sheer leaf count
       // as the chart narrows — rotated labels already dodge that, and outer
-      // tiers have far fewer, wider segments. Dividers below still use the
-      // full, unthinned `segments` — only the label text thins out.
+      // tiers have far fewer, wider segments. Only the label text thins out;
+      // separator calculation below still uses every leaf boundary.
       const labelSegs =
         row === 0 && !rotated
           ? this.thinnedInnerSegments(scale.bandwidth())
@@ -377,43 +367,28 @@ export class NestedAxis {
 
     }
 
-    for (const [leaf, row] of boundaryRows) {
-      if (outerBoundaries.has(leaf)) continue;
-      const bx = leafCenter(leaf) - bandHalf;
+    // Continue every boundary through the plot. An innermost-label boundary
+    // stops at the axis baseline; only a parent-category change continues
+    // into the row belonging to the outermost dimension that changed.
+    const plotExtent = top ? plot.y + plot.height : plot.y;
+    for (const boundary of this.categoryBoundaries()) {
+      const row = levels - 1 - boundary.level;
+      const rowStart =
+        baseY +
+        dir * (LAYOUT.tickLength + this.labelOffset + rowOffset(row));
+      const bx = leafCenter(boundary.startLeaf) - bandHalf;
+      const axisExtent = boundary.level === levels - 1
+        ? baseY
+        : rowStart + dir * rowHeight(row);
       this.line(
         {
           x1: bx,
-          y1: baseY,
+          y1: plotExtent,
           x2: bx,
-          y2:
-            baseY +
-            dir *
-              (LAYOUT.tickLength +
-                this.labelOffset +
-                rowOffset(row) +
-                rowHeight(row)),
+          y2: axisExtent,
           stroke: color,
           "stroke-width": 1,
-          class: "facet-nested-category-separator",
-        },
-        g,
-      );
-    }
-
-    // Full-height separators between the top-level groups.
-    const topExtent = plot.y;
-    for (let s = 1; s < outer.length; s++) {
-      const bx = leafCenter(outer[s].startLeaf) - bandHalf;
-      this.line(
-        {
-          x1: bx,
-          y1: topExtent,
-          x2: bx,
-          y2: bottomY + LAYOUT.tickLength + this.labelOffset + 20,
-          stroke: color,
-          "stroke-width": 1,
-          class:
-            "facet-nested-category-separator facet-nested-group-separator",
+          class: "facet-nested-group-separator",
         },
         g,
       );
@@ -423,13 +398,13 @@ export class NestedAxis {
   /**
    * Split layout: innermost dimension as normal labels at the bottom, outer
    * grouping dimensions stacked on top, and full-height vertical lines
-   * separating each top-level group.
+   * separating the nested groups at every dimension level.
    */
   private renderSplit(g: SVGGElement): void {
     const { scale, plot, leaves, keys } = this.cfg;
     const color = this.cfg.lineColor ?? THEME.axis.lineColor;
     const levels = leaves[0]?.length ?? 0;
-    const rowH = 18;
+    const rowH = NESTED_SPLIT_TIER_PITCH;
     const leafCenter = (i: number) => scale.scale(keys[i]);
     const bandHalf = scale.fullStep() / 2;
     const bottomY = plot.y + plot.height;
@@ -463,27 +438,6 @@ export class NestedAxis {
       if (rotation && el) el.setAttribute("transform", `rotate(${rotation} ${cx} ${innerLabelY})`);
     }
 
-    const outer = this.segmentsForLevel(leaves, 0);
-    const outerBoundaries = new Set(
-      outer.slice(1).map((segment) => segment.startLeaf),
-    );
-    for (let leaf = 1; leaf < leaves.length; leaf++) {
-      if (outerBoundaries.has(leaf)) continue;
-      const bx = leafCenter(leaf) - bandHalf;
-      this.line(
-        {
-          x1: bx,
-          y1: bottomY,
-          x2: bx,
-          y2: bottomY + LAYOUT.tickLength + this.labelOffset + 20,
-          stroke: color,
-          "stroke-width": 1,
-          class: "facet-nested-category-separator",
-        },
-        g,
-      );
-    }
-
     // Outer grouping dimensions on top (outermost furthest up).
     for (let level = levels - 2; level >= 0; level--) {
       const rowFromTop = levels - 2 - level; // 0 = closest to the plot
@@ -509,21 +463,33 @@ export class NestedAxis {
       }
     }
 
-    // Full-height separators between the top-level (outermost) groups.
-    const topExtent =
-      plot.y - LAYOUT.tickLength - this.labelOffset - (levels - 1) * rowH;
-    for (let s = 1; s < outer.length; s++) {
-      const bx = leafCenter(outer[s].startLeaf) - bandHalf;
+    // Every boundary crosses the plot. Innermost-label boundaries stop at the
+    // bottom baseline; parent-category boundaries continue into the nested
+    // label area and upward through the grouping row rendered on top.
+    for (const boundary of this.categoryBoundaries()) {
+      const topExtent = boundary.level === levels - 1
+        ? plot.y
+        : plot.y -
+          LAYOUT.tickLength -
+          this.labelOffset -
+          (levels - 1 - boundary.level) * rowH;
+      const bottomExtent = boundary.level === levels - 1
+        ? bottomY
+        : bottomY +
+          LAYOUT.tickLength +
+          this.labelOffset +
+          20 +
+          (levels - 2 - boundary.level) * NESTED_SPLIT_TIER_GAP;
+      const bx = leafCenter(boundary.startLeaf) - bandHalf;
       this.line(
         {
           x1: bx,
           y1: topExtent,
           x2: bx,
-          y2: bottomY + LAYOUT.tickLength + this.labelOffset + 20,
+          y2: bottomExtent,
           stroke: color,
           "stroke-width": 1,
-          class:
-            "facet-nested-category-separator facet-nested-group-separator",
+          class: "facet-nested-group-separator",
         },
         g,
       );
@@ -707,6 +673,28 @@ export class NestedAxis {
       }
       return (seg.startLeaf - outer[outerIdx].startLeaf) % step === 0;
     });
+  }
+
+  /**
+   * Boundaries between adjacent leaves and the outermost dimension that
+   * changes at each one. A separator uses that level to decide how far it
+   * must extend into the nested label tiers.
+   */
+  private categoryBoundaries(): Array<{ startLeaf: number; level: number }> {
+    const { leaves } = this.cfg;
+    const boundaries: Array<{ startLeaf: number; level: number }> = [];
+    for (let leaf = 1; leaf < leaves.length; leaf++) {
+      const previous = leaves[leaf - 1];
+      const current = leaves[leaf];
+      const levels = Math.max(previous.length, current.length);
+      for (let level = 0; level < levels; level++) {
+        if (previous[level] !== current[level]) {
+          boundaries.push({ startLeaf: leaf, level });
+          break;
+        }
+      }
+    }
+    return boundaries;
   }
 
   /** Contiguous runs of leaves sharing the same prefix up to `level`. */

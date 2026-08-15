@@ -3466,6 +3466,7 @@ var Axis = class {
 };
 
 // src/core/nested-axis.ts
+var NESTED_SPLIT_TIER_GAP = 6, NESTED_SPLIT_TIER_PITCH = 18 + NESTED_SPLIT_TIER_GAP;
 function nestedLevelWidths(leaves) {
   let levels = leaves[0]?.length ?? 0, widths = [];
   for (let level = 0; level < levels; level++) {
@@ -3573,7 +3574,7 @@ var NestedAxis = class {
       }, g);
       return;
     }
-    let rotation = this.cfg.labels?.rotation ?? 0, rotExtra = nestedInnerRotationExtent(leaves, rotation), top = position === "top", tierCount = position === "split" ? 1 : levels, x = plot.x + plot.width * along, margin = title.margin ?? (top ? 12 : 14) * (this.cfg.spacingScale ?? 1), offset = title.offset ?? 0, y = top ? plot.y - LAYOUT.tickLength - this.labelOffset - tierCount * 18 - rotExtra - margin - offset : plot.y + plot.height + LAYOUT.tickLength + this.labelOffset + tierCount * 18 + rotExtra + margin + offset;
+    let rotation = this.cfg.labels?.rotation ?? 0, rotExtra = nestedInnerRotationExtent(leaves, rotation), top = position === "top", splitSeparatorExtra = Math.max(0, levels - 2) * NESTED_SPLIT_TIER_GAP, labelExtent = position === "split" ? Math.max(30 + splitSeparatorExtra, 18 + rotExtra) : levels * 18 + rotExtra, x = plot.x + plot.width * along, margin = title.margin ?? LAYOUT.axisTitleGap * (this.cfg.spacingScale ?? 1), offset = title.offset ?? 0, y = top ? plot.y - LAYOUT.tickLength - this.labelOffset - labelExtent - margin - offset : plot.y + plot.height + LAYOUT.tickLength + this.labelOffset + labelExtent + margin + offset;
     this.cfg.renderer.text(title.text, x, y, style, g);
   }
   /** A gridline through the plot at each leaf position, opt-in via `gridLineWidth`. */
@@ -3596,18 +3597,7 @@ var NestedAxis = class {
       let sum2 = 0;
       for (let r = 0; r < row; r++) sum2 += rowHeight(r);
       return sum2;
-    }, leafCenter = (i) => scale.scale(keys[i]), bandHalf = scale.fullStep() / 2, bottomY = plot.y + plot.height, outer = this.segmentsForLevel(leaves, 0), outerBoundaries = new Set(
-      outer.slice(1).map((segment) => segment.startLeaf)
-    ), boundaryRows = /* @__PURE__ */ new Map();
-    for (let leaf = 1; leaf < leaves.length; leaf++) boundaryRows.set(leaf, 0);
-    for (let level = levels - 2; level > 0; level--) {
-      let row = levels - 1 - level;
-      for (let segment of this.segmentsForLevel(leaves, level).slice(1))
-        outerBoundaries.has(segment.startLeaf) || boundaryRows.set(
-          segment.startLeaf,
-          Math.max(boundaryRows.get(segment.startLeaf) ?? 0, row)
-        );
-    }
+    }, leafCenter = (i) => scale.scale(keys[i]), bandHalf = scale.fullStep() / 2;
     this.line(
       { x1: plot.x, y1: baseY, x2: plot.x + plot.width, y2: baseY, stroke: color },
       g
@@ -3629,34 +3619,19 @@ var NestedAxis = class {
         rotated && el && el.setAttribute("transform", `rotate(${rotation} ${cx} ${labelY})`);
       }
     }
-    for (let [leaf, row] of boundaryRows) {
-      if (outerBoundaries.has(leaf)) continue;
-      let bx = leafCenter(leaf) - bandHalf;
+    let plotExtent = top ? plot.y + plot.height : plot.y;
+    for (let boundary of this.categoryBoundaries()) {
+      let row = levels - 1 - boundary.level, rowStart = baseY + dir * (LAYOUT.tickLength + this.labelOffset + rowOffset(row)), bx = leafCenter(boundary.startLeaf) - bandHalf, axisExtent = boundary.level === levels - 1 ? baseY : rowStart + dir * rowHeight(row);
       this.line(
         {
           x1: bx,
-          y1: baseY,
+          y1: plotExtent,
           x2: bx,
-          y2: baseY + dir * (LAYOUT.tickLength + this.labelOffset + rowOffset(row) + rowHeight(row)),
-          stroke: color,
-          "stroke-width": 1,
-          class: "facet-nested-category-separator"
-        },
-        g
-      );
-    }
-    let topExtent = plot.y;
-    for (let s = 1; s < outer.length; s++) {
-      let bx = leafCenter(outer[s].startLeaf) - bandHalf;
-      this.line(
-        {
-          x1: bx,
-          y1: topExtent,
-          x2: bx,
-          y2: bottomY + LAYOUT.tickLength + this.labelOffset + 20,
-          stroke: color,
-          "stroke-width": 1,
-          class: "facet-nested-category-separator facet-nested-group-separator"
+          y2: axisExtent,
+          stroke: "red",
+          // color,
+          "stroke-width": 2,
+          class: "facet-nested-group-separator"
         },
         g
       );
@@ -3665,10 +3640,10 @@ var NestedAxis = class {
   /**
    * Split layout: innermost dimension as normal labels at the bottom, outer
    * grouping dimensions stacked on top, and full-height vertical lines
-   * separating each top-level group.
+   * separating the nested groups at every dimension level.
    */
   renderSplit(g) {
-    let { scale, plot, leaves, keys } = this.cfg, color = this.cfg.lineColor ?? THEME.axis.lineColor, levels = leaves[0]?.length ?? 0, rowH = 18, leafCenter = (i) => scale.scale(keys[i]), bandHalf = scale.fullStep() / 2, bottomY = plot.y + plot.height;
+    let { scale, plot, leaves, keys } = this.cfg, color = this.cfg.lineColor ?? THEME.axis.lineColor, levels = leaves[0]?.length ?? 0, rowH = NESTED_SPLIT_TIER_PITCH, leafCenter = (i) => scale.scale(keys[i]), bandHalf = scale.fullStep() / 2, bottomY = plot.y + plot.height;
     this.line(
       { x1: plot.x, y1: bottomY, x2: plot.x + plot.width, y2: bottomY, stroke: color },
       g
@@ -3687,25 +3662,6 @@ var NestedAxis = class {
       );
       rotation && el && el.setAttribute("transform", `rotate(${rotation} ${cx} ${innerLabelY})`);
     }
-    let outer = this.segmentsForLevel(leaves, 0), outerBoundaries = new Set(
-      outer.slice(1).map((segment) => segment.startLeaf)
-    );
-    for (let leaf = 1; leaf < leaves.length; leaf++) {
-      if (outerBoundaries.has(leaf)) continue;
-      let bx = leafCenter(leaf) - bandHalf;
-      this.line(
-        {
-          x1: bx,
-          y1: bottomY,
-          x2: bx,
-          y2: bottomY + LAYOUT.tickLength + this.labelOffset + 20,
-          stroke: color,
-          "stroke-width": 1,
-          class: "facet-nested-category-separator"
-        },
-        g
-      );
-    }
     for (let level = levels - 2; level >= 0; level--) {
       let rowFromTop = levels - 2 - level, labelY = plot.y - LAYOUT.tickLength - this.labelOffset - rowFromTop * rowH - 4;
       for (let seg of this.segmentsForLevel(leaves, level)) {
@@ -3723,18 +3679,17 @@ var NestedAxis = class {
         );
       }
     }
-    let topExtent = plot.y - LAYOUT.tickLength - this.labelOffset - (levels - 1) * rowH;
-    for (let s = 1; s < outer.length; s++) {
-      let bx = leafCenter(outer[s].startLeaf) - bandHalf;
+    for (let boundary of this.categoryBoundaries()) {
+      let topExtent = boundary.level === levels - 1 ? plot.y : plot.y - LAYOUT.tickLength - this.labelOffset - (levels - 1 - boundary.level) * rowH, bottomExtent = boundary.level === levels - 1 ? bottomY : bottomY + LAYOUT.tickLength + this.labelOffset + 20 + (levels - 2 - boundary.level) * NESTED_SPLIT_TIER_GAP, bx = leafCenter(boundary.startLeaf) - bandHalf;
       this.line(
         {
           x1: bx,
           y1: topExtent,
           x2: bx,
-          y2: bottomY + LAYOUT.tickLength + this.labelOffset + 20,
+          y2: bottomExtent,
           stroke: color,
           "stroke-width": 1,
-          class: "facet-nested-category-separator facet-nested-group-separator"
+          class: "facet-nested-group-separator"
         },
         g
       );
@@ -3867,6 +3822,23 @@ var NestedAxis = class {
         outerIdx++;
       return (seg.startLeaf - outer[outerIdx].startLeaf) % step === 0;
     });
+  }
+  /**
+   * Boundaries between adjacent leaves and the outermost dimension that
+   * changes at each one. A separator uses that level to decide how far it
+   * must extend into the nested label tiers.
+   */
+  categoryBoundaries() {
+    let { leaves } = this.cfg, boundaries = [];
+    for (let leaf = 1; leaf < leaves.length; leaf++) {
+      let previous = leaves[leaf - 1], current = leaves[leaf], levels = Math.max(previous.length, current.length);
+      for (let level = 0; level < levels; level++)
+        if (previous[level] !== current[level]) {
+          boundaries.push({ startLeaf: leaf, level });
+          break;
+        }
+    }
+    return boundaries;
   }
   /** Contiguous runs of leaves sharing the same prefix up to `level`. */
   segmentsForLevel(leaves, level) {
@@ -6573,7 +6545,7 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
     if (!keys.length) return;
     let aggSeries = visible.map(
       (s) => s.withPoints(seriesPoints.get(s.index) ?? [])
-    ), inverted = this.isInverted(visible), yOpts0 = axisAt(this.options.yAxis, 0), yOpts1 = axisAt(this.options.yAxis, 1), onAxis = (s, i) => (s.options.yAxis ?? 0) === i, secondary = aggSeries.filter((s) => onAxis(s, 1)), hasSecondary = !inverted && secondary.length > 0, xOpts = firstAxis(this.options.xAxis) ?? {}, split = !!xOpts.opposite, catVisible = xOpts.visible !== !1, rowH = 18, rotExtra = inverted ? 0 : nestedInnerRotationExtent(leaves, xOpts.labels?.rotation ?? 0), catLabelOffset = catVisible ? axisLabelOffset(xOpts) : 0, bottomSpacingScale = this.chromeSpacingScale("bottom"), leftSpacingScale = this.chromeSpacingScale("left"), rightSpacingScale = this.chromeSpacingScale("right"), plot, catScale, valScale0, valScale1, axisLayer = this.renderer.group(
+    ), inverted = this.isInverted(visible), yOpts0 = axisAt(this.options.yAxis, 0), yOpts1 = axisAt(this.options.yAxis, 1), onAxis = (s, i) => (s.options.yAxis ?? 0) === i, secondary = aggSeries.filter((s) => onAxis(s, 1)), hasSecondary = !inverted && secondary.length > 0, xOpts = firstAxis(this.options.xAxis) ?? {}, split = !!xOpts.opposite, catVisible = xOpts.visible !== !1, rowH = 18, splitSeparatorExtra = split ? Math.max(0, dims.length - 2) * NESTED_SPLIT_TIER_GAP : 0, rotExtra = inverted ? 0 : nestedInnerRotationExtent(leaves, xOpts.labels?.rotation ?? 0), catLabelOffset = catVisible ? axisLabelOffset(xOpts) : 0, bottomSpacingScale = this.chromeSpacingScale("bottom"), leftSpacingScale = this.chromeSpacingScale("left"), rightSpacingScale = this.chromeSpacingScale("right"), plot, catScale, valScale0, valScale1, axisLayer = this.renderer.group(
       { class: "facet-axes" },
       this.renderer.root
     ), valAxis0, valAxis1;
@@ -6624,7 +6596,7 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
       let leftReserve = LAYOUT.tickLength + 8 + axisLabelOffset(yOpts0) + this.valueLabelWidth(
         aggSeries.filter((s) => onAxis(s, 0)),
         yOpts0
-      ) + (yOpts0.title?.text && yOpts0.title.enabled !== !1 ? 18 + ((yOpts0.title.margin ?? 8 * leftSpacingScale) - 8) + Math.max(0, yOpts0.title.offset ?? 0) : 0), rightReserve = hasSecondary ? LAYOUT.tickLength + 8 + axisLabelOffset(yOpts1) + this.valueLabelWidth(secondary, yOpts1) + (yOpts1.title?.text && yOpts1.title.enabled !== !1 ? 18 + ((yOpts1.title.margin ?? 8 * rightSpacingScale) - 8) + Math.max(0, yOpts1.title.offset ?? 0) : 0) : 8, bottomReserve = catVisible ? LAYOUT.tickLength + catLabelOffset + (split ? 1 : dims.length) * rowH + 12 + rotExtra + (xOpts.title?.text && xOpts.title.enabled !== !1 ? 22 + ((xOpts.title.margin ?? 14 * bottomSpacingScale) - 14) + Math.max(0, xOpts.title.offset ?? 0) : 0) : 6, topReserve = catVisible && split ? LAYOUT.tickLength + catLabelOffset + (dims.length - 1) * rowH + 8 : 6;
+      ) + (yOpts0.title?.text && yOpts0.title.enabled !== !1 ? 18 + ((yOpts0.title.margin ?? 8 * leftSpacingScale) - 8) + Math.max(0, yOpts0.title.offset ?? 0) : 0), rightReserve = hasSecondary ? LAYOUT.tickLength + 8 + axisLabelOffset(yOpts1) + this.valueLabelWidth(secondary, yOpts1) + (yOpts1.title?.text && yOpts1.title.enabled !== !1 ? 18 + ((yOpts1.title.margin ?? 8 * rightSpacingScale) - 8) + Math.max(0, yOpts1.title.offset ?? 0) : 0) : 8, bottomReserve = catVisible ? LAYOUT.tickLength + catLabelOffset + (split ? 1 : dims.length) * rowH + 12 + rotExtra + splitSeparatorExtra + (xOpts.title?.text && xOpts.title.enabled !== !1 ? 30 + ((xOpts.title.margin ?? LAYOUT.axisTitleGap * bottomSpacingScale) - LAYOUT.axisTitleGap) + Math.max(0, xOpts.title.offset ?? 0) : 0) : 6, topReserve = catVisible && split ? LAYOUT.tickLength + catLabelOffset + (dims.length - 1) * NESTED_SPLIT_TIER_PITCH + 8 : 6;
       plot = {
         x: outer.x + leftReserve,
         y: outer.y + topReserve,
