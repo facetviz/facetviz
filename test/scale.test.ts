@@ -20,6 +20,28 @@ describe('LinearScale', () => {
     expect(s.scale(9)).toBe(80);
     expect(s.ticks().every((tick) => tick >= 1 && tick <= 9)).toBe(true);
   });
+  it('nices an automatic upper bound independently of an explicit lower bound', () => {
+    const s = new LinearScale({
+      domain: [60, 66.12857142857142],
+      range: [100, 0],
+      niceMin: false,
+      niceMax: true,
+    });
+
+    expect(s.domain).toEqual([60, 68]);
+    expect(s.ticks()).toEqual([60, 62, 64, 66, 68]);
+  });
+  it('nices an automatic lower bound independently of an explicit upper bound', () => {
+    const s = new LinearScale({
+      domain: [59.7, 66],
+      range: [100, 0],
+      niceMin: true,
+      niceMax: false,
+    });
+
+    expect(s.domain).toEqual([58, 66]);
+    expect(s.ticks()).toEqual([58, 60, 62, 64, 66]);
+  });
   it('defaults to approximately four ticks', () => {
     const s = new LinearScale({ domain: [0, 30], range: [0, 100] });
     expect(s.ticks()).toEqual([0, 10, 20, 30]);

@@ -244,6 +244,7 @@ interface SeriesOptions {
     width?: number; height?: number };
   dataLabels?: { enabled?: boolean; format?: string; formatter?: (ctx)=>string;
     color?: string; fontSize?: string; fontWeight?: string;
+    align?: 'left'|'center'|'right';
     position?: 'outside'|'inside'|'center'|'base'|'top'|'bottom'|'left'|'right';
     distance?: number; rotation?: number; backgroundColor?: string };
   tooltip?: { enabled?: boolean; format?: string; formatter?: (ctx)=>string;

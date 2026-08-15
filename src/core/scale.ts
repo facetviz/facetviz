@@ -33,6 +33,10 @@ export interface LinearScaleConfig {
   format?: (v: number) => string;
   /** Expand an automatically-derived domain to its outer ticks (default true). */
   nice?: boolean;
+  /** Override nicening for the lower bound independently. */
+  niceMin?: boolean;
+  /** Override nicening for the upper bound independently. */
+  niceMax?: boolean;
 }
 
 export class LinearScale implements Scale {
@@ -48,15 +52,25 @@ export class LinearScale implements Scale {
     [this.r0, this.r1] = cfg.reversed ? [cfg.range[1], cfg.range[0]] : cfg.range;
     this.format = cfg.format;
     this.tickValues = cfg.ticks ?? niceTicks(this.d0, this.d1, cfg.tickCount ?? 4);
-    // Expand the domain so the outermost ticks sit on the axis ends.
-    if (cfg.nice !== false && this.tickValues.length) {
-      this.d0 = Math.min(this.d0, this.tickValues[0]);
-      this.d1 = Math.max(this.d1, this.tickValues[this.tickValues.length - 1]);
-    } else if (cfg.nice === false) {
-      // Exact/zoomed bounds must not render generated ticks outside the plot.
-      this.tickValues = this.tickValues.filter((v) => v >= this.d0 && v <= this.d1);
-      if (!this.tickValues.includes(this.d0)) this.tickValues.unshift(this.d0);
-      if (!this.tickValues.includes(this.d1)) this.tickValues.push(this.d1);
+    const niceByDefault = cfg.nice !== false;
+    const niceMin = cfg.niceMin ?? niceByDefault;
+    const niceMax = cfg.niceMax ?? niceByDefault;
+    if (this.tickValues.length) {
+      // Treat the two bounds independently. A caller can pin one edge while
+      // allowing the automatically-derived edge to expand to a clean tick.
+      // This avoids exposing a padded floating-point endpoint as an axis label.
+      const firstTick = this.tickValues[0];
+      const lastTick = this.tickValues[this.tickValues.length - 1];
+      if (niceMin) this.d0 = Math.min(this.d0, firstTick);
+      else this.tickValues = this.tickValues.filter((v) => v >= this.d0);
+
+      if (niceMax) this.d1 = Math.max(this.d1, lastTick);
+      else this.tickValues = this.tickValues.filter((v) => v <= this.d1);
+
+      if (!niceMin && !this.tickValues.includes(this.d0))
+        this.tickValues.unshift(this.d0);
+      if (!niceMax && !this.tickValues.includes(this.d1))
+        this.tickValues.push(this.d1);
     }
   }
 

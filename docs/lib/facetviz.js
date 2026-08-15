@@ -580,17 +580,17 @@ function dataLabelFontSize(dl) {
 }
 function drawDataLabel(renderer, parent, text, place, dl) {
   if (!text) return;
-  let attrs = {
-    "text-anchor": place.anchor,
+  let anchor = dl.align === "left" ? "start" : dl.align === "right" ? "end" : dl.align === "center" ? "middle" : place.anchor, attrs = {
+    "text-anchor": anchor,
     ...FONTS.dataLabel,
     fill: dl.color ?? FONTS.dataLabel.fill,
     "font-size": dataLabelFontSize(dl)
   };
-  if (dl.fontWeight && (attrs["font-weight"] = dl.fontWeight), dl.rotation && (attrs.transform = `rotate(${dl.rotation} ${place.x} ${place.y})`), dl.backgroundColor) {
-    let w = text.length * 6.5 + 8, anchorX = place.anchor === "start" ? place.x - 4 : place.anchor === "end" ? place.x - w + 4 : place.x - w / 2;
+  if (place.verticalAlign && (attrs["dominant-baseline"] = place.verticalAlign), dl.fontWeight && (attrs["font-weight"] = dl.fontWeight), dl.rotation && (attrs.transform = `rotate(${dl.rotation} ${place.x} ${place.y})`), dl.backgroundColor) {
+    let w = text.length * 6.5 + 8, anchorX = anchor === "start" ? place.x - 4 : anchor === "end" ? place.x - w + 4 : place.x - w / 2, chipY = place.verticalAlign === "middle" ? place.y - 7.5 : place.y - 11;
     renderer.create("rect", {
       x: anchorX,
-      y: place.y - 11,
+      y: chipY,
       width: w,
       height: 15,
       rx: 3,
@@ -1205,11 +1205,21 @@ var ColumnSeries = class extends BaseSeries {
       percentage: total ? (p.y ?? 0) / total * 100 : void 0
     }), d = dl.distance ?? 0, pos = dl.position ?? (p.stackHigh !== void 0 ? "center" : "outside"), place;
     if (this.type === "bar" || ctx.inverted) {
-      let cy = rect.y + rect.height / 2 + 4, end = rect.x + rect.width;
-      pos === "inside" ? place = { x: end - 4 - d, y: cy, anchor: "end" } : pos === "center" ? place = { x: rect.x + rect.width / 2, y: cy, anchor: "middle" } : pos === "base" ? place = { x: rect.x + 4 + d, y: cy, anchor: "start" } : place = { x: end + 4 + d, y: cy, anchor: "start" };
+      let cy = rect.y + rect.height / 2, end = rect.x + rect.width;
+      pos === "inside" ? place = { x: end - 4 - d, y: cy, anchor: "end", verticalAlign: "middle" } : pos === "center" ? place = {
+        x: rect.x + rect.width / 2,
+        y: cy,
+        anchor: "middle",
+        verticalAlign: "middle"
+      } : pos === "base" ? place = { x: rect.x + 4 + d, y: cy, anchor: "start", verticalAlign: "middle" } : place = { x: end + 4 + d, y: cy, anchor: "start", verticalAlign: "middle" };
     } else {
       let cx = rect.x + rect.width / 2;
-      pos === "inside" ? place = { x: cx, y: rect.y + 12 + d, anchor: "middle" } : pos === "center" ? place = { x: cx, y: rect.y + rect.height / 2 + 4, anchor: "middle" } : pos === "base" ? place = { x: cx, y: rect.y + rect.height - 5 - d, anchor: "middle" } : place = { x: cx, y: rect.y - 4 - d, anchor: "middle" };
+      pos === "inside" ? place = { x: cx, y: rect.y + 12 + d, anchor: "middle" } : pos === "center" ? place = {
+        x: cx,
+        y: rect.y + rect.height / 2,
+        anchor: "middle",
+        verticalAlign: "middle"
+      } : pos === "base" ? place = { x: cx, y: rect.y + rect.height - 5 - d, anchor: "middle" } : place = { x: cx, y: rect.y - 4 - d, anchor: "middle" };
     }
     drawDataLabel(ctx.renderer, parent, text, place, dl);
   }
@@ -2552,7 +2562,12 @@ registerSankeySeries();
 // src/core/scale.ts
 var LinearScale = class {
   constructor(cfg) {
-    [this.d0, this.d1] = cfg.domain, [this.r0, this.r1] = cfg.reversed ? [cfg.range[1], cfg.range[0]] : cfg.range, this.format = cfg.format, this.tickValues = cfg.ticks ?? niceTicks(this.d0, this.d1, cfg.tickCount ?? 4), cfg.nice !== !1 && this.tickValues.length ? (this.d0 = Math.min(this.d0, this.tickValues[0]), this.d1 = Math.max(this.d1, this.tickValues[this.tickValues.length - 1])) : cfg.nice === !1 && (this.tickValues = this.tickValues.filter((v) => v >= this.d0 && v <= this.d1), this.tickValues.includes(this.d0) || this.tickValues.unshift(this.d0), this.tickValues.includes(this.d1) || this.tickValues.push(this.d1));
+    [this.d0, this.d1] = cfg.domain, [this.r0, this.r1] = cfg.reversed ? [cfg.range[1], cfg.range[0]] : cfg.range, this.format = cfg.format, this.tickValues = cfg.ticks ?? niceTicks(this.d0, this.d1, cfg.tickCount ?? 4);
+    let niceByDefault = cfg.nice !== !1, niceMin = cfg.niceMin ?? niceByDefault, niceMax = cfg.niceMax ?? niceByDefault;
+    if (this.tickValues.length) {
+      let firstTick = this.tickValues[0], lastTick = this.tickValues[this.tickValues.length - 1];
+      niceMin ? this.d0 = Math.min(this.d0, firstTick) : this.tickValues = this.tickValues.filter((v) => v >= this.d0), niceMax ? this.d1 = Math.max(this.d1, lastTick) : this.tickValues = this.tickValues.filter((v) => v <= this.d1), !niceMin && !this.tickValues.includes(this.d0) && this.tickValues.unshift(this.d0), !niceMax && !this.tickValues.includes(this.d1) && this.tickValues.push(this.d1);
+    }
   }
   scale(value) {
     let v = typeof value == "number" ? value : parseFloat(value), t = this.d1 === this.d0 ? 0 : (v - this.d0) / (this.d1 - this.d0);
@@ -5786,16 +5801,24 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
     for (let rv of rowVals)
       for (let cv of colVals)
         computeStacks(cellSeriesFor(cv, rv));
-    let [vMin, vMax] = this.valueDomain(
-      primaryVisible.length ? primaryVisible : allVisible
+    let primaryDomainSeries = primaryVisible.length ? primaryVisible : allVisible, [vMin, vMax] = this.valueDomain(primaryDomainSeries), preservePrimaryZeroMin = this.hasNonNegativeColumnsOrBars(
+      primaryDomainSeries,
+      vMin
     );
     (primaryVisible.length ? primaryVisible : allVisible).some(
       (s) => ["column", "bar", "area", "areaspline", "lollipop"].includes(s.type)
     ) && (vMin = Math.min(vMin, 0), vMax = Math.max(vMax, 0));
-    let vMin2 = 0, vMax2 = 1;
-    hasSecondary && yOpts1 && ([vMin2, vMax2] = this.valueDomain(secondaryVisible), secondaryVisible.some(
-      (s) => ["column", "bar", "area", "areaspline", "lollipop"].includes(s.type)
-    ) && (vMin2 = Math.min(vMin2, 0), vMax2 = Math.max(vMax2, 0)));
+    let vMin2 = 0, vMax2 = 1, secondaryPreservesZeroMin = !1;
+    if (hasSecondary && yOpts1) {
+      [vMin2, vMax2] = this.valueDomain(secondaryVisible);
+      let preserveSecondaryZeroMin = this.hasNonNegativeColumnsOrBars(
+        secondaryVisible,
+        vMin2
+      );
+      secondaryVisible.some(
+        (s) => ["column", "bar", "area", "areaspline", "lollipop"].includes(s.type)
+      ) && (vMin2 = Math.min(vMin2, 0), vMax2 = Math.max(vMax2, 0)), secondaryPreservesZeroMin = preserveSecondaryZeroMin;
+    }
     let dimNameRowH = 16, rowValueColW = rowDim ? Math.max(
       32,
       Math.max(
@@ -5961,13 +5984,21 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
           }
           return sc;
         }, valRange = inverted ? [cell.x, cell.x + cell.width] : [cell.y + cell.height, cell.y], valScale = dropLastTick(
-          this.valueScale(yOpts0, [vMin, vMax], valRange),
+          this.valueScale(
+            yOpts0,
+            [vMin, vMax],
+            valRange,
+            !0,
+            preservePrimaryZeroMin
+          ),
           valRange
         ), valScale2 = hasSecondary && yOpts1 ? dropLastTick(
           this.valueScale(
             yOpts1,
             [vMin2, vMax2],
-            [cell.y + cell.height, cell.y]
+            [cell.y + cell.height, cell.y],
+            !0,
+            secondaryPreservesZeroMin
           ),
           [cell.y + cell.height, cell.y]
         ) : void 0, xScale = inverted ? valScale : catScale, yScale = inverted ? catScale : valScale, yScale2 = valScale2, axisLayer = this.renderer.group(
@@ -6118,13 +6149,18 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
       inverted ? [innerRadius, radius] : [-Math.PI / 2, Math.PI * 1.5],
       !1
     ), onSecondary = (item) => (item.options.yAxis ?? 0) === 1, primary = series.filter((item) => !onSecondary(item)), secondary = series.filter(onSecondary), polarValueScale = (items, options) => {
-      let domain = this.valueDomain(items.length ? items : series);
-      return items.some(
+      let domainSeries = items.length ? items : series, domain = this.valueDomain(domainSeries), preserveZeroMin = this.hasNonNegativeColumnsOrBars(
+        domainSeries,
+        domain[0]
+      );
+      return domainSeries.some(
         (item) => ["column", "area", "areaspline"].includes(item.type)
       ) && options.type !== "log" && (domain = [Math.min(0, domain[0]), Math.max(0, domain[1])]), this.valueScale(
         options,
         domain,
-        inverted ? [-Math.PI / 2, Math.PI * 1.5] : [innerRadius, radius]
+        inverted ? [-Math.PI / 2, Math.PI * 1.5] : [innerRadius, radius],
+        !0,
+        preserveZeroMin
       );
     }, yScale = polarValueScale(primary, yOptions), yScale2 = secondary.length ? polarValueScale(secondary, axisAt(this.options.yAxis, 1)) : void 0, project = (angle, radial) => ({
       x: center.x + Math.cos(angle) * radial,
@@ -6520,11 +6556,13 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
         categories: keys,
         range: [plot.y, plot.y + plot.height]
       });
-      let [lo, hi] = this.valueDomain(aggSeries);
+      let [lo, hi] = this.valueDomain(aggSeries), preserveZeroMin = this.hasNonNegativeColumnsOrBars(aggSeries, lo);
       lo = Math.min(lo, 0), hi = Math.max(hi, 0), valScale0 = this.valueScale(
         yOpts0,
         [lo, hi],
-        [plot.x, plot.x + plot.width]
+        [plot.x, plot.x + plot.width],
+        !0,
+        preserveZeroMin
       ), valScale1 = valScale0, valAxis0 = new Axis({
         renderer: this.renderer,
         scale: valScale0,
@@ -6565,8 +6603,17 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
         range: [plot.x, plot.x + plot.width]
       });
       let range = [plot.y + plot.height, plot.y], scaleFor = (list, opts) => {
-        let [lo, hi] = this.valueDomain(list.length ? list : aggSeries);
-        return lo = Math.min(lo, 0), hi = Math.max(hi, 0), this.valueScale(opts, [lo, hi], range);
+        let domainSeries = list.length ? list : aggSeries, [lo, hi] = this.valueDomain(domainSeries), preserveZeroMin = this.hasNonNegativeColumnsOrBars(
+          domainSeries,
+          lo
+        );
+        return lo = Math.min(lo, 0), hi = Math.max(hi, 0), this.valueScale(
+          opts,
+          [lo, hi],
+          range,
+          !0,
+          preserveZeroMin
+        );
       };
       valScale0 = scaleFor(
         aggSeries.filter((s) => onAxis(s, 0)),
@@ -7069,8 +7116,9 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
     let xSource = shared?.x ?? visible, ySource = shared?.y ?? visible, primaryXSource = xSource.filter((s) => (s.options.xAxis ?? 0) === 0), secondaryXSource = xSource.filter((s) => (s.options.xAxis ?? 0) === 1), categories = this.currentCategories(
       primaryXSource.length ? primaryXSource : xSource,
       0
-    ), xAxisOpts = axisAt(this.options.xAxis, 0), xAxisOpts2 = axisAt(this.options.xAxis, 1), yAxisOpts = axisAt(this.options.yAxis, 0), onSecondary = (s) => (s.options.yAxis ?? 0) === 1, hasSecondary = !inverted && ySource.some(onSecondary), primaryVisible = hasSecondary ? ySource.filter((s) => !onSecondary(s)) : ySource, [vMin, vMax] = this.valueDomain(
-      primaryVisible.length ? primaryVisible : ySource
+    ), xAxisOpts = axisAt(this.options.xAxis, 0), xAxisOpts2 = axisAt(this.options.xAxis, 1), yAxisOpts = axisAt(this.options.yAxis, 0), onSecondary = (s) => (s.options.yAxis ?? 0) === 1, hasSecondary = !inverted && ySource.some(onSecondary), primaryVisible = hasSecondary ? ySource.filter((s) => !onSecondary(s)) : ySource, primaryDomainSeries = primaryVisible.length ? primaryVisible : ySource, [vMin, vMax] = this.valueDomain(primaryDomainSeries), preservePrimaryZeroMin = this.hasNonNegativeColumnsOrBars(
+      primaryDomainSeries,
+      vMin
     ), includeZero = primaryVisible.some(
       (s) => ["column", "bar", "area", "areaspline", "errorbar", "lollipop"].includes(
         s.type
@@ -7135,7 +7183,9 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
       let xScale3 = this.valueScale(
         yAxisOpts,
         [vMin, vMax],
-        [plot.x, plot.x + plot.width]
+        [plot.x, plot.x + plot.width],
+        !0,
+        preservePrimaryZeroMin
       ), yScale3 = categories ? new CategoryScale({
         categories,
         range: [plot.y, plot.y + plot.height],
@@ -7156,10 +7206,15 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
     ) : void 0, yScale = this.valueScale(
       yAxisOpts,
       [vMin, vMax],
-      [plot.y + plot.height, plot.y]
+      [plot.y + plot.height, plot.y],
+      !0,
+      preservePrimaryZeroMin
     ), yScale2;
     if (hasSecondary) {
-      let secondaryVisible = ySource.filter(onSecondary), [vMin2, vMax2] = this.valueDomain(secondaryVisible), includeZero2 = secondaryVisible.some(
+      let secondaryVisible = ySource.filter(onSecondary), [vMin2, vMax2] = this.valueDomain(secondaryVisible), preserveSecondaryZeroMin = this.hasNonNegativeColumnsOrBars(
+        secondaryVisible,
+        vMin2
+      ), includeZero2 = secondaryVisible.some(
         (s) => [
           "column",
           "bar",
@@ -7172,12 +7227,14 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
       (includeZero2 || secondaryOpts.startOnZero === !0) && secondaryOpts.type !== "log" && (vMin2 = Math.min(vMin2, 0), vMax2 = Math.max(vMax2, 0)), yScale2 = this.valueScale(
         axisAt(this.options.yAxis, 1),
         [vMin2, vMax2],
-        [plot.y + plot.height, plot.y]
+        [plot.y + plot.height, plot.y],
+        !0,
+        preserveSecondaryZeroMin
       );
     }
     return { xScale, xScale2, yScale, yScale2 };
   }
-  valueScale(opts, domain, range, padDomain = !0) {
+  valueScale(opts, domain, range, padDomain = !0, preserveZeroMin = !1) {
     let min = opts.min ?? domain[0], max = opts.max ?? domain[1];
     if (opts.type === "log")
       return padDomain && opts.min === void 0 && (min /= 1 + VALUE_DOMAIN_PADDING), padDomain && opts.max === void 0 && (max *= 1 + VALUE_DOMAIN_PADDING), new LogScale({
@@ -7187,14 +7244,15 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
       });
     if (padDomain) {
       let padding = (max - min || Math.abs(max) || Math.abs(min) || 1) * VALUE_DOMAIN_PADDING;
-      opts.min === void 0 && (min -= padding), opts.max === void 0 && (max += padding);
+      opts.min === void 0 && !(preserveZeroMin && min === 0) && (min -= padding), opts.max === void 0 && (max += padding);
     }
     return new LinearScale({
       domain: [min, max],
       range,
       tickCount: opts.tickCount ?? 4,
       reversed: opts.reversed,
-      nice: opts.min === void 0 && opts.max === void 0
+      niceMin: opts.min === void 0,
+      niceMax: opts.max === void 0
     });
   }
   valueDomain(visible) {
@@ -7205,6 +7263,9 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
       mins.push(lo), maxs.push(hi);
     }
     return mins.length ? [Math.min(...mins), Math.max(...maxs)] : [0, 1];
+  }
+  hasNonNegativeColumnsOrBars(series, domainMin) {
+    return domainMin >= 0 && series.some((item) => item.type === "column" || item.type === "bar");
   }
   xNumericDomain(visible) {
     let xs = [];

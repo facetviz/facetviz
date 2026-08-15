@@ -2007,8 +2007,13 @@ export class FacetViz {
     }
 
     // Shared value domain (so every cell is directly comparable).
-    let [vMin, vMax] = this.valueDomain(
-      primaryVisible.length ? primaryVisible : allVisible,
+    const primaryDomainSeries = primaryVisible.length
+      ? primaryVisible
+      : allVisible;
+    let [vMin, vMax] = this.valueDomain(primaryDomainSeries);
+    const preservePrimaryZeroMin = this.hasNonNegativeColumnsOrBars(
+      primaryDomainSeries,
+      vMin,
     );
     if (
       (primaryVisible.length ? primaryVisible : allVisible).some((s) =>
@@ -2020,8 +2025,13 @@ export class FacetViz {
     }
     let vMin2 = 0;
     let vMax2 = 1;
+    let secondaryPreservesZeroMin = false;
     if (hasSecondary && yOpts1) {
       [vMin2, vMax2] = this.valueDomain(secondaryVisible);
+      const preserveSecondaryZeroMin = this.hasNonNegativeColumnsOrBars(
+        secondaryVisible,
+        vMin2,
+      );
       if (
         secondaryVisible.some((s) =>
           ["column", "bar", "area", "areaspline", "lollipop"].includes(s.type),
@@ -2030,6 +2040,8 @@ export class FacetViz {
         vMin2 = Math.min(vMin2, 0);
         vMax2 = Math.max(vMax2, 0);
       }
+      // Stored alongside the shared secondary domain for the per-cell scales.
+      secondaryPreservesZeroMin = preserveSecondaryZeroMin;
     }
 
     // Gutters: header labels + shared axis space, laid out like a pivot
@@ -2331,7 +2343,13 @@ export class FacetViz {
           ? [cell.x, cell.x + cell.width]
           : [cell.y + cell.height, cell.y];
         const valScale = dropLastTick(
-          this.valueScale(yOpts0, [vMin, vMax], valRange),
+          this.valueScale(
+            yOpts0,
+            [vMin, vMax],
+            valRange,
+            true,
+            preservePrimaryZeroMin,
+          ),
           valRange,
         );
         const valScale2 =
@@ -2341,6 +2359,8 @@ export class FacetViz {
                   yOpts1,
                   [vMin2, vMax2],
                   [cell.y + cell.height, cell.y],
+                  true,
+                  secondaryPreservesZeroMin,
                 ),
                 [cell.y + cell.height, cell.y],
               )
@@ -2591,9 +2611,14 @@ export class FacetViz {
     const primary = series.filter((item) => !onSecondary(item));
     const secondary = series.filter(onSecondary);
     const polarValueScale = (items: BaseSeries[], options: AxisOptions) => {
-      let domain = this.valueDomain(items.length ? items : series);
+      const domainSeries = items.length ? items : series;
+      let domain = this.valueDomain(domainSeries);
+      const preserveZeroMin = this.hasNonNegativeColumnsOrBars(
+        domainSeries,
+        domain[0],
+      );
       if (
-        items.some((item) =>
+        domainSeries.some((item) =>
           ["column", "area", "areaspline"].includes(item.type),
         ) &&
         options.type !== "log"
@@ -2605,6 +2630,8 @@ export class FacetViz {
         inverted
           ? [-Math.PI / 2, Math.PI * 1.5]
           : [innerRadius, radius],
+        true,
+        preserveZeroMin,
       );
     };
     const yScale = polarValueScale(primary, yOptions);
@@ -3242,10 +3269,21 @@ export class FacetViz {
       });
       const range: [number, number] = [plot.y + plot.height, plot.y];
       const scaleFor = (list: BaseSeries[], opts: AxisOptions) => {
-        let [lo, hi] = this.valueDomain(list.length ? list : aggSeries);
+        const domainSeries = list.length ? list : aggSeries;
+        let [lo, hi] = this.valueDomain(domainSeries);
+        const preserveZeroMin = this.hasNonNegativeColumnsOrBars(
+          domainSeries,
+          lo,
+        );
         lo = Math.min(lo, 0);
         hi = Math.max(hi, 0);
-        return this.valueScale(opts, [lo, hi], range);
+        return this.valueScale(
+          opts,
+          [lo, hi],
+          range,
+          true,
+          preserveZeroMin,
+        );
       };
       valScale0 = scaleFor(
         aggSeries.filter((s) => onAxis(s, 0)),
@@ -3338,12 +3376,15 @@ export class FacetViz {
         range: [plot.y, plot.y + plot.height],
       });
       let [lo, hi] = this.valueDomain(aggSeries);
+      const preserveZeroMin = this.hasNonNegativeColumnsOrBars(aggSeries, lo);
       lo = Math.min(lo, 0);
       hi = Math.max(hi, 0);
       valScale0 = this.valueScale(
         yOpts0,
         [lo, hi],
         [plot.x, plot.x + plot.width],
+        true,
+        preserveZeroMin,
       );
       valScale1 = valScale0;
 
@@ -4051,8 +4092,13 @@ export class FacetViz {
     // visible series when nothing besides the secondary axis is present, so
     // this can't produce an empty domain). Error bars are typically overlaid
     // on (and read like) a column series, so they share its zero baseline.
-    let [vMin, vMax] = this.valueDomain(
-      primaryVisible.length ? primaryVisible : ySource,
+    const primaryDomainSeries = primaryVisible.length
+      ? primaryVisible
+      : ySource;
+    let [vMin, vMax] = this.valueDomain(primaryDomainSeries);
+    const preservePrimaryZeroMin = this.hasNonNegativeColumnsOrBars(
+      primaryDomainSeries,
+      vMin,
     );
     const includeZero = primaryVisible.some((s) =>
       ["column", "bar", "area", "areaspline", "errorbar", "lollipop"].includes(
@@ -4188,6 +4234,8 @@ export class FacetViz {
         yAxisOpts,
         [vMin, vMax],
         [plot.x, plot.x + plot.width],
+        true,
+        preservePrimaryZeroMin,
       );
       const yScale = categories
         ? new CategoryScale({
@@ -4219,12 +4267,18 @@ export class FacetViz {
       yAxisOpts,
       [vMin, vMax],
       [plot.y + plot.height, plot.y],
+      true,
+      preservePrimaryZeroMin,
     );
 
     let yScale2: Scale | undefined;
     if (hasSecondary) {
       const secondaryVisible = ySource.filter(onSecondary);
       let [vMin2, vMax2] = this.valueDomain(secondaryVisible);
+      const preserveSecondaryZeroMin = this.hasNonNegativeColumnsOrBars(
+        secondaryVisible,
+        vMin2,
+      );
       const includeZero2 = secondaryVisible.some((s) =>
         [
           "column",
@@ -4247,6 +4301,8 @@ export class FacetViz {
         axisAt(this.options.yAxis, 1),
         [vMin2, vMax2],
         [plot.y + plot.height, plot.y],
+        true,
+        preserveSecondaryZeroMin,
       );
     }
     return { xScale, xScale2, yScale, yScale2 };
@@ -4257,6 +4313,7 @@ export class FacetViz {
     domain: [number, number],
     range: [number, number],
     padDomain = true,
+    preserveZeroMin = false,
   ): Scale {
     let min = opts.min ?? domain[0];
     let max = opts.max ?? domain[1];
@@ -4277,7 +4334,11 @@ export class FacetViz {
     if (padDomain) {
       const domainSpan = max - min || Math.abs(max) || Math.abs(min) || 1;
       const padding = domainSpan * VALUE_DOMAIN_PADDING;
-      if (opts.min === undefined) min -= padding;
+      if (
+        opts.min === undefined &&
+        !(preserveZeroMin && min === 0)
+      )
+        min -= padding;
       if (opts.max === undefined) max += padding;
     }
 
@@ -4286,7 +4347,8 @@ export class FacetViz {
       range,
       tickCount: opts.tickCount ?? 4,
       reversed: opts.reversed,
-      nice: opts.min === undefined && opts.max === undefined,
+      niceMin: opts.min === undefined,
+      niceMax: opts.max === undefined,
     });
   }
 
@@ -4301,6 +4363,16 @@ export class FacetViz {
     }
     if (!mins.length) return [0, 1];
     return [Math.min(...mins), Math.max(...maxs)];
+  }
+
+  private hasNonNegativeColumnsOrBars(
+    series: BaseSeries[],
+    domainMin: number,
+  ): boolean {
+    return (
+      domainMin >= 0 &&
+      series.some((item) => item.type === "column" || item.type === "bar")
+    );
   }
 
   private xNumericDomain(visible: BaseSeries[]): [number, number] {

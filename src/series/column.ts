@@ -360,20 +360,32 @@ export class ColumnSeries extends BaseSeries {
     let place: LabelPlacement;
 
     if (this.type === "bar" || ctx.inverted) {
-      const cy = rect.y + rect.height / 2 + 4;
+      const cy = rect.y + rect.height / 2;
       const end = rect.x + rect.width;
-      if (pos === "inside") place = { x: end - 4 - d, y: cy, anchor: "end" };
+      if (pos === "inside")
+        place = { x: end - 4 - d, y: cy, anchor: "end", verticalAlign: "middle" };
       else if (pos === "center")
-        place = { x: rect.x + rect.width / 2, y: cy, anchor: "middle" };
+        place = {
+          x: rect.x + rect.width / 2,
+          y: cy,
+          anchor: "middle",
+          verticalAlign: "middle",
+        };
       else if (pos === "base")
-        place = { x: rect.x + 4 + d, y: cy, anchor: "start" };
-      else place = { x: end + 4 + d, y: cy, anchor: "start" }; // outside
+        place = { x: rect.x + 4 + d, y: cy, anchor: "start", verticalAlign: "middle" };
+      else
+        place = { x: end + 4 + d, y: cy, anchor: "start", verticalAlign: "middle" }; // outside
     } else {
       const cx = rect.x + rect.width / 2;
       if (pos === "inside")
         place = { x: cx, y: rect.y + 12 + d, anchor: "middle" };
       else if (pos === "center")
-        place = { x: cx, y: rect.y + rect.height / 2 + 4, anchor: "middle" };
+        place = {
+          x: cx,
+          y: rect.y + rect.height / 2,
+          anchor: "middle",
+          verticalAlign: "middle",
+        };
       else if (pos === "base")
         place = { x: cx, y: rect.y + rect.height - 5 - d, anchor: "middle" };
       else place = { x: cx, y: rect.y - 4 - d, anchor: "middle" }; // outside

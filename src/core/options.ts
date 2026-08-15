@@ -205,6 +205,8 @@ export interface DataLabelOptions {
   color?: string;
   fontSize?: string;
   fontWeight?: string;
+  /** Horizontal text alignment relative to the resolved label position. */
+  align?: "left" | "center" | "right";
   /**
    * Where the label sits relative to its point/bar/slice:
    *  - bar & column: `outside` (default, beyond the bar end), `inside` (just

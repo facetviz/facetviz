@@ -34,6 +34,49 @@ describe('FacetViz rendering', () => {
     expect(Math.max(...ticks)).toBeGreaterThan(10);
   });
 
+  it.each([
+    ['column', '.facet-axis-left'],
+    ['bar', '.facet-axis-bottom'],
+  ] as const)('starts a non-negative %s value axis at zero', (type, axis) => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { type, animation: false },
+      xAxis: { categories: ['Low', 'High'] },
+      series: [{ data: [5, 10] }],
+    });
+
+    const ticks = [...el.querySelectorAll(`${axis} text`)]
+      .map((node) => Number(node.textContent))
+      .filter(Number.isFinite);
+    expect(Math.min(...ticks)).toBe(0);
+    expect(Math.max(...ticks)).toBeGreaterThan(10);
+  });
+
+  it('uses a clean automatic maximum when only the y-axis minimum is set', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { type: 'column', animation: false },
+      xAxis: {
+        categories: ['Science', 'History', 'Computer', 'English', 'Geography', 'Maths'],
+      },
+      yAxis: { min: 60 },
+      series: [{
+        data: [
+          63.294117647058826,
+          63.11363636363637,
+          65.83673469387755,
+          65.4375,
+          64,
+          61.588235294117645,
+        ],
+      }],
+    });
+
+    const labels = [...el.querySelectorAll('.facet-axis-left text')]
+      .map((node) => node.textContent);
+    expect(labels).toEqual(['60', '62', '64', '66', '68']);
+  });
+
   it('uses document-unique clip paths when multiple charts are rendered', () => {
     const first = container();
     const second = container();

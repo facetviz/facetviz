@@ -428,6 +428,52 @@ describe('configuration option wiring', () => {
     expect(el.querySelector('.facet-pie rect[fill="#ffeeaa"]')).toBeTruthy();
   });
 
+  it.each([
+    ['left', 'start'],
+    ['center', 'middle'],
+    ['right', 'end'],
+  ] as const)('aligns data labels %s', (align, anchor) => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { ...baseChart, type: 'line' },
+      xAxis: { categories: ['A'] },
+      series: [{
+        dataLabels: { enabled: true, format: 'value:{y}', align },
+        data: [5],
+      }],
+    });
+
+    const label = [...el.querySelectorAll<SVGTextElement>('.facet-series text')]
+      .find((node) => node.textContent === 'value:5');
+    expect(label?.getAttribute('text-anchor')).toBe(anchor);
+  });
+
+  it.each(['column', 'bar'] as const)(
+    'centers %s data labels on the bar rectangle',
+    (type) => {
+      const el = container();
+      new FacetViz(el, {
+        chart: { ...baseChart, type },
+        xAxis: { categories: ['A'] },
+        series: [{
+          dataLabels: { enabled: true, format: 'value:{y}', position: 'center' },
+          data: [5],
+        }],
+      });
+
+      const bar = el.querySelector<SVGRectElement>('.facet-column .facet-point')!;
+      const label = [...el.querySelectorAll<SVGTextElement>('.facet-column text')]
+        .find((node) => node.textContent === 'value:5')!;
+      const centerX = Number(bar.getAttribute('x')) + Number(bar.getAttribute('width')) / 2;
+      const centerY = Number(bar.getAttribute('y')) + Number(bar.getAttribute('height')) / 2;
+
+      expect(Number(label.getAttribute('x'))).toBeCloseTo(centerX);
+      expect(Number(label.getAttribute('y'))).toBeCloseTo(centerY);
+      expect(label.getAttribute('text-anchor')).toBe('middle');
+      expect(label.getAttribute('dominant-baseline')).toBe('middle');
+    },
+  );
+
   it('places pie labels inside when they fit and moves small-sector labels outside', () => {
     const el = container();
     new FacetViz(el, {

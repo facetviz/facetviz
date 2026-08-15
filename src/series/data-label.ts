@@ -31,6 +31,8 @@ export interface LabelPlacement {
   x: number;
   y: number;
   anchor: 'start' | 'middle' | 'end';
+  /** Use SVG's true vertical centering when the coordinate is a box centre. */
+  verticalAlign?: 'middle';
 }
 
 /**
@@ -58,21 +60,30 @@ export function drawDataLabel(
   dl: DataLabelOptions,
 ): void {
   if (!text) return;
+  const anchor = dl.align === 'left'
+    ? 'start'
+    : dl.align === 'right'
+      ? 'end'
+      : dl.align === 'center'
+        ? 'middle'
+        : place.anchor;
   const attrs: Record<string, string | number> = {
-    'text-anchor': place.anchor,
+    'text-anchor': anchor,
     ...FONTS.dataLabel,
     fill: dl.color ?? FONTS.dataLabel.fill,
     'font-size': dataLabelFontSize(dl),
   };
+  if (place.verticalAlign) attrs['dominant-baseline'] = place.verticalAlign;
   if (dl.fontWeight) attrs['font-weight'] = dl.fontWeight;
   if (dl.rotation) attrs.transform = `rotate(${dl.rotation} ${place.x} ${place.y})`;
 
   if (dl.backgroundColor) {
     // Approximate chip sized from the text length.
     const w = text.length * 6.5 + 8;
-    const anchorX = place.anchor === 'start' ? place.x - 4 : place.anchor === 'end' ? place.x - w + 4 : place.x - w / 2;
+    const anchorX = anchor === 'start' ? place.x - 4 : anchor === 'end' ? place.x - w + 4 : place.x - w / 2;
+    const chipY = place.verticalAlign === 'middle' ? place.y - 7.5 : place.y - 11;
     renderer.create('rect', {
-      x: anchorX, y: place.y - 11, width: w, height: 15, rx: 3, fill: dl.backgroundColor,
+      x: anchorX, y: chipY, width: w, height: 15, rx: 3, fill: dl.backgroundColor,
     }, parent);
   }
   renderer.text(text, place.x, place.y, attrs, parent);
