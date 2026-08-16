@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FacetTable } from "../src/index.js";
 
 function container(): HTMLElement {
@@ -773,6 +773,43 @@ describe("FacetTable", () => {
     table.clearFilters();
     expect(visibleItems()).toEqual(["Small", "Medium", "Large"]);
     expect(() => table.setFilter("item", "Small")).toThrow(/not filterable/);
+  });
+
+  it("caches processed rows until rows, columns, or filters change", () => {
+    const element = container();
+    const predicate = vi.fn(() => true);
+    const table = new FacetTable(element, {
+      rows: [
+        { item: "One", amount: 1 },
+        { item: "Two", amount: 2 },
+        { item: "Three", amount: 3 },
+        { item: "Four", amount: 4 },
+      ],
+      columns: [
+        { key: "item" },
+        {
+          key: "amount",
+          sortable: true,
+          filterable: { initialValue: "1", predicate },
+        },
+      ],
+      pagination: { pageSize: 2, pageSizeOptions: [2] },
+    });
+
+    expect(predicate).toHaveBeenCalledTimes(4);
+    expect(table.pageCount).toBe(2);
+    expect(table.pageCount).toBe(2);
+    table.setPage(2);
+    table.sortBy("amount", "desc");
+    expect(predicate).toHaveBeenCalledTimes(4);
+
+    table.setFilter("amount", "2");
+    expect(predicate).toHaveBeenCalledTimes(8);
+    table.setRows([
+      { item: "Five", amount: 5 },
+      { item: "Six", amount: 6 },
+    ]);
+    expect(predicate).toHaveBeenCalledTimes(10);
   });
 
   it("renders supplied detail, subtotal, and grand-total rows with charts", () => {

@@ -337,6 +337,8 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
   private currentPageSize = 25;
   private currentSort?: FacetTableSortState<Row>;
   private currentFilters = new Map<keyof Row & string, string>();
+  private filteredRowCache?: Array<{ row: Row; rowIndex: number }>;
+  private sortedRowCache?: Array<{ row: Row; rowIndex: number }>;
   private sharedDomainCache?: Map<number, [number, number]>;
   private destroyed = false;
 
@@ -362,7 +364,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
   setRows(rows: Row[]): void {
     if (this.destroyed) return;
     this.options = { ...this.options, rows: [...rows] };
-    this.sharedDomainCache = undefined;
+    this.invalidateProcessedRows();
     this.clampPage();
     this.render();
   }
@@ -380,7 +382,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
     this.options = next;
     this.flattenedColumns = flattenTableColumns(this.options.columns);
     if (options.rows !== undefined || options.columns !== undefined)
-      this.sharedDomainCache = undefined;
+      this.invalidateProcessedRows();
     if (options.pagination !== undefined)
       this.syncPagination(options.pagination, false);
     if (options.columns !== undefined) {
@@ -434,7 +436,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
     if (normalized) this.currentFilters.set(key, normalized);
     else this.currentFilters.delete(key);
     this.currentPage = 1;
-    this.sharedDomainCache = undefined;
+    this.invalidateFilteredRows();
     this.render();
   }
 
@@ -442,7 +444,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
     if (this.destroyed || !this.currentFilters.has(key)) return;
     this.currentFilters.delete(key);
     this.currentPage = 1;
-    this.sharedDomainCache = undefined;
+    this.invalidateFilteredRows();
     this.render();
   }
 
@@ -450,7 +452,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
     if (this.destroyed || !this.currentFilters.size) return;
     this.currentFilters.clear();
     this.currentPage = 1;
-    this.sharedDomainCache = undefined;
+    this.invalidateFilteredRows();
     this.render();
   }
 
@@ -464,6 +466,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
       throw new Error(`FacetTable.sortBy(): column "${key}" is not sortable.`);
     this.currentSort = { key, direction };
     this.currentPage = 1;
+    this.sortedRowCache = undefined;
     this.render();
   }
 
@@ -471,6 +474,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
     if (this.destroyed || !this.currentSort) return;
     this.currentSort = undefined;
     this.currentPage = 1;
+    this.sortedRowCache = undefined;
     this.render();
   }
 
@@ -970,8 +974,10 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
   }
 
   private sortedRows(): Array<{ row: Row; rowIndex: number }> {
-    const rows = this.filteredRows();
-    if (!this.currentSort) return rows;
+    const filteredRows = this.filteredRows();
+    if (!this.currentSort) return filteredRows;
+    if (this.sortedRowCache) return this.sortedRowCache;
+    const rows = [...filteredRows];
     const column = this.leafColumns().find(
       (candidate) => candidate.key === this.currentSort?.key && candidate.sortable,
     );
@@ -991,32 +997,43 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
         ? a.rowIndex - b.rowIndex
         : normalized * direction;
     };
-    if (!rows.some(({ row }) => isStructuredTableRow(row)))
-      return rows.sort(compare);
-    return sortDetailRowsWithinGroups(rows, compare);
+    this.sortedRowCache = !rows.some(({ row }) => isStructuredTableRow(row))
+      ? rows.sort(compare)
+      : sortDetailRowsWithinGroups(rows, compare);
+    return this.sortedRowCache;
   }
 
   private filteredRows(): Array<{ row: Row; rowIndex: number }> {
-    return this.filteredSourceRows();
+    if (!this.filteredRowCache)
+      this.filteredRowCache = this.filteredSourceRows();
+    return this.filteredRowCache;
   }
 
   private filteredSourceRows(): Array<{ row: Row; rowIndex: number }> {
     const rows = this.options.rows.map((row, rowIndex) => ({ row, rowIndex }));
     if (!this.currentFilters.size) return rows;
-    return rows.filter(({ row, rowIndex }) => {
-      for (const [key, filterValue] of this.currentFilters) {
-        const column = this.leafColumns().find(
-          (candidate) => candidate.key === key && candidate.filterable,
-        );
-        if (!column) continue;
-        const value = unwrapCellValue(row[column.key]);
-        const filterOptions = typeof column.filterable === "object"
+    const filters = [...this.currentFilters].flatMap(([key, filterValue]) => {
+      const column = this.leafColumns().find(
+        (candidate) => candidate.key === key && candidate.filterable,
+      );
+      if (!column) return [];
+      return [{
+        key,
+        filterValue,
+        normalizedValue: filterValue.toLocaleLowerCase(),
+        options: typeof column.filterable === "object"
           ? column.filterable
-          : undefined;
-        const matches = filterOptions?.predicate
-          ? filterOptions.predicate(value, filterValue, row, rowIndex)
+          : undefined,
+      }];
+    });
+    return rows.filter(({ row, rowIndex }) => {
+      for (const filter of filters) {
+        const { key, filterValue, normalizedValue, options } = filter;
+        const value = unwrapCellValue(row[key]);
+        const matches = options?.predicate
+          ? options.predicate(value, filterValue, row, rowIndex)
           : String(value ?? "").toLocaleLowerCase().includes(
-              filterValue.toLocaleLowerCase(),
+              normalizedValue,
             );
         if (!matches) return false;
       }
@@ -1034,7 +1051,18 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
         ? undefined
         : { key: column.key, direction: "asc" };
     this.currentPage = 1;
+    this.sortedRowCache = undefined;
     this.render();
+  }
+
+  private invalidateFilteredRows(): void {
+    this.filteredRowCache = undefined;
+    this.sortedRowCache = undefined;
+    this.sharedDomainCache = undefined;
+  }
+
+  private invalidateProcessedRows(): void {
+    this.invalidateFilteredRows();
   }
 
   private renderPagination(): HTMLElement | undefined {

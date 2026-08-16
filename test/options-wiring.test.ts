@@ -45,7 +45,7 @@ describe('configuration option wiring', () => {
   it('normalizes CSS-style text options for subtitles, axes, and legends', () => {
     const el = container();
     new FacetViz(el, {
-      chart: baseChart,
+      chart: { ...baseChart, scaleFonts: false },
       subtitle: {
         text: 'Subtitle',
         style: { fontSize: '19px', fontWeight: '700', color: '#112233' },
@@ -232,7 +232,7 @@ describe('configuration option wiring', () => {
   it('positions and customizes chart text with alignment and offsets', () => {
     const el = container();
     new FacetViz(el, {
-      chart: baseChart,
+      chart: { ...baseChart, scaleFonts: false },
       texts: [
         {
           text: 'First line\nSecond line',
@@ -622,7 +622,7 @@ describe('configuration option wiring', () => {
   it('wires nested-axis labels, title, and line/grid colors', () => {
     const el = container();
     new FacetViz(el, {
-      chart: { ...baseChart, type: 'column' },
+      chart: { ...baseChart, type: 'column', scaleFonts: false },
       xAxis: {
         dimensions: ['region', 'quarter'],
         labels: {

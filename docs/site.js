@@ -1,5 +1,5 @@
 // Shared docs helpers (vendored, no CDN).
-export { FacetViz, FacetTable } from './lib/facetviz.js';
+export { FacetViz, FacetTable, pivotData } from './lib/facetviz.js';
 
 /** Render a config into an element, showing errors inline. */
 export function renderChart(FacetViz, el, cfg) {

@@ -1,11 +1,20 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import type { PerformanceMetrics, PerformanceScenario } from './performance-fixtures.js';
 
-const budgets: Record<PerformanceScenario, { renderMs: number; updateMs?: number }> = {
-  svg: { renderMs: 1_000 },
-  'boost-scatter': { renderMs: 1_000 },
-  'boost-update': { renderMs: 1_000, updateMs: 1_000 },
-  'stream-batch': { renderMs: 1_000, updateMs: 1_000 },
+const budgets: Record<PerformanceScenario, {
+  renderMs: number;
+  updateMs?: number;
+  sortMs?: number;
+  filterMs?: number;
+  pivotMs?: number;
+}> = {
+  svg: { renderMs: 500 },
+  'boost-scatter': { renderMs: 750 },
+  'boost-update': { renderMs: 500, updateMs: 500 },
+  'stream-batch': { renderMs: 500, updateMs: 750 },
+  'table-page': { renderMs: 500, sortMs: 750, filterMs: 750 },
+  'pivot-table': { renderMs: 1_500, pivotMs: 750 },
+  'table-cell-charts': { renderMs: 750 },
 };
 
 async function runScenario(
@@ -63,4 +72,37 @@ test('bounded batched streaming coalesces renders and memory', async ({ page }, 
   expect(metrics.updateMs).toBeLessThan(budgets['stream-batch'].updateMs!);
   expect(metrics.canvases).toBe(0);
   expect(metrics.domNodes).toBeLessThan(1_500);
+});
+
+test('100k-row FacetTable keeps paging, sorting, and filtering bounded', async ({ page }, testInfo) => {
+  const metrics = await runScenario(page, testInfo, 'table-page');
+  expect(metrics.sourceRows).toBe(100_000);
+  expect(metrics.renderMs).toBeLessThan(budgets['table-page'].renderMs);
+  expect(metrics.sortMs).toBeLessThan(budgets['table-page'].sortMs!);
+  expect(metrics.filterMs).toBeLessThan(budgets['table-page'].filterMs!);
+  expect(metrics.renderedRows).toBe(25);
+  expect(metrics.columns).toBe(5);
+  expect(metrics.domNodes).toBeLessThan(250);
+});
+
+test('50k-record pivot transforms and renders a bounded page', async ({ page }, testInfo) => {
+  const metrics = await runScenario(page, testInfo, 'pivot-table');
+  expect(metrics.sourceRows).toBe(50_000);
+  expect(metrics.points).toBe(511);
+  expect(metrics.pivotMs).toBeLessThan(budgets['pivot-table'].pivotMs!);
+  expect(metrics.renderMs).toBeLessThan(budgets['pivot-table'].renderMs);
+  expect(metrics.renderedRows).toBe(25);
+  expect(metrics.columns).toBe(164);
+  expect(metrics.domNodes).toBeLessThan(5_000);
+});
+
+test('25 non-sparkline table cell charts stay within their DOM budget', async ({ page }, testInfo) => {
+  const metrics = await runScenario(page, testInfo, 'table-cell-charts');
+  expect(metrics.sourceRows).toBe(25);
+  expect(metrics.points).toBe(500);
+  expect(metrics.renderMs).toBeLessThan(budgets['table-cell-charts'].renderMs);
+  expect(metrics.renderedRows).toBe(25);
+  expect(metrics.columns).toBe(3);
+  expect(metrics.charts).toBe(25);
+  expect(metrics.domNodes).toBeLessThan(1_200);
 });

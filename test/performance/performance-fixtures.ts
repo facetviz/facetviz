@@ -1,13 +1,27 @@
-import { FacetViz, type PointInput } from '../../src/index.ts';
+import { FacetTable, FacetViz, pivotData, type PointInput } from '../../src/index.ts';
 
-export type PerformanceScenario = 'svg' | 'boost-scatter' | 'boost-update' | 'stream-batch';
+export type PerformanceScenario =
+  | 'svg'
+  | 'boost-scatter'
+  | 'boost-update'
+  | 'stream-batch'
+  | 'table-page'
+  | 'pivot-table'
+  | 'table-cell-charts';
 
 export interface PerformanceMetrics {
   scenario: PerformanceScenario;
   points: number;
   renderMs: number;
   updateMs?: number;
+  sortMs?: number;
+  filterMs?: number;
+  pivotMs?: number;
   renderCount?: number;
+  sourceRows?: number;
+  renderedRows?: number;
+  columns?: number;
+  charts?: number;
   domNodes: number;
   svgElements: number;
   pointElements: number;
@@ -44,7 +58,14 @@ let chart: FacetViz;
 let points = 0;
 let renderMs = 0;
 let updateMs: number | undefined;
+let sortMs: number | undefined;
+let filterMs: number | undefined;
+let pivotMs: number | undefined;
 let renderCount: number | undefined;
+let sourceRows: number | undefined;
+let renderedRows: number | undefined;
+let columns: number | undefined;
+let charts: number | undefined;
 
 if (scenario === 'svg') {
   const data = scatterData(1_200);
@@ -107,6 +128,95 @@ if (scenario === 'svg') {
   }
   updateMs = performance.now() - updateStart;
   points = chart.series[0].points.length;
+} else if (scenario === 'table-page') {
+  const rows = Array.from({ length: 100_000 }, (_, i) => ({
+    id: i,
+    name: `Item ${i}`,
+    region: `R${i % 20}`,
+    revenue: (i * 7_919) % 100_000,
+    growth: i % 17,
+  }));
+  sourceRows = rows.length;
+  const start = performance.now();
+  const table = new FacetTable(container, {
+    rows,
+    columns: [
+      { key: 'id', header: 'ID', sortable: true },
+      { key: 'name', header: 'Name', filterable: true },
+      { key: 'region', header: 'Region', filterable: true },
+      { key: 'revenue', header: 'Revenue', sortable: true },
+      { key: 'growth', header: 'Growth' },
+    ],
+    pagination: { pageSize: 25 },
+  });
+  renderMs = performance.now() - start;
+  const sortStart = performance.now();
+  table.sortBy('revenue', 'desc');
+  sortMs = performance.now() - sortStart;
+  const filterStart = performance.now();
+  table.setFilter('name', 'Item 99');
+  filterMs = performance.now() - filterStart;
+  points = rows.length;
+  renderedRows = container.querySelectorAll('tbody tr').length;
+  columns = container.querySelectorAll('tbody tr:first-child td').length;
+} else if (scenario === 'pivot-table') {
+  const data = Array.from({ length: 50_000 }, (_, i) => ({
+    region: `R${i % 10}`,
+    product: `P${Math.floor(i / 10) % 50}`,
+    city: `C${Math.floor(i / 500) % 20}`,
+    quarter: `Q${Math.floor(i / 10_000) % 4 + 1}`,
+    revenue: i % 1_000,
+    units: i % 37,
+  }));
+  sourceRows = data.length;
+  const pivotStart = performance.now();
+  const result = pivotData(data, {
+    rows: ['region', 'product'],
+    columns: ['city', 'quarter'],
+    measures: [
+      { key: 'revenue', aggregate: 'sum' },
+      { key: 'units', aggregate: 'average' },
+    ],
+    subtotals: true,
+    grandTotals: true,
+  });
+  pivotMs = performance.now() - pivotStart;
+  const start = performance.now();
+  new FacetTable(container, {
+    ...result,
+    pagination: { pageSize: 25 },
+  });
+  renderMs = performance.now() - start;
+  points = result.rows.length;
+  renderedRows = container.querySelectorAll('tbody tr').length;
+  columns = container.querySelectorAll('tbody tr:first-child td').length;
+} else if (scenario === 'table-cell-charts') {
+  const rows = Array.from({ length: 25 }, (_, i) => ({
+    id: i,
+    name: `Item ${i}`,
+    trend: Array.from({ length: 20 }, (_value, j) =>
+      Math.sin(j / 3) * 10 + i
+    ),
+  }));
+  sourceRows = rows.length;
+  const start = performance.now();
+  const table = new FacetTable(container, {
+    rows,
+    columns: [
+      { key: 'id', header: 'ID' },
+      { key: 'name', header: 'Name' },
+      {
+        key: 'trend',
+        header: 'Trend',
+        chart: { type: 'line', height: 44, minWidth: 120 },
+      },
+    ],
+  });
+  renderMs = performance.now() - start;
+  points = rows.length * rows[0].trend.length;
+  renderedRows = container.querySelectorAll('tbody tr').length;
+  columns = container.querySelectorAll('tbody tr:first-child td').length;
+  charts = table.charts.length;
 } else {
   throw new Error(`Unknown performance scenario: ${scenario}`);
 }
@@ -116,7 +226,14 @@ const metrics: PerformanceMetrics = {
   points,
   renderMs: Math.round(renderMs * 100) / 100,
   updateMs: updateMs === undefined ? undefined : Math.round(updateMs * 100) / 100,
+  sortMs: sortMs === undefined ? undefined : Math.round(sortMs * 100) / 100,
+  filterMs: filterMs === undefined ? undefined : Math.round(filterMs * 100) / 100,
+  pivotMs: pivotMs === undefined ? undefined : Math.round(pivotMs * 100) / 100,
   renderCount,
+  sourceRows,
+  renderedRows,
+  columns,
+  charts,
   domNodes: container.querySelectorAll('*').length,
   svgElements: container.querySelectorAll('svg *').length,
   pointElements: container.querySelectorAll('.facet-point, .facet-point-hit').length,

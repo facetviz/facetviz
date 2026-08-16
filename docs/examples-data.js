@@ -1,3 +1,5 @@
+import { pivotData } from "./lib/facetviz.js";
+
 // Shared example catalogue used by both the Examples page and the Guide.
 // Each entry: { cat, title, desc, types:[chartType…], cfg }.
 
@@ -999,46 +1001,60 @@ export const EXAMPLES = [
   {
     cat: "FacetTable",
     title: "Multi-level headers with nested measures",
-    desc: "Pivot-style city headers span Revenue and Average Price measures while leaf columns remain sortable and formattable.",
+    desc: "pivotData generates city header groups, Revenue and Average Price measures, subtotals, and grand totals from raw sales rows.",
     types: [],
     kind: "table",
     wide: true,
+    code: `const rawSalesRows = [
+  { category: "Beverages", product: "Bread", city: "Bengaluru", unitPrice: 86.29, revenue: 949.19 },
+  { category: "Beverages", product: "Bread", city: "Chennai", unitPrice: 1128.37, revenue: 36797.68 },
+  { category: "Grocery", product: "Bread", city: "Chennai", unitPrice: 442.04, revenue: 13261.2 },
+  { category: "Grocery", product: "Detergent", city: "Chennai", unitPrice: 537.24, revenue: 8189.82 },
+];
+
+const pivot = pivotData(rawSalesRows, {
+  rows: ["category", "product"],
+  columns: [{ key: "city", order: ["Bengaluru", "Chennai"] }],
+  measures: [
+    { key: "revenue", header: "Revenue", aggregate: "sum", format: "{value:,.2f}", sortable: true },
+    { key: "unitPrice", header: "Average Price", aggregate: "average", format: "{value:,.2f}", sortable: true },
+  ],
+  subtotals: true,
+  grandTotals: true,
+  emptyValue: null,
+});
+
+new FacetTable(el, {
+  ...pivot,
+  caption: "Revenue and average price by city",
+  appearance: { rowsAndColumns: { displayEmptyCellAs: "—" } },
+});`,
     cfg: {
       caption: "Revenue and average price by city",
-      rows: [
-        { category: "Beverages", product: "Bread", bengaluruRevenue: 949.19, bengaluruAverage: 86.29, chennaiRevenue: 36797.68, chennaiAverage: 1128.37, totalRevenue: 37746.87, totalAverage: 607.33, rowType: "detail", groupPath: ["Beverages"] },
-        { category: "Beverages — subtotal", product: "", bengaluruRevenue: 949.19, bengaluruAverage: 86.29, chennaiRevenue: 36797.68, chennaiAverage: 1128.37, totalRevenue: 37746.87, totalAverage: 607.33, rowType: "subtotal", groupPath: ["Beverages"] },
-        { category: "Grocery", product: "Bread", bengaluruRevenue: null, bengaluruAverage: null, chennaiRevenue: 13261.2, chennaiAverage: 442.04, totalRevenue: 13261.2, totalAverage: 442.04, rowType: "detail", groupPath: ["Grocery"] },
-        { category: "Grocery", product: "Detergent", bengaluruRevenue: null, bengaluruAverage: null, chennaiRevenue: 8189.82, chennaiAverage: 537.24, totalRevenue: 8189.82, totalAverage: 537.24, rowType: "detail", groupPath: ["Grocery"] },
-        { category: "Grocery — subtotal", product: "", bengaluruRevenue: null, bengaluruAverage: null, chennaiRevenue: 21451.02, chennaiAverage: 489.64, totalRevenue: 21451.02, totalAverage: 489.64, rowType: "subtotal", groupPath: ["Grocery"] },
-        { category: "Grand total", product: "", bengaluruRevenue: 949.19, bengaluruAverage: 86.29, chennaiRevenue: 58248.7, chennaiAverage: 702.55, totalRevenue: 59197.89, totalAverage: 548.49, rowType: "grandTotal", groupPath: [] },
-      ],
-      columns: [
-        { key: "category", header: "Category", width: 180 },
-        { key: "product", header: "Product", width: 130 },
+      ...pivotData(
+        [
+          { category: "Beverages", product: "Bread", city: "Bengaluru", unitPrice: 86.29, revenue: 949.19 },
+          { category: "Beverages", product: "Bread", city: "Chennai", unitPrice: 1128.37, revenue: 36797.68 },
+          { category: "Grocery", product: "Bread", city: "Chennai", unitPrice: 442.04, revenue: 13261.2 },
+          { category: "Grocery", product: "Detergent", city: "Chennai", unitPrice: 537.24, revenue: 8189.82 },
+        ],
         {
-          header: "Bengaluru",
-          columns: [
-            { key: "bengaluruRevenue", header: "Revenue", role: "value", format: "{value:,.2f}", sortable: true },
-            { key: "bengaluruAverage", header: "Average Price", role: "value", format: "{value:,.2f}", sortable: true },
+          rows: [
+            { key: "category", header: "Category" },
+            { key: "product", header: "Product" },
           ],
-        },
-        {
-          header: "Chennai",
           columns: [
-            { key: "chennaiRevenue", header: "Revenue", role: "value", format: "{value:,.2f}", sortable: true },
-            { key: "chennaiAverage", header: "Average Price", role: "value", format: "{value:,.2f}", sortable: true },
+            { key: "city", order: ["Bengaluru", "Chennai"] },
           ],
-        },
-        {
-          header: "Grand total",
-          headerStyle: { backgroundColor: "color-mix(in srgb, var(--panel-2, #f8fafc) 75%, #6366f1 25%)" },
-          columns: [
-            { key: "totalRevenue", header: "Revenue", role: "value", format: "{value:,.2f}", sortable: true },
-            { key: "totalAverage", header: "Average Price", role: "value", format: "{value:,.2f}", sortable: true },
+          measures: [
+            { key: "revenue", header: "Revenue", aggregate: "sum", format: "{value:,.2f}", sortable: true },
+            { key: "unitPrice", header: "Average Price", aggregate: "average", format: "{value:,.2f}", sortable: true },
           ],
+          subtotals: true,
+          grandTotals: true,
+          emptyValue: null,
         },
-      ],
+      ),
       layout: { rowDensity: "comfortable", wrapText: false, freezeHeaderRow: true },
       appearance: {
         rowsAndColumns: { displayEmptyCellAs: "—", valueAlignment: "right", highlightRowOnHover: true, hoverColor: "#eef2ff" },

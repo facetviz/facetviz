@@ -209,7 +209,7 @@ describe('FacetViz rendering', () => {
     const groupedRects = (columnWidth?: number) => {
       const el = container();
       new FacetViz(el, {
-        chart: { type, animation: false },
+        chart: { type, animation: false, responsive: false },
         xAxis: { categories: ['A'] },
         plotOptions: columnWidth === undefined ? undefined : { [type]: { columnWidth } },
         series: [{ data: [1] }, { data: [2] }],
@@ -448,7 +448,7 @@ describe('FacetViz rendering', () => {
   it('applies itemStyle attributes to legend text', () => {
     const el = container();
     new FacetViz(el, {
-      chart: { type: 'column', animation: false },
+      chart: { type: 'column', animation: false, scaleFonts: false },
       legend: {
         itemStyle: {
           'font-size': '20px',

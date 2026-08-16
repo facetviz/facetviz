@@ -163,6 +163,40 @@ interface FacetTableColumnGroup<Row extends object> {
   headerStyle?: Record<string,string|number>;
 }
 
+interface PivotDataOptions<Row extends object> {
+  rows: Array<(keyof Row & string) | PivotField<Row>>;
+  columns: Array<(keyof Row & string) | PivotField<Row>>;
+  measures: PivotMeasure<Row>[];
+  subtotals?: boolean;                      // default false
+  grandTotals?: boolean | { rows?: boolean; columns?: boolean };
+  emptyValue?: unknown;                     // default null
+  subtotalLabel?: string | ((value, key, path) => string);
+  grandTotalLabel?: string;                 // default 'Grand total'
+}
+
+interface PivotField<Row extends object> {
+  key: keyof Row & string;
+  header?: string;
+  order?: 'asc'|'desc'|unknown[]|((a, b) => number);
+  formatter?: (value: unknown) => string;
+}
+
+interface PivotMeasure<Row extends object> {
+  key: keyof Row & string;
+  header?: string;
+  aggregate?: 'sum'|'average'|'avg'|'count'|'min'|'max' |
+    ((values: unknown[], matchingRows: Row[]) => unknown);
+  format?: string;
+  sortable?: boolean | FacetTableColumnSortOptions<PivotTableRow>;
+  filterable?: boolean | FacetTableColumnFilterOptions<PivotTableRow>;
+  width?: number|string;
+  horizontalAlign?: 'left'|'center'|'right';
+  verticalAlign?: 'top'|'middle'|'bottom';
+  style?: Record<string,string|number>;
+  headerStyle?: Record<string,string|number>;
+  chart?: FacetTableCellChartOptions<PivotTableRow>;
+}
+
 interface FacetTableCellChartOptions<Row extends object> {
   type?: ChartType;                         // default sparkline
   height?: number;                          // default 44px
@@ -216,6 +250,52 @@ new FacetTable('#pivot', {
 Groups support arbitrary nesting, `horizontalAlign`, `verticalAlign`, and
 `headerStyle`. `style.columnGroupHeader` styles all group headers. Sort and
 filter controls belong only to leaf headings. Empty column groups are invalid.
+
+### FacetTable pivotData transformer
+
+`pivotData(rawRows, options)` converts raw records into FacetTable-ready
+`{ rows, columns }`. Keep this transformation separate from the FacetTable
+renderer:
+
+```ts
+import { FacetTable, pivotData } from 'facetviz';
+
+const pivot = pivotData(salesRows, {
+  rows: ['category', 'product'],
+  columns: ['city'],
+  measures: [
+    { key: 'revenue', header: 'Revenue', aggregate: 'sum',
+      format: '{value:$,.2f}', sortable: true },
+    { key: 'unitPrice', header: 'Average Price', aggregate: 'average',
+      format: '{value:,.2f}' },
+  ],
+  subtotals: true,
+  grandTotals: true,
+  emptyValue: null,
+});
+
+new FacetTable('#pivot', {
+  ...pivot,
+  pagination: { pageSize: 25 },
+});
+```
+
+Built-in aggregates: `sum`, `average`/`avg`, `count`, `min`, `max`. Custom
+aggregates receive `(values, matchingSourceRows)`. Totals always use matching
+raw records, so averages/min/max/weighted values are not derived from displayed
+subtotals.
+
+Row and column field inputs may be keys or descriptors with `key`, `header`,
+`formatter`, and `order`. `order` accepts `asc`, `desc`, an explicit value
+array, or a comparator; omission retains first-source appearance. Multiple
+column fields generate recursively nested header groups. Multiple measures
+become leaf columns in every final group. Measures pass through format,
+sorting, filtering, style, width, alignment, and chart options.
+
+`grandTotals: true` adds both the total row and total column group. Use
+`{rows:boolean, columns:boolean}` for independent control. `emptyValue` defaults
+to null. Output rows include `rowType`/`groupPath`, and deterministic generated
+keys avoid collisions with row fields and table metadata.
 
 ### FacetTable pre-grouped rows
 
@@ -457,6 +537,17 @@ pagination: {
 }
 ```
 
+For any table that may grow into thousands of rows, generate a pagination
+configuration instead of mounting every row. FacetTable caches filtered and
+sorted row sets, but it intentionally renders native semantic table elements
+and does not virtualize the DOM. Only cell charts on the visible page mount.
+
+Row pagination does not reduce pivot width. Estimate pivot value columns as
+the product of distinct column-field combinations times the number of measures.
+For example, 20 cities x four quarters x two measures creates 160 value
+columns. Filter or pre-aggregate high-cardinality column fields before calling
+`pivotData()` when that result would be too wide to read.
+
 `style` accepts CSS property maps. Numeric dimensional values become pixels;
 recognized unitless properties and CSS custom properties remain as supplied.
 Available slots:
@@ -579,6 +670,7 @@ interface ChartOptions {
     zoom?: 'x' | 'y' | 'xy' | false | { type?: 'x'|'y'|'xy'|false };
     reflow?: boolean;                         // default true
     responsive?: boolean;                     // default true; hides data labels when short side <180px
+    scaleFonts?: boolean;                     // default true; false keeps explicit fontSize values literal
     boost?: boolean | { enabled?: boolean; threshold?: number };
     events?: { render?; click? };
   };

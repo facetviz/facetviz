@@ -173,6 +173,81 @@ A group accepts `horizontalAlign`, `verticalAlign`, and `headerStyle`.
 `headerStyle` customizes only that group. Leaf sorting and filtering controls
 remain in the lowest header row. Empty groups are rejected.
 
+### Generate a pivot table from raw data
+
+`pivotData(data, options)` is a separate transformer that returns FacetTable
+`rows` and `columns`. FacetTable remains a renderer; the helper performs the
+client-side grouping and aggregation before the table is created.
+
+```ts
+import { FacetTable, pivotData } from "facetviz";
+
+const pivot = pivotData(salesRows, {
+  rows: ["category", "product"],
+  columns: ["city"],
+  measures: [
+    {
+      key: "revenue",
+      header: "Revenue",
+      aggregate: "sum",
+      format: "{value:$,.2f}",
+      sortable: true,
+    },
+    {
+      key: "unitPrice",
+      header: "Average Price",
+      aggregate: "average",
+      format: "{value:,.2f}",
+    },
+  ],
+  subtotals: true,
+  grandTotals: true,
+  emptyValue: null,
+});
+
+new FacetTable("#pivot", {
+  ...pivot,
+  pagination: { pageSize: 25 },
+  appearance: {
+    rowsAndColumns: { displayEmptyCellAs: "—" },
+  },
+});
+```
+
+Built-in aggregates are `"sum"`, `"average"`/`"avg"`, `"count"`, `"min"`,
+and `"max"`. A measure may instead use
+`aggregate(values, sourceRows) => result` for weighted or domain-specific
+calculations. Every subtotal and grand total is calculated from its matching
+raw source records, never by combining displayed subtotal values.
+
+Row and column fields may be strings or descriptors:
+
+```ts
+rows: [
+  { key: "category", header: "Category", order: "asc" },
+  "product",
+],
+columns: [
+  {
+    key: "city",
+    order: ["Bengaluru", "Chennai"],
+    formatter: (value) => `City: ${value}`,
+  },
+]
+```
+
+Field `order` accepts source order (when omitted), `"asc"`, `"desc"`, an
+explicit value array, or a comparator. Multiple column fields create arbitrary
+nested header groups. Multiple measures become leaf columns inside every final
+group. Measure options pass through `format`, `sortable`, `filterable`, `style`,
+`headerStyle`, `width`, alignment, and `chart`.
+
+`grandTotals: true` adds both the total row and total column group. Use
+`{ rows: true, columns: false }` to control them independently. Generated rows
+include `rowType` and `groupPath`, so summary styling and group-safe FacetTable
+sorting work automatically. `emptyValue` defaults to `null`; generated data
+keys are deterministic and avoid row-field and metadata-key collisions.
+
 ### Pre-grouped rows and summary rows
 
 FacetTable renders grouped results prepared by your database or application; it
@@ -468,6 +543,28 @@ A shared chart-column scale still uses all rows, so comparisons remain stable
 while paging. Runtime state is exposed through `page`, `pageSize`, `pageCount`,
 `setPage(page)`, and `setPageSize(size)`.
 
+### Large tables and pivots
+
+FacetTable renders semantic HTML cells rather than a virtualized grid. Enable
+pagination whenever a table may contain thousands of rows; sorting and
+filtering still use the complete source data, while only the current page is
+mounted in the DOM:
+
+```ts
+new FacetTable("#results", {
+  rows,
+  columns,
+  pagination: { pageSize: 25, pageSizeOptions: [25, 50, 100] },
+});
+```
+
+Pagination limits rows, not columns. For pivots, keep the combined cardinality
+of `columns` fields and `measures` bounded: a pivot with 20 cities, four
+quarters, and two measures produces 160 value columns. Filter or aggregate the
+source data before `pivotData()` when that width is not useful to a reader.
+FacetTable caches processed rows between renders and invalidates the cache when
+rows, columns, filters, or sorting change.
+
 ---
 
 ## ChartOptions
@@ -512,6 +609,7 @@ The root object passed to `new FacetViz(container, options)`.
 | `colors`                    | `string[]`                         | –                | Alias of top-level `colors`.                                                                                      |
 | `events`                    | [`ChartEvents`](#events)           | –                | Chart-level `load` / `render` / `click` callbacks.                                                                |
 | `responsive`                | `boolean`                          | `true`           | Compact default axis-title/legend gaps on constrained charts, hide data labels below a 180 px short side, and hide axis lines below 110 px; explicit margins stay fixed and `false` disables automatic simplification. |
+| `scaleFonts`                | `boolean`                          | `true`           | Scale default and explicitly configured chart font sizes with chart dimensions. Set `false` when a supplied `fontSize` must remain an exact CSS pixel value. |
 
 > The chart is **responsive**: the SVG scales down (`max-width: 100%`) to never
 > overflow its parent, even when an explicit `width` is larger than the container.

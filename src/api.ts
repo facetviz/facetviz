@@ -4,6 +4,20 @@ export { FacetViz } from "./core/chart.js";
 export { FacetViz as Chart } from "./core/chart.js";
 export { FacetTable } from "./core/table.js";
 export { FacetTable as ChartTable } from "./core/table.js";
+export { pivotData } from "./core/pivot.js";
+
+export type {
+  PivotAggregateOperation,
+  PivotAggregate,
+  PivotFieldOrder,
+  PivotField,
+  PivotFieldInput,
+  PivotTableRow,
+  PivotMeasure,
+  PivotGrandTotalsOptions,
+  PivotDataOptions,
+  PivotDataResult,
+} from "./core/pivot.js";
 
 export type {
   FacetTableRow,
