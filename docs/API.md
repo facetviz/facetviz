@@ -129,6 +129,94 @@ and takes precedence over `format`. Adding `chart` turns the column into a chart
 column; chart options are `type`, `height`, `minWidth`, `scale`, `options`, and
 the optional `series` factory.
 
+### Pre-grouped rows and summary rows
+
+FacetTable renders grouped results prepared by your database or application; it
+does not calculate aggregates. Put the final display values directly in
+`rows` and add two optional metadata fields:
+
+- `rowType: "detail" | "subtotal" | "grandTotal"` selects the row behavior
+  and the matching `style.subtotalRow` or `style.grandTotalRow` styling.
+- `groupPath: unknown[]` identifies detail rows that may be sorted together.
+  Use the same path for sibling details, such as `["Beverages", "Bread"]`.
+
+```ts
+const table = new FacetTable("#sales", {
+  rows: [
+    {
+      category: "Beverages", product: "Bread", city: "Bengaluru",
+      revenue: 949.19,
+      rowType: "detail", groupPath: ["Beverages", "Bread"],
+    },
+    {
+      category: "Beverages", product: "Bread", city: "Chennai",
+      revenue: 36797.68,
+      rowType: "detail", groupPath: ["Beverages", "Bread"],
+    },
+    {
+      category: "Beverages", product: "Bread — subtotal", city: "",
+      revenue: 37746.87,
+      rowType: "subtotal", groupPath: ["Beverages", "Bread"],
+    },
+    {
+      category: "Beverages — subtotal", product: "", city: "",
+      revenue: 37746.87,
+      rowType: "subtotal", groupPath: ["Beverages"],
+    },
+    {
+      category: "Grand total", product: "", city: "",
+      revenue: 59197.89,
+      rowType: "grandTotal", groupPath: [],
+    },
+  ],
+  columns: [
+    { key: "category", header: "Category" },
+    { key: "product", header: "Product" },
+    { key: "city", header: "City" },
+    {
+      key: "revenue",
+      header: "SUM(Revenue)",
+      format: "{value:,.2f}",
+      sortable: true,
+    },
+    {
+      key: "revenue",
+      header: "Revenue chart",
+      chart: { type: "bar", height: 28, scale: "shared" },
+    },
+  ],
+  style: {
+    subtotalRow: { backgroundColor: "#f8fafc", fontWeight: 700 },
+    grandTotalRow: { backgroundColor: "#f1f5f9", fontWeight: 800 },
+  },
+});
+```
+
+When a grouped table is sorted, FacetTable sorts only detail rows with the same
+`groupPath`. It leaves subtotal rows in their supplied positions and keeps the
+grand-total row in place. Without row metadata, sorting remains the normal flat
+table sort.
+
+FacetTable does not add subtotals to calculate a grand total. This is important
+for averages, minima, maxima, weighted values, and other domain calculations:
+send the correct final value in the grand-total row.
+
+```ts
+rows: [
+  { category: "Beverages", average: 15,
+    rowType: "subtotal", groupPath: ["Beverages"] },
+  { category: "Grocery", average: 100,
+    rowType: "subtotal", groupPath: ["Grocery"] },
+  { category: "Grand average", average: 43.33,
+    rowType: "grandTotal", groupPath: [] },
+]
+```
+
+Marked rows receive `.facet-table-row-detail`,
+`.facet-table-row-subtotal`, or `.facet-table-row-grand-total` and a
+`data-row-type` attribute. Filtering and pagination operate on the supplied
+rows; if filtering must change aggregates, request or compute a new grouped
+result and call `setRows()`.
 ### Column and per-cell styles
 
 Set `style` on a column to style every body cell in that column. It accepts a

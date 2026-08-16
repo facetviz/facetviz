@@ -687,4 +687,143 @@ describe("FacetTable", () => {
     expect(visibleItems()).toEqual(["Small", "Medium", "Large"]);
     expect(() => table.setFilter("item", "Small")).toThrow(/not filterable/);
   });
+
+  it("renders supplied detail, subtotal, and grand-total rows with charts", () => {
+    interface SalesRow {
+      category: string;
+      product: string;
+      city: string;
+      unitPrice: number;
+      revenue: number;
+      rowType: "detail" | "subtotal" | "grandTotal";
+      groupPath: string[];
+    }
+    const element = container();
+    const table = new FacetTable<SalesRow>(element, {
+      rows: [
+        { category: "Beverages", product: "Bread", city: "Bengaluru", unitPrice: 86.29, revenue: 949.19, rowType: "detail", groupPath: ["Beverages", "Bread"] },
+        { category: "Beverages", product: "Bread", city: "Chennai", unitPrice: 1128.37, revenue: 36797.68, rowType: "detail", groupPath: ["Beverages", "Bread"] },
+        { category: "Beverages", product: "Bread — subtotal", city: "", unitPrice: 1214.66, revenue: 37746.87, rowType: "subtotal", groupPath: ["Beverages", "Bread"] },
+        { category: "Beverages — subtotal", product: "", city: "", unitPrice: 1214.66, revenue: 37746.87, rowType: "subtotal", groupPath: ["Beverages"] },
+        { category: "Grocery", product: "Bread", city: "Chennai", unitPrice: 442.04, revenue: 13261.20, rowType: "detail", groupPath: ["Grocery", "Bread"] },
+        { category: "Grocery", product: "Bread — subtotal", city: "", unitPrice: 442.04, revenue: 13261.20, rowType: "subtotal", groupPath: ["Grocery", "Bread"] },
+        { category: "Grocery", product: "Detergent", city: "Chennai", unitPrice: 537.24, revenue: 8189.82, rowType: "detail", groupPath: ["Grocery", "Detergent"] },
+        { category: "Grocery", product: "Detergent — subtotal", city: "", unitPrice: 537.24, revenue: 8189.82, rowType: "subtotal", groupPath: ["Grocery", "Detergent"] },
+        { category: "Grocery — subtotal", product: "", city: "", unitPrice: 979.28, revenue: 21451.02, rowType: "subtotal", groupPath: ["Grocery"] },
+        { category: "Grand total", product: "", city: "", unitPrice: 2193.94, revenue: 59197.89, rowType: "grandTotal", groupPath: [] },
+      ],
+      columns: [
+        { key: "category" },
+        { key: "product" },
+        { key: "city" },
+        { key: "unitPrice", format: "{value:,.2f}" },
+        { key: "revenue", format: "{value:,.2f}" },
+        {
+          key: "revenue",
+          header: "Revenue chart",
+          chart: { type: "bar", scale: "shared" },
+        },
+      ],
+      style: {
+        subtotalRow: { color: "#334155" },
+        grandTotalRow: { color: "#0f172a" },
+      },
+    });
+
+    const rows = [...element.querySelectorAll<HTMLTableRowElement>("tbody tr")];
+    const values = rows.map((row) =>
+      [...row.cells].slice(0, 5).map((cell) => cell.textContent)
+    );
+    expect(values).toEqual([
+      ["Beverages", "Bread", "Bengaluru", "86.29", "949.19"],
+      ["Beverages", "Bread", "Chennai", "1,128.37", "36,797.68"],
+      ["Beverages", "Bread — subtotal", "", "1,214.66", "37,746.87"],
+      ["Beverages — subtotal", "", "", "1,214.66", "37,746.87"],
+      ["Grocery", "Bread", "Chennai", "442.04", "13,261.20"],
+      ["Grocery", "Bread — subtotal", "", "442.04", "13,261.20"],
+      ["Grocery", "Detergent", "Chennai", "537.24", "8,189.82"],
+      ["Grocery", "Detergent — subtotal", "", "537.24", "8,189.82"],
+      ["Grocery — subtotal", "", "", "979.28", "21,451.02"],
+      ["Grand total", "", "", "2,193.94", "59,197.89"],
+    ]);
+    expect(element.querySelectorAll(".facet-table-row-detail")).toHaveLength(4);
+    expect(element.querySelectorAll(".facet-table-row-subtotal")).toHaveLength(5);
+    expect(element.querySelectorAll(".facet-table-row-grand-total")).toHaveLength(1);
+    expect(rows[2].dataset.rowType).toBe("subtotal");
+    expect(rows[2].style.color).toBe("#334155");
+    expect(rows[9].style.color).toBe("#0f172a");
+    expect(table.charts).toHaveLength(10);
+  });
+
+  it("sorts detail rows within groupPath while keeping summary rows in place", () => {
+    interface SalesRow {
+      category: string;
+      product: string;
+      city: string;
+      revenue: number;
+      rowType: "detail" | "subtotal" | "grandTotal";
+      groupPath: string[];
+    }
+    const element = container();
+    const table = new FacetTable<SalesRow>(element, {
+      rows: [
+        { category: "Beverages", product: "Bread", city: "Bengaluru", revenue: 20, rowType: "detail", groupPath: ["Beverages", "Bread"] },
+        { category: "Beverages", product: "Bread", city: "Chennai", revenue: 10, rowType: "detail", groupPath: ["Beverages", "Bread"] },
+        { category: "Beverages", product: "Bread — subtotal", city: "", revenue: 30, rowType: "subtotal", groupPath: ["Beverages", "Bread"] },
+        { category: "Beverages — subtotal", product: "", city: "", revenue: 30, rowType: "subtotal", groupPath: ["Beverages"] },
+        { category: "Grocery", product: "Bread", city: "Mumbai", revenue: 40, rowType: "detail", groupPath: ["Grocery", "Bread"] },
+        { category: "Grocery", product: "Bread", city: "Pune", revenue: 15, rowType: "detail", groupPath: ["Grocery", "Bread"] },
+        { category: "Grocery", product: "Bread — subtotal", city: "", revenue: 55, rowType: "subtotal", groupPath: ["Grocery", "Bread"] },
+        { category: "Grocery — subtotal", product: "", city: "", revenue: 55, rowType: "subtotal", groupPath: ["Grocery"] },
+        { category: "Grand total", product: "", city: "", revenue: 85, rowType: "grandTotal", groupPath: [] },
+      ],
+      columns: [
+        { key: "category" },
+        { key: "product" },
+        { key: "city" },
+        { key: "revenue", sortable: true },
+      ],
+    });
+    const cities = () => [...element.querySelectorAll("tbody tr")]
+      .map((row) => row.children[2]?.textContent);
+    const rowTypes = () => [...element.querySelectorAll<HTMLTableRowElement>("tbody tr")]
+      .map((row) => row.dataset.rowType);
+
+    table.sortBy("revenue", "asc");
+    expect(cities()).toEqual([
+      "Chennai", "Bengaluru", "", "",
+      "Pune", "Mumbai", "", "", "",
+    ]);
+    expect(rowTypes()).toEqual([
+      "detail", "detail", "subtotal", "subtotal",
+      "detail", "detail", "subtotal", "subtotal", "grandTotal",
+    ]);
+
+    table.sortBy("revenue", "desc");
+    expect(cities()).toEqual([
+      "Bengaluru", "Chennai", "", "",
+      "Mumbai", "Pune", "", "", "",
+    ]);
+    expect(element.querySelector("tbody tr:last-child td")?.textContent)
+      .toBe("Grand total");
+  });
+
+  it("renders a precomputed average grand total without recalculating it", () => {
+    const element = container();
+    new FacetTable(element, {
+      rows: [
+        { category: "Beverages", average: 15, rowType: "subtotal", groupPath: ["Beverages"] },
+        { category: "Grocery", average: 100, rowType: "subtotal", groupPath: ["Grocery"] },
+        { category: "Grand average", average: 43.33, rowType: "grandTotal", groupPath: [] },
+      ],
+      columns: [
+        { key: "category" },
+        { key: "average", format: "{value:.2f}" },
+      ],
+    });
+
+    const values = [...element.querySelectorAll("tbody tr")]
+      .map((row) => row.lastElementChild?.textContent);
+    expect(values).toEqual(["15.00", "100.00", "43.33"]);
+  });
 });

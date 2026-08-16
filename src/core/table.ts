@@ -13,6 +13,14 @@ import { formatString, merge } from "./utils.js";
 /** Any object whose named properties can be used as table columns. */
 export type FacetTableRow = object;
 
+/** Optional metadata fields recognized on pre-grouped table rows. */
+export interface FacetTableRowMetadata {
+  /** Marks a supplied row for detail, subtotal, or grand-total behavior and styling. */
+  rowType?: "detail" | "subtotal" | "grandTotal";
+  /** Identifies the detail group whose rows may be sorted together. */
+  groupPath?: ReadonlyArray<unknown>;
+}
+
 /** CSS properties accepted by each top-level table style slot. */
 export type FacetTableStyle = Record<string, string | number>;
 
@@ -53,6 +61,10 @@ export interface FacetTableStyleOptions<Row extends FacetTableRow> {
   body?: FacetTableStyle;
   /** Static row style, or a callback for stripes/conditional formatting. */
   row?: FacetTableStyle | ((row: Row, rowIndex: number) => FacetTableStyle);
+  /** Style supplied rows whose `rowType` is `subtotal`. */
+  subtotalRow?: FacetTableStyle;
+  /** Style supplied rows whose `rowType` is `grandTotal`. */
+  grandTotalRow?: FacetTableStyle;
   /** Static cell style, or a callback that can inspect the cell value. */
   cell?:
     | FacetTableStyle
@@ -768,9 +780,18 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
 
     visibleRows.forEach(({ row: dataRow, rowIndex }, visibleRowIndex) => {
       const row = document.createElement("tr");
-      row.className = "facet-table-row";
+      const rowType = tableRowType(dataRow);
+      row.className = [
+        "facet-table-row",
+        rowType
+          ? `facet-table-row-${rowType === "grandTotal" ? "grand-total" : rowType}`
+          : "",
+      ].filter(Boolean).join(" ");
+      if (rowType) row.dataset.rowType = rowType;
       const rowBackground = this.customizedRowBackground(visibleRowIndex);
       if (rowBackground) row.style.backgroundColor = rowBackground;
+      const summaryStyle = this.summaryRowStyle(rowType);
+      applyStyle(row, summaryStyle);
       const rowStyle = resolveRowStyle(this.options.style?.row, dataRow, rowIndex);
       applyStyle(row, rowStyle);
       for (const [columnIndex, column] of this.options.columns.entries()) {
@@ -787,6 +808,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
           columnIndex,
           row.style.backgroundColor || rowBackground,
         );
+        applyStyle(cell, summaryStyle);
         applyStyle(
           cell,
           resolveCellStyle(this.options.style?.cell, value, dataRow, rowIndex, column),
@@ -829,6 +851,28 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
     return { body, pending };
   }
 
+  private summaryRowStyle(
+    rowType: FacetTableRowMetadata["rowType"],
+  ): FacetTableStyle | undefined {
+    if (!rowType || rowType === "detail") return undefined;
+    if (rowType === "grandTotal") {
+      return {
+        backgroundColor:
+          "var(--facet-table-grand-total-background, color-mix(in srgb, Canvas 88%, #6366f1 12%))",
+        fontWeight: 700,
+        borderTop:
+          "1px solid var(--facet-table-grand-total-border, color-mix(in srgb, CanvasText 24%, transparent))",
+        ...this.options.style?.grandTotalRow,
+      };
+    }
+    return {
+      backgroundColor:
+        "var(--facet-table-subtotal-background, color-mix(in srgb, Canvas 94%, #6366f1 6%))",
+      fontWeight: 700,
+      ...this.options.style?.subtotalRow,
+    };
+  }
+
   private visibleRows(): Array<{ row: Row; rowIndex: number }> {
     const rows = this.sortedRows();
     const pagination = this.paginationOptions();
@@ -850,7 +894,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
     if (!column) return rows;
     const sortOptions = typeof column.sortable === "object" ? column.sortable : undefined;
     const direction = this.currentSort.direction === "asc" ? 1 : -1;
-    return rows.sort((a, b) => {
+    const compare = (a: { row: Row; rowIndex: number }, b: { row: Row; rowIndex: number }) => {
       const valueA = unwrapCellValue(a.row[column.key]);
       const valueB = unwrapCellValue(b.row[column.key]);
       const nullOrder = compareNullsLast(valueA, valueB);
@@ -862,10 +906,17 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
       return normalized === 0
         ? a.rowIndex - b.rowIndex
         : normalized * direction;
-    });
+    };
+    if (!rows.some(({ row }) => isStructuredTableRow(row)))
+      return rows.sort(compare);
+    return sortDetailRowsWithinGroups(rows, compare);
   }
 
   private filteredRows(): Array<{ row: Row; rowIndex: number }> {
+    return this.filteredSourceRows();
+  }
+
+  private filteredSourceRows(): Array<{ row: Row; rowIndex: number }> {
     const rows = this.options.rows.map((row, rowIndex) => ({ row, rowIndex }));
     if (!this.currentFilters.size) return rows;
     return rows.filter(({ row, rowIndex }) => {
@@ -1655,6 +1706,73 @@ function reconcileFilters<Row extends FacetTableRow>(
   return filters;
 }
 
+function tableRowType<Row extends FacetTableRow>(
+  row: Row,
+): FacetTableRowMetadata["rowType"] {
+  const value = (row as FacetTableRowMetadata).rowType;
+  return value === "detail" || value === "subtotal" || value === "grandTotal"
+    ? value
+    : undefined;
+}
+
+function tableRowGroupPath<Row extends FacetTableRow>(
+  row: Row,
+): ReadonlyArray<unknown> {
+  const value = (row as FacetTableRowMetadata).groupPath;
+  return Array.isArray(value) ? value : [];
+}
+
+function isStructuredTableRow<Row extends FacetTableRow>(row: Row): boolean {
+  return tableRowType(row) !== undefined || tableRowGroupPath(row).length > 0;
+}
+
+function sortDetailRowsWithinGroups<Row extends FacetTableRow>(
+  rows: Array<{ row: Row; rowIndex: number }>,
+  compare: (
+    a: { row: Row; rowIndex: number },
+    b: { row: Row; rowIndex: number },
+  ) => number,
+): Array<{ row: Row; rowIndex: number }> {
+  const result = [...rows];
+  const groups = new Map<string, {
+    positions: number[];
+    rows: Array<{ row: Row; rowIndex: number }>;
+  }>();
+
+  rows.forEach((entry, position) => {
+    const rowType = tableRowType(entry.row);
+    if (rowType === "subtotal" || rowType === "grandTotal") return;
+    const signature = groupPathSignature(tableRowGroupPath(entry.row));
+    const group = groups.get(signature) ?? { positions: [], rows: [] };
+    group.positions.push(position);
+    group.rows.push(entry);
+    groups.set(signature, group);
+  });
+
+  groups.forEach((group) => {
+    group.rows.sort(compare);
+    group.positions.forEach((position, index) => {
+      result[position] = group.rows[index];
+    });
+  });
+  return result;
+}
+
+function groupPathSignature(groupPath: ReadonlyArray<unknown>): string {
+  return groupPath.map(groupPathValueSignature).join("\u001f");
+}
+
+function groupPathValueSignature(value: unknown): string {
+  if (value instanceof Date) return "date:" + value.toISOString();
+  if (value && typeof value === "object") {
+    try {
+      return "object:" + JSON.stringify(value);
+    } catch {
+      return "object:" + String(value);
+    }
+  }
+  return typeof value + ":" + String(value);
+}
 function compareNullsLast(a: unknown, b: unknown): number | undefined {
   const aNull = a == null;
   const bNull = b == null;

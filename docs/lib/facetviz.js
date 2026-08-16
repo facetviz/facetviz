@@ -7949,10 +7949,15 @@ var FacetTable = class {
       return cell.colSpan = this.options.columns.length, cell.textContent = this.options.emptyText ?? "No data", cell.className = "facet-table-empty", cell.style.padding = "12px 10px", cell.style.textAlign = "center", applyStyle(cell, this.options.style?.emptyCell), row.appendChild(cell), body.appendChild(row), { body, pending };
     }
     return visibleRows.forEach(({ row: dataRow, rowIndex }, visibleRowIndex) => {
-      let row = document.createElement("tr");
-      row.className = "facet-table-row";
+      let row = document.createElement("tr"), rowType = tableRowType(dataRow);
+      row.className = [
+        "facet-table-row",
+        rowType ? `facet-table-row-${rowType === "grandTotal" ? "grand-total" : rowType}` : ""
+      ].filter(Boolean).join(" "), rowType && (row.dataset.rowType = rowType);
       let rowBackground = this.customizedRowBackground(visibleRowIndex);
       rowBackground && (row.style.backgroundColor = rowBackground);
+      let summaryStyle = this.summaryRowStyle(rowType);
+      applyStyle(row, summaryStyle);
       let rowStyle = resolveRowStyle(this.options.style?.row, dataRow, rowIndex);
       applyStyle(row, rowStyle);
       for (let [columnIndex, column] of this.options.columns.entries()) {
@@ -7961,7 +7966,7 @@ var FacetTable = class {
           cell,
           columnIndex,
           row.style.backgroundColor || rowBackground
-        ), applyStyle(
+        ), applyStyle(cell, summaryStyle), applyStyle(
           cell,
           resolveCellStyle(this.options.style?.cell, value, dataRow, rowIndex, column)
         ), applyStyle(
@@ -7985,6 +7990,19 @@ var FacetTable = class {
       this.bindRowHover(row), body.appendChild(row);
     }), { body, pending };
   }
+  summaryRowStyle(rowType) {
+    if (!(!rowType || rowType === "detail"))
+      return rowType === "grandTotal" ? {
+        backgroundColor: "var(--facet-table-grand-total-background, color-mix(in srgb, Canvas 88%, #6366f1 12%))",
+        fontWeight: 700,
+        borderTop: "1px solid var(--facet-table-grand-total-border, color-mix(in srgb, CanvasText 24%, transparent))",
+        ...this.options.style?.grandTotalRow
+      } : {
+        backgroundColor: "var(--facet-table-subtotal-background, color-mix(in srgb, Canvas 94%, #6366f1 6%))",
+        fontWeight: 700,
+        ...this.options.style?.subtotalRow
+      };
+  }
   visibleRows() {
     let rows = this.sortedRows(), pagination = this.paginationOptions(), start = pagination ? (this.currentPage - 1) * this.currentPageSize : 0, end = pagination ? Math.min(rows.length, start + this.currentPageSize) : rows.length;
     return rows.slice(start, end);
@@ -7996,15 +8014,18 @@ var FacetTable = class {
       (candidate) => candidate.key === this.currentSort?.key && candidate.sortable
     );
     if (!column) return rows;
-    let sortOptions = typeof column.sortable == "object" ? column.sortable : void 0, direction = this.currentSort.direction === "asc" ? 1 : -1;
-    return rows.sort((a, b) => {
+    let sortOptions = typeof column.sortable == "object" ? column.sortable : void 0, direction = this.currentSort.direction === "asc" ? 1 : -1, compare = (a, b) => {
       let valueA = unwrapCellValue(a.row[column.key]), valueB = unwrapCellValue(b.row[column.key]), nullOrder = compareNullsLast(valueA, valueB);
       if (nullOrder !== void 0) return nullOrder || a.rowIndex - b.rowIndex;
       let compared = sortOptions?.compare ? sortOptions.compare(valueA, valueB, a.row, b.row) : compareTableValues(valueA, valueB), normalized = Number.isFinite(compared) ? compared : 0;
       return normalized === 0 ? a.rowIndex - b.rowIndex : normalized * direction;
-    });
+    };
+    return rows.some(({ row }) => isStructuredTableRow(row)) ? sortDetailRowsWithinGroups(rows, compare) : rows.sort(compare);
   }
   filteredRows() {
+    return this.filteredSourceRows();
+  }
+  filteredSourceRows() {
     let rows = this.options.rows.map((row, rowIndex) => ({ row, rowIndex }));
     return this.currentFilters.size ? rows.filter(({ row, rowIndex }) => {
       for (let [key, filterValue] of this.currentFilters) {
@@ -8376,6 +8397,43 @@ function reconcileFilters(current, columns) {
   for (let [key, value] of current)
     columns.some((column) => column.key === key && column.filterable) && filters.set(key, value);
   return filters;
+}
+function tableRowType(row) {
+  let value = row.rowType;
+  return value === "detail" || value === "subtotal" || value === "grandTotal" ? value : void 0;
+}
+function tableRowGroupPath(row) {
+  let value = row.groupPath;
+  return Array.isArray(value) ? value : [];
+}
+function isStructuredTableRow(row) {
+  return tableRowType(row) !== void 0 || tableRowGroupPath(row).length > 0;
+}
+function sortDetailRowsWithinGroups(rows, compare) {
+  let result2 = [...rows], groups = /* @__PURE__ */ new Map();
+  return rows.forEach((entry, position) => {
+    let rowType = tableRowType(entry.row);
+    if (rowType === "subtotal" || rowType === "grandTotal") return;
+    let signature = groupPathSignature(tableRowGroupPath(entry.row)), group = groups.get(signature) ?? { positions: [], rows: [] };
+    group.positions.push(position), group.rows.push(entry), groups.set(signature, group);
+  }), groups.forEach((group) => {
+    group.rows.sort(compare), group.positions.forEach((position, index) => {
+      result2[position] = group.rows[index];
+    });
+  }), result2;
+}
+function groupPathSignature(groupPath) {
+  return groupPath.map(groupPathValueSignature).join("");
+}
+function groupPathValueSignature(value) {
+  if (value instanceof Date) return "date:" + value.toISOString();
+  if (value && typeof value == "object")
+    try {
+      return "object:" + JSON.stringify(value);
+    } catch {
+      return "object:" + String(value);
+    }
+  return typeof value + ":" + String(value);
 }
 function compareNullsLast(a, b) {
   let aNull = a == null, bNull = b == null;

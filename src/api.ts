@@ -7,6 +7,7 @@ export { FacetTable as ChartTable } from "./core/table.js";
 
 export type {
   FacetTableRow,
+  FacetTableRowMetadata,
   FacetTableCellDescriptor,
   FacetTableColumnStyle,
   FacetTableOptions,

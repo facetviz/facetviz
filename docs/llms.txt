@@ -120,6 +120,11 @@ interface FacetTableOptions<Row extends object> {
   pagination?: boolean | FacetTablePaginationOptions; // default false
 }
 
+interface FacetTableRowMetadata {
+  rowType?: 'detail'|'subtotal'|'grandTotal';
+  groupPath?: ReadonlyArray<unknown>;
+}
+
 interface FacetTableColumn<Row extends object> {
   key: keyof Row & string;                  // property read from every row
   header?: string;                          // defaults to key
@@ -163,6 +168,74 @@ interface FacetTableCellDescriptor<Value = unknown> {
   [cssProperty: string]: unknown;           // direct color/background/etc.
 }
 ```
+
+### FacetTable pre-grouped rows
+
+FacetTable does not aggregate records. Supply detail, subtotal, and grand-total
+rows already calculated by a database or application. Optional top-level row
+metadata controls summary styling and group-safe sorting:
+
+- `rowType: 'detail'|'subtotal'|'grandTotal'`
+- `groupPath: unknown[]`
+
+Rows with the same `groupPath` are sibling details. Sorting reorders only
+those detail rows; subtotal and grand-total rows remain in their supplied
+positions. Unmarked tables keep normal flat sorting.
+
+```ts
+new FacetTable('#sales', {
+  rows: [
+    { category: 'Beverages', product: 'Bread', city: 'Bengaluru',
+      revenue: 949.19, rowType: 'detail',
+      groupPath: ['Beverages', 'Bread'] },
+    { category: 'Beverages', product: 'Bread', city: 'Chennai',
+      revenue: 36797.68, rowType: 'detail',
+      groupPath: ['Beverages', 'Bread'] },
+    { category: 'Beverages', product: 'Bread — subtotal', city: '',
+      revenue: 37746.87, rowType: 'subtotal',
+      groupPath: ['Beverages', 'Bread'] },
+    { category: 'Beverages — subtotal', product: '', city: '',
+      revenue: 37746.87, rowType: 'subtotal',
+      groupPath: ['Beverages'] },
+    { category: 'Grand total', product: '', city: '',
+      revenue: 59197.89, rowType: 'grandTotal', groupPath: [] },
+  ],
+  columns: [
+    { key: 'category', header: 'Category' },
+    { key: 'product', header: 'Product' },
+    { key: 'city', header: 'City' },
+    { key: 'revenue', header: 'SUM(Revenue)',
+      format: '{value:,.2f}', sortable: true },
+    { key: 'revenue', header: 'Revenue chart',
+      chart: { type: 'bar', height: 28, scale: 'shared' } },
+  ],
+  style: {
+    subtotalRow: { backgroundColor: '#f8fafc', fontWeight: 700 },
+    grandTotalRow: { backgroundColor: '#f1f5f9', fontWeight: 800 },
+  },
+});
+```
+
+Never derive a grand total by adding displayed subtotals. Send the final
+database/application result directly, especially for averages, minima, maxima,
+and weighted calculations:
+
+```ts
+rows: [
+  { category: 'Beverages', average: 15,
+    rowType: 'subtotal', groupPath: ['Beverages'] },
+  { category: 'Grocery', average: 100,
+    rowType: 'subtotal', groupPath: ['Grocery'] },
+  { category: 'Grand average', average: 43.33,
+    rowType: 'grandTotal', groupPath: [] },
+]
+```
+
+Summary rows expose `.facet-table-row-subtotal` and
+`.facet-table-row-grand-total`, plus `data-row-type`. Use
+`style.subtotalRow` and `style.grandTotalRow` for appearance. Filtering and
+pagination operate on the rows exactly as supplied; recompute grouped results
+outside FacetTable when a filter changes aggregate values.
 
 `horizontalAlign` and `verticalAlign` apply to both the heading and body cells,
 including chart cells. A sortable header's button follows the horizontal
