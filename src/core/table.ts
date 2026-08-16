@@ -48,6 +48,8 @@ export interface FacetTableStyleOptions<Row extends FacetTableRow> {
   head?: FacetTableStyle;
   headerRow?: FacetTableStyle;
   headerCell?: FacetTableStyle;
+  /** Style header cells that contain nested child columns. */
+  columnGroupHeader?: FacetTableStyle;
   sortButton?: FacetTableStyle;
   sortIndicator?: FacetTableStyle;
   headerControls?: FacetTableStyle;
@@ -274,9 +276,30 @@ export interface FacetTableColumn<Row extends FacetTableRow> {
   chart?: FacetTableCellChartOptions<Row>;
 }
 
+/** A header that spans one or more nested leaf columns. */
+export interface FacetTableColumnGroup<Row extends FacetTableRow> {
+  /** Visible heading for this group. */
+  header: string;
+  /** Child groups or leaf columns. Empty groups are not allowed. */
+  columns: FacetTableColumnDefinition<Row>[];
+  /** Horizontal group-heading alignment. Default `center`. */
+  horizontalAlign?: "left" | "center" | "right";
+  /** Backwards-compatible alias for `horizontalAlign`. */
+  align?: "left" | "center" | "right";
+  /** Vertical group-heading alignment. Default `middle`. */
+  verticalAlign?: "top" | "middle" | "bottom";
+  /** Style this group header cell. */
+  headerStyle?: FacetTableStyle;
+}
+
+/** A leaf data column or a recursively nested header group. */
+export type FacetTableColumnDefinition<Row extends FacetTableRow> =
+  | FacetTableColumn<Row>
+  | FacetTableColumnGroup<Row>;
+
 export interface FacetTableOptions<Row extends FacetTableRow> {
   rows: Row[];
-  columns: FacetTableColumn<Row>[];
+  columns: FacetTableColumnDefinition<Row>[];
   caption?: string;
   className?: string;
   /** Structural layout and responsive table behavior. */
@@ -305,6 +328,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
   readonly container: HTMLElement;
   readonly charts: FacetViz[] = [];
   private options: FacetTableOptions<Row>;
+  private flattenedColumns: FacetTableColumn<Row>[] = [];
   private root?: HTMLDivElement;
   private table?: HTMLTableElement;
   private resizeObserver?: ResizeObserver;
@@ -322,12 +346,13 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
         ? document.querySelector(container)
         : container;
     if (!element) throw new Error("FacetTable: container element not found");
-    if (!options.columns.length)
-      throw new Error("FacetTable: at least one column is required");
+    validateTableColumns(options.columns);
     this.container = element as HTMLElement;
     this.options = { ...options, rows: [...options.rows], columns: [...options.columns] };
-    this.currentSort = initialSort(this.options.columns);
-    this.currentFilters = initialFilters(this.options.columns);
+    this.flattenedColumns = flattenTableColumns(this.options.columns);
+    const columns = this.flattenedColumns;
+    this.currentSort = initialSort(columns);
+    this.currentFilters = initialFilters(columns);
     this.syncPagination(options.pagination, true);
     this.render();
     this.setupReflow();
@@ -351,22 +376,23 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
       rows: options.rows ? [...options.rows] : this.options.rows,
       columns: options.columns ? [...options.columns] : this.options.columns,
     };
-    if (!next.columns.length)
-      throw new Error("FacetTable: at least one column is required");
+    validateTableColumns(next.columns);
     this.options = next;
+    this.flattenedColumns = flattenTableColumns(this.options.columns);
     if (options.rows !== undefined || options.columns !== undefined)
       this.sharedDomainCache = undefined;
     if (options.pagination !== undefined)
       this.syncPagination(options.pagination, false);
     if (options.columns !== undefined) {
+      const columns = flattenTableColumns(this.options.columns);
       const currentColumn = this.currentSort
-        ? this.options.columns.find((column) => column.key === this.currentSort?.key)
+        ? columns.find((column) => column.key === this.currentSort?.key)
         : undefined;
       if (!currentColumn?.sortable)
-        this.currentSort = initialSort(this.options.columns);
+        this.currentSort = initialSort(columns);
       this.currentFilters = reconcileFilters(
         this.currentFilters,
-        this.options.columns,
+        columns,
       );
     }
     this.clampPage();
@@ -395,9 +421,13 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
     return [...this.currentFilters].map(([key, value]) => ({ key, value }));
   }
 
+  private leafColumns(): FacetTableColumn<Row>[] {
+    return this.flattenedColumns;
+  }
+
   setFilter(key: keyof Row & string, value?: string): void {
     if (this.destroyed) return;
-    const column = this.options.columns.find((candidate) => candidate.key === key);
+    const column = this.leafColumns().find((candidate) => candidate.key === key);
     if (!column?.filterable)
       throw new Error(`FacetTable.setFilter(): column "${key}" is not filterable.`);
     const normalized = value?.trim() ?? "";
@@ -429,7 +459,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
     direction: FacetTableSortDirection = "asc",
   ): void {
     if (this.destroyed) return;
-    const column = this.options.columns.find((candidate) => candidate.key === key);
+    const column = this.leafColumns().find((candidate) => candidate.key === key);
     if (!column?.sortable)
       throw new Error(`FacetTable.sortBy(): column "${key}" is not sortable.`);
     this.currentSort = { key, direction };
@@ -466,6 +496,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
   /** Re-measure all mounted cell charts after an outer layout change. */
   reflow(): void {
     if (this.destroyed) return;
+    if (this.options.layout?.freezeHeaderRow) this.positionStickyHeaderRows();
     this.charts.forEach((chart) => chart.reflow());
   }
 
@@ -531,6 +562,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
     this.container.replaceChildren(root);
     this.root = root;
     this.table = table;
+    if (layout?.freezeHeaderRow) this.positionStickyHeaderRows();
 
     const sharedDomains = this.sharedDomainCache ?? this.sharedDomains();
     this.sharedDomainCache = sharedDomains;
@@ -543,88 +575,139 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
   private renderHead(): HTMLTableSectionElement {
     const head = document.createElement("thead");
     applyStyle(head, this.options.style?.head);
-    const row = document.createElement("tr");
-    applyStyle(row, this.options.style?.headerRow);
-    for (const [columnIndex, column] of this.options.columns.entries()) {
-      const cell = document.createElement("th");
-      cell.scope = "col";
-      cell.className = column.chart
-        ? "facet-table-heading facet-table-chart-heading"
-        : "facet-table-heading";
-      this.styleCell(cell, column, true, undefined, columnIndex);
-      this.applyColumnStyle(cell, column, true);
-      if (column.sortable || column.filterable) {
-        const controls = document.createElement("div");
-        controls.className = "facet-table-header-controls";
-        controls.style.display = "flex";
-        controls.style.alignItems = "center";
-        controls.style.gap = "5px";
-        controls.style.width = "100%";
-        applyStyle(controls, this.options.style?.headerControls);
+    const depth = tableColumnDepth(this.options.columns);
+    const rows = Array.from({ length: depth }, () => {
+      const row = document.createElement("tr");
+      applyStyle(row, this.options.style?.headerRow);
+      head.appendChild(row);
+      return row;
+    });
+    let leafIndex = 0;
 
-        if (column.sortable) {
-          const direction = this.currentSort?.key === column.key
-            ? this.currentSort.direction
-            : undefined;
-          cell.setAttribute(
-            "aria-sort",
-            direction === "asc"
-              ? "ascending"
-              : direction === "desc"
-                ? "descending"
-                : "none",
+    const renderColumns = (
+      definitions: FacetTableColumnDefinition<Row>[],
+      level: number,
+    ): void => {
+      for (const definition of definitions) {
+        if (isTableColumnGroup(definition)) {
+          const count = tableColumnLeafCount(definition);
+          rows[level].appendChild(
+            this.renderColumnGroupHeading(definition, leafIndex, count, level),
           );
-
-          const button = document.createElement("button");
-          button.type = "button";
-          button.className = "facet-table-sort-button";
-          button.style.display = "inline-flex";
-          button.style.alignItems = "center";
-          button.style.justifyContent = sortAlignment(
-            this.cellHorizontalAlignment(column, true),
-          );
-          button.style.gap = "5px";
-          button.style.flex = "1 1 auto";
-          button.style.minWidth = "0";
-          button.style.padding = "0";
-          button.style.border = "0";
-          button.style.background = "transparent";
-          button.style.color = "inherit";
-          button.style.font = "inherit";
-          button.style.cursor = "pointer";
-          button.append(document.createTextNode(column.header ?? column.key));
-          applyStyle(button, this.options.style?.sortButton);
-
-          const indicator = createSortIndicator(direction);
-          indicator.setAttribute("class", "facet-table-sort-indicator");
-          indicator.style.opacity = direction ? "1" : "0.5";
-          applyStyle(indicator, this.options.style?.sortIndicator);
-          button.appendChild(indicator);
-          button.addEventListener("click", () => this.toggleSort(column));
-          controls.appendChild(button);
-        } else {
-          const label = document.createElement("span");
-          label.className = "facet-table-heading-label";
-          label.textContent = column.header ?? column.key;
-          label.style.flex = "1 1 auto";
-          label.style.minWidth = "0";
-          controls.appendChild(label);
+          renderColumns(definition.columns, level + 1);
+          continue;
         }
-
-        if (column.filterable) {
-          if (!cell.style.position) cell.style.position = "relative";
-          controls.appendChild(this.renderFilterControl(column, columnIndex));
-        }
-        cell.appendChild(controls);
-      } else {
-        cell.textContent = column.header ?? column.key;
+        const rowSpan = depth - level;
+        rows[level].appendChild(
+          this.renderLeafColumnHeading(definition, leafIndex, rowSpan, level),
+        );
+        leafIndex++;
       }
-      row.appendChild(cell);
-    }
-    head.appendChild(row);
+    };
+
+    renderColumns(this.options.columns, 0);
     return head;
   }
 
+  private renderLeafColumnHeading(
+    column: FacetTableColumn<Row>,
+    columnIndex: number,
+    rowSpan: number,
+    level: number,
+  ): HTMLTableCellElement {
+    const cell = document.createElement("th");
+    cell.setAttribute("scope", "col");
+    cell.rowSpan = rowSpan;
+    cell.dataset.headerLevel = String(level);
+    cell.className = column.chart
+      ? "facet-table-heading facet-table-chart-heading"
+      : "facet-table-heading";
+    this.styleCell(cell, column, true, undefined, columnIndex);
+    this.applyColumnStyle(cell, column, true);
+    if (column.sortable || column.filterable) {
+      const controls = document.createElement("div");
+      controls.className = "facet-table-header-controls";
+      controls.style.display = "flex";
+      controls.style.alignItems = "center";
+      controls.style.gap = "5px";
+      controls.style.width = "100%";
+      applyStyle(controls, this.options.style?.headerControls);
+
+      if (column.sortable) {
+        const direction = this.currentSort?.key === column.key
+          ? this.currentSort.direction
+          : undefined;
+        cell.setAttribute(
+          "aria-sort",
+          direction === "asc"
+            ? "ascending"
+            : direction === "desc"
+              ? "descending"
+              : "none",
+        );
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "facet-table-sort-button";
+        button.style.display = "inline-flex";
+        button.style.alignItems = "center";
+        button.style.justifyContent = sortAlignment(
+          this.cellHorizontalAlignment(column, true),
+        );
+        button.style.gap = "5px";
+        button.style.flex = "1 1 auto";
+        button.style.minWidth = "0";
+        button.style.padding = "0";
+        button.style.border = "0";
+        button.style.background = "transparent";
+        button.style.color = "inherit";
+        button.style.font = "inherit";
+        button.style.cursor = "pointer";
+        button.append(document.createTextNode(column.header ?? column.key));
+        applyStyle(button, this.options.style?.sortButton);
+
+        const indicator = createSortIndicator(direction);
+        indicator.setAttribute("class", "facet-table-sort-indicator");
+        indicator.style.opacity = direction ? "1" : "0.5";
+        applyStyle(indicator, this.options.style?.sortIndicator);
+        button.appendChild(indicator);
+        button.addEventListener("click", () => this.toggleSort(column));
+        controls.appendChild(button);
+      } else {
+        const label = document.createElement("span");
+        label.className = "facet-table-heading-label";
+        label.textContent = column.header ?? column.key;
+        label.style.flex = "1 1 auto";
+        label.style.minWidth = "0";
+        controls.appendChild(label);
+      }
+
+      if (column.filterable) {
+        if (!cell.style.position) cell.style.position = "relative";
+        controls.appendChild(this.renderFilterControl(column, columnIndex));
+      }
+      cell.appendChild(controls);
+    } else {
+      cell.textContent = column.header ?? column.key;
+    }
+    return cell;
+  }
+
+  private renderColumnGroupHeading(
+    group: FacetTableColumnGroup<Row>,
+    columnIndex: number,
+    colSpan: number,
+    level: number,
+  ): HTMLTableCellElement {
+    const cell = document.createElement("th");
+    cell.setAttribute("scope", "colgroup");
+    cell.colSpan = colSpan;
+    cell.dataset.headerLevel = String(level);
+    cell.className = "facet-table-heading facet-table-column-group-heading";
+    cell.textContent = group.header;
+    this.styleColumnGroupHeading(cell, group, columnIndex, colSpan);
+    return cell;
+  }
   private renderFilterControl(
     column: FacetTableColumn<Row>,
     columnIndex: number,
@@ -762,12 +845,13 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
     if (bodyTextSize !== undefined) body.style.fontSize = cssLength(bodyTextSize);
     applyStyle(body, this.options.style?.body);
     const pending: PendingChart<Row>[] = [];
+    const columns = this.leafColumns();
 
     const visibleRows = this.visibleRows();
     if (!visibleRows.length) {
       const row = document.createElement("tr");
       const cell = document.createElement("td");
-      cell.colSpan = this.options.columns.length;
+      cell.colSpan = columns.length;
       cell.textContent = this.options.emptyText ?? "No data";
       cell.className = "facet-table-empty";
       cell.style.padding = "12px 10px";
@@ -794,7 +878,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
       applyStyle(row, summaryStyle);
       const rowStyle = resolveRowStyle(this.options.style?.row, dataRow, rowIndex);
       applyStyle(row, rowStyle);
-      for (const [columnIndex, column] of this.options.columns.entries()) {
+      for (const [columnIndex, column] of columns.entries()) {
         const cell = document.createElement("td");
         const sourceValue = dataRow[column.key];
         const descriptor = resolveCellDescriptor(sourceValue);
@@ -888,7 +972,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
   private sortedRows(): Array<{ row: Row; rowIndex: number }> {
     const rows = this.filteredRows();
     if (!this.currentSort) return rows;
-    const column = this.options.columns.find(
+    const column = this.leafColumns().find(
       (candidate) => candidate.key === this.currentSort?.key && candidate.sortable,
     );
     if (!column) return rows;
@@ -921,7 +1005,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
     if (!this.currentFilters.size) return rows;
     return rows.filter(({ row, rowIndex }) => {
       for (const [key, filterValue] of this.currentFilters) {
-        const column = this.options.columns.find(
+        const column = this.leafColumns().find(
           (candidate) => candidate.key === key && candidate.filterable,
         );
         if (!column) continue;
@@ -1146,6 +1230,63 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
     if (heading) applyStyle(cell, this.options.style?.headerCell);
   }
 
+  private styleColumnGroupHeading(
+    cell: HTMLTableCellElement,
+    group: FacetTableColumnGroup<Row>,
+    columnIndex: number,
+    colSpan: number,
+  ): void {
+    cell.style.padding = densityPadding(
+      this.options.layout?.rowDensity,
+      false,
+      this.container.clientWidth,
+    );
+    this.styleBorders(cell, columnIndex + colSpan - 1);
+    cell.style.textAlign = group.horizontalAlign ?? group.align ??
+      this.options.appearance?.headerRow?.alignment ?? "center";
+    cell.style.verticalAlign = group.verticalAlign ?? "middle";
+    const wrapText = this.options.layout?.wrapText;
+    if (wrapText !== undefined) {
+      cell.style.whiteSpace = wrapText ? "normal" : "nowrap";
+      if (wrapText) cell.style.overflowWrap = "anywhere";
+    }
+    const header = this.options.appearance?.headerRow;
+    cell.style.fontWeight = header?.bold === false ? "400" : header?.bold ? "700" : "600";
+    cell.style.fontStyle = header?.italic ? "italic" : "normal";
+    cell.style.background =
+      header?.fillColor ?? "var(--facet-table-header-background, #f7f8fa)";
+    if (header?.textColor) cell.style.color = header.textColor;
+    if (header?.textSize !== undefined) cell.style.fontSize = cssLength(header.textSize);
+    if (this.options.layout?.freezeHeaderRow) {
+      cell.style.position = "sticky";
+      cell.style.top = "0";
+      cell.style.zIndex = "3";
+    }
+    if (
+      this.options.layout?.freezeFirstColumn &&
+      columnIndex === 0 &&
+      colSpan === 1
+    ) {
+      cell.style.position = "sticky";
+      cell.style.left = "0";
+      cell.style.zIndex = "4";
+    }
+    applyStyle(cell, this.options.style?.headerCell);
+    applyStyle(cell, this.options.style?.columnGroupHeader);
+    applyStyle(cell, group.headerStyle);
+  }
+
+  private positionStickyHeaderRows(): void {
+    if (!this.table) return;
+    let top = 0;
+    this.table.querySelectorAll<HTMLTableRowElement>("thead tr").forEach((row) => {
+      row.querySelectorAll<HTMLTableCellElement>(":scope > th").forEach((cell) => {
+        cell.style.top = `${top}px`;
+      });
+      top += row.getBoundingClientRect().height;
+    });
+  }
+
   private applyColumnStyle(
     cell: HTMLTableCellElement,
     column: FacetTableColumn<Row>,
@@ -1213,7 +1354,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
       ? "none"
       : `${width} solid ${color}`;
     cell.style.borderRight =
-      borders?.verticalBorders && columnIndex < this.options.columns.length - 1
+      borders?.verticalBorders && columnIndex < this.leafColumns().length - 1
         ? `${width} solid ${color}`
         : "none";
   }
@@ -1238,7 +1379,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
       cell.style.backgroundColor = rowBackground || options?.rowFill || "#fff";
     if (
       (options?.emphasizeFirstColumn && columnIndex === 0) ||
-      (options?.emphasizeLastColumn && columnIndex === this.options.columns.length - 1)
+      (options?.emphasizeLastColumn && columnIndex === this.leafColumns().length - 1)
     )
       cell.style.fontWeight = "700";
   }
@@ -1310,7 +1451,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
 
   private sharedDomains(): Map<number, [number, number]> {
     const domains = new Map<number, [number, number]>();
-    for (const [columnIndex, column] of this.options.columns.entries()) {
+    for (const [columnIndex, column] of this.leafColumns().entries()) {
       if (column.chart?.scale !== "shared") continue;
       const columnValues: number[] = [];
       this.filteredRows().forEach(({ row, rowIndex }) => {
@@ -1366,7 +1507,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
   }
 
   private rowName(row: Row, rowIndex: number): string {
-    const labelColumn = this.options.columns.find((column) => !column.chart);
+    const labelColumn = this.leafColumns().find((column) => !column.chart);
     if (!labelColumn) return `row ${rowIndex + 1}`;
     const value = unwrapCellValue(row[labelColumn.key]);
     return value == null || value === "" ? `row ${rowIndex + 1}` : String(value);
@@ -1424,6 +1565,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
     if (typeof ResizeObserver === "undefined") return;
     this.resizeObserver = new ResizeObserver(() => {
       this.applyResponsiveDensity();
+      if (this.options.layout?.freezeHeaderRow) this.positionStickyHeaderRows();
       if (typeof requestAnimationFrame === "undefined") {
         this.reflow();
         return;
@@ -1667,6 +1809,67 @@ function sortAlignment(
   if (align === "center") return "center";
   if (align === "right") return "flex-end";
   return "flex-start";
+}
+
+function isTableColumnGroup<Row extends FacetTableRow>(
+  definition: FacetTableColumnDefinition<Row>,
+): definition is FacetTableColumnGroup<Row> {
+  return Array.isArray((definition as FacetTableColumnGroup<Row>).columns);
+}
+
+function flattenTableColumns<Row extends FacetTableRow>(
+  definitions: FacetTableColumnDefinition<Row>[],
+): FacetTableColumn<Row>[] {
+  const columns: FacetTableColumn<Row>[] = [];
+  definitions.forEach((definition) => {
+    if (isTableColumnGroup(definition))
+      columns.push(...flattenTableColumns(definition.columns));
+    else columns.push(definition);
+  });
+  return columns;
+}
+
+function tableColumnDepth<Row extends FacetTableRow>(
+  definitions: FacetTableColumnDefinition<Row>[],
+): number {
+  return definitions.reduce(
+    (maximum, definition) => Math.max(
+      maximum,
+      isTableColumnGroup(definition)
+        ? 1 + tableColumnDepth(definition.columns)
+        : 1,
+    ),
+    1,
+  );
+}
+
+function tableColumnLeafCount<Row extends FacetTableRow>(
+  definition: FacetTableColumnDefinition<Row>,
+): number {
+  return isTableColumnGroup(definition)
+    ? definition.columns.reduce(
+        (total, child) => total + tableColumnLeafCount(child),
+        0,
+      )
+    : 1;
+}
+
+function validateTableColumns<Row extends FacetTableRow>(
+  definitions: FacetTableColumnDefinition<Row>[],
+): void {
+  if (!definitions.length)
+    throw new Error("FacetTable: at least one column is required");
+  const visit = (items: FacetTableColumnDefinition<Row>[]): void => {
+    items.forEach((definition) => {
+      if (!isTableColumnGroup(definition)) return;
+      if (!definition.columns.length)
+        throw new Error(
+          `FacetTable: column group "${definition.header}" must contain at least one column.`,
+        );
+      visit(definition.columns);
+    });
+  };
+  visit(definitions);
 }
 
 function initialSort<Row extends FacetTableRow>(

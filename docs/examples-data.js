@@ -998,6 +998,135 @@ export const EXAMPLES = [
   },
   {
     cat: "FacetTable",
+    title: "Multi-level headers with nested measures",
+    desc: "Pivot-style city headers span Revenue and Average Price measures while leaf columns remain sortable and formattable.",
+    types: [],
+    kind: "table",
+    wide: true,
+    cfg: {
+      caption: "Revenue and average price by city",
+      rows: [
+        { category: "Beverages", product: "Bread", bengaluruRevenue: 949.19, bengaluruAverage: 86.29, chennaiRevenue: 36797.68, chennaiAverage: 1128.37, totalRevenue: 37746.87, totalAverage: 607.33, rowType: "detail", groupPath: ["Beverages"] },
+        { category: "Beverages — subtotal", product: "", bengaluruRevenue: 949.19, bengaluruAverage: 86.29, chennaiRevenue: 36797.68, chennaiAverage: 1128.37, totalRevenue: 37746.87, totalAverage: 607.33, rowType: "subtotal", groupPath: ["Beverages"] },
+        { category: "Grocery", product: "Bread", bengaluruRevenue: null, bengaluruAverage: null, chennaiRevenue: 13261.2, chennaiAverage: 442.04, totalRevenue: 13261.2, totalAverage: 442.04, rowType: "detail", groupPath: ["Grocery"] },
+        { category: "Grocery", product: "Detergent", bengaluruRevenue: null, bengaluruAverage: null, chennaiRevenue: 8189.82, chennaiAverage: 537.24, totalRevenue: 8189.82, totalAverage: 537.24, rowType: "detail", groupPath: ["Grocery"] },
+        { category: "Grocery — subtotal", product: "", bengaluruRevenue: null, bengaluruAverage: null, chennaiRevenue: 21451.02, chennaiAverage: 489.64, totalRevenue: 21451.02, totalAverage: 489.64, rowType: "subtotal", groupPath: ["Grocery"] },
+        { category: "Grand total", product: "", bengaluruRevenue: 949.19, bengaluruAverage: 86.29, chennaiRevenue: 58248.7, chennaiAverage: 702.55, totalRevenue: 59197.89, totalAverage: 548.49, rowType: "grandTotal", groupPath: [] },
+      ],
+      columns: [
+        { key: "category", header: "Category", width: 180 },
+        { key: "product", header: "Product", width: 130 },
+        {
+          header: "Bengaluru",
+          columns: [
+            { key: "bengaluruRevenue", header: "Revenue", role: "value", format: "{value:,.2f}", sortable: true },
+            { key: "bengaluruAverage", header: "Average Price", role: "value", format: "{value:,.2f}", sortable: true },
+          ],
+        },
+        {
+          header: "Chennai",
+          columns: [
+            { key: "chennaiRevenue", header: "Revenue", role: "value", format: "{value:,.2f}", sortable: true },
+            { key: "chennaiAverage", header: "Average Price", role: "value", format: "{value:,.2f}", sortable: true },
+          ],
+        },
+        {
+          header: "Grand total",
+          headerStyle: { backgroundColor: "color-mix(in srgb, var(--panel-2, #f8fafc) 75%, #6366f1 25%)" },
+          columns: [
+            { key: "totalRevenue", header: "Revenue", role: "value", format: "{value:,.2f}", sortable: true },
+            { key: "totalAverage", header: "Average Price", role: "value", format: "{value:,.2f}", sortable: true },
+          ],
+        },
+      ],
+      layout: { rowDensity: "comfortable", wrapText: false, freezeHeaderRow: true },
+      appearance: {
+        rowsAndColumns: { displayEmptyCellAs: "—", valueAlignment: "right", highlightRowOnHover: true, hoverColor: "#eef2ff" },
+        borders: { horizontalBorders: true, verticalBorders: true, borderColor: "#e2e8f0" },
+      },
+      style: {
+        columnGroupHeader: { textAlign: "center", fontWeight: 800 },
+        subtotalRow: { backgroundColor: "var(--panel-2, #f8fafc)", fontWeight: 700 },
+        grandTotalRow: { backgroundColor: "color-mix(in srgb, var(--panel, #fff) 86%, #6366f1 14%)", fontWeight: 800 },
+      },
+    },
+  },
+  {
+    cat: "FacetTable",
+    title: "Pivot table with bar chart cells",
+    desc: "Nested city groups combine formatted revenue values with comparable horizontal bar charts.",
+    types: ["bar"],
+    kind: "table",
+    wide: true,
+    cfg: {
+      caption: "City revenue with in-cell bars",
+      rows: [
+        { category: "Beverages", product: "Bread", bengaluruRevenue: 949.19, chennaiRevenue: 36797.68, rowType: "detail", groupPath: ["Beverages"] },
+        { category: "Grocery", product: "Bread", bengaluruRevenue: 0, chennaiRevenue: 13261.2, rowType: "detail", groupPath: ["Grocery"] },
+        { category: "Grocery", product: "Detergent", bengaluruRevenue: 0, chennaiRevenue: 8189.82, rowType: "detail", groupPath: ["Grocery"] },
+        { category: "Grand total", product: "", bengaluruRevenue: 949.19, chennaiRevenue: 58248.7, rowType: "grandTotal", groupPath: [] },
+      ],
+      columns: [
+        { key: "category", header: "Category", width: 150 },
+        { key: "product", header: "Product", width: 110 },
+        {
+          header: "Bengaluru",
+          columns: [
+            { key: "bengaluruRevenue", header: "Revenue", role: "value", format: "{value:$,.2f}", sortable: true },
+            {
+              key: "bengaluruRevenue",
+              header: "Revenue bar",
+              role: "value",
+              width: 170,
+              chart: {
+                type: "bar",
+                height: 30,
+                minWidth: 140,
+                scale: "shared",
+                options: {
+                  plotOptions: { bar: { color: "#6366f1", borderRadius: 4 } },
+                  tooltip: { valuePrefix: "$", valueDecimals: 2 },
+                },
+              },
+            },
+          ],
+        },
+        {
+          header: "Chennai",
+          columns: [
+            { key: "chennaiRevenue", header: "Revenue", role: "value", format: "{value:$,.2f}", sortable: true },
+            {
+              key: "chennaiRevenue",
+              header: "Revenue bar",
+              role: "value",
+              width: 170,
+              chart: {
+                type: "bar",
+                height: 30,
+                minWidth: 140,
+                scale: "shared",
+                options: {
+                  plotOptions: { bar: { color: "#14b8a6", borderRadius: 4 } },
+                  tooltip: { valuePrefix: "$", valueDecimals: 2 },
+                },
+              },
+            },
+          ],
+        },
+      ],
+      layout: { rowDensity: "compact", wrapText: false },
+      appearance: {
+        rowsAndColumns: { valueAlignment: "right", highlightRowOnHover: true, hoverColor: "#eef2ff" },
+        borders: { horizontalBorders: true, verticalBorders: true, borderColor: "#e2e8f0" },
+      },
+      style: {
+        columnGroupHeader: { textAlign: "center", fontWeight: 800 },
+        grandTotalRow: { backgroundColor: "color-mix(in srgb, var(--panel, #fff) 86%, #6366f1 14%)", fontWeight: 800 },
+      },
+    },
+  },
+  {
+    cat: "FacetTable",
     title: "Fully customized FacetTable",
     desc: "Density, sticky headers/columns, banding, hover, alignment, empty cells, and borders.",
     types: [],

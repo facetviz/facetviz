@@ -12,6 +12,8 @@ export type {
   FacetTableColumnStyle,
   FacetTableOptions,
   FacetTableColumn,
+  FacetTableColumnGroup,
+  FacetTableColumnDefinition,
   FacetTableCellFormatter,
   FacetTableCellChartOptions,
   FacetTableStyle,

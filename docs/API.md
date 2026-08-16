@@ -106,7 +106,7 @@ this supports multi-series and combo cells without a callback.
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `rows` | `Row[]` | required | Objects rendered as table rows. |
-| `columns` | `FacetTableColumn<Row>[]` | required | Value and chart column definitions. |
+| `columns` | `FacetTableColumnDefinition<Row>[]` | required | Leaf columns or recursively nested column groups. |
 | `caption` | `string` | – | Native table caption. |
 | `className` | `string` | – | Additional class on the generated table. |
 | `layout` | `FacetTableLayoutOptions` | – | Structure, density, wrapping, frozen rows/columns, and CSS table layout. |
@@ -115,7 +115,7 @@ this supports multi-series and combo cells without a callback.
 | `style` | `FacetTableStyleOptions<Row>` | – | Top-level CSS overrides for every table region. |
 | `pagination` | `boolean \| FacetTablePaginationOptions` | `false` | Render only the current page and add navigation controls. |
 
-Each column requires `key` and accepts `header`, `width`, `horizontalAlign`,
+Each leaf column requires `key` and accepts `header`, `width`, `horizontalAlign`,
 `verticalAlign`, `sortable`, `filterable`, `style`, and `headerStyle`.
 `horizontalAlign` accepts `"left"`, `"center"`,
 or `"right"`; the older `align` field remains an alias. `verticalAlign` accepts
@@ -128,6 +128,50 @@ tokens are `value`, `row`, `rowIndex`, and `column`, including dotted paths.
 and takes precedence over `format`. Adding `chart` turns the column into a chart
 column; chart options are `type`, `height`, `minWidth`, `scale`, `options`, and
 the optional `series` factory.
+
+### Multi-level column headers
+
+Use a column group with `header` and nested `columns` to create pivot-style
+headers. Groups can contain leaf columns or more groups at any depth. FacetTable
+automatically calculates the required `colSpan` and `rowSpan`; body cells,
+sorting, filtering, formatting, charts, borders, and width continue to use the
+flattened leaf columns.
+
+```ts
+new FacetTable("#pivot", {
+  rows,
+  columns: [
+    { key: "category", header: "Category" },
+    { key: "product", header: "Product" },
+    {
+      header: "Bengaluru",
+      columns: [
+        { key: "bengaluruRevenue", header: "Revenue",
+          format: "{value:,.2f}", sortable: true },
+        { key: "bengaluruAverage", header: "Average Price",
+          format: "{value:,.2f}", sortable: true },
+      ],
+    },
+    {
+      header: "Chennai",
+      columns: [
+        { key: "chennaiRevenue", header: "Revenue",
+          format: "{value:,.2f}", sortable: true },
+        { key: "chennaiAverage", header: "Average Price",
+          format: "{value:,.2f}", sortable: true },
+      ],
+    },
+  ],
+  style: {
+    columnGroupHeader: { textAlign: "center", fontWeight: 800 },
+  },
+});
+```
+
+A group accepts `horizontalAlign`, `verticalAlign`, and `headerStyle`.
+`style.columnGroupHeader` applies to every group header, while a group's
+`headerStyle` customizes only that group. Leaf sorting and filtering controls
+remain in the lowest header row. Empty groups are rejected.
 
 ### Pre-grouped rows and summary rows
 
@@ -278,8 +322,9 @@ Body-cell style precedence, from highest to lowest, is:
 5. `layout` defaults.
 6. `appearance` defaults.
 
-For headings, `headerStyle` wins over top-level `style.headerCell`, `layout`,
-and `appearance`.
+For leaf headings, `headerStyle` wins over top-level `style.headerCell`,
+`layout`, and `appearance`. Group `headerStyle` wins over
+`style.columnGroupHeader` and the same table-wide defaults.
 
 ### Table layout and appearance
 
@@ -386,7 +431,7 @@ the table displays `emptyText`.
 ### Table styling
 
 `style` accepts CSS property maps for `root`, `table`, `caption`, `head`,
-`headerRow`, `headerCell`, `headerControls`, `sortButton`, `sortIndicator`,
+`headerRow`, `headerCell`, `columnGroupHeader`, `headerControls`, `sortButton`, `sortIndicator`,
 `filterButton`, `activeFilterButton`, `filterIndicator`, `filterPanel`,
 `filterInput`, `filterActions`, `filterActionButton`, `body`, `row`, `cell`, `valueCell`, `chartCell`,
 `chartHost`, `emptyCell`, `pagination`, `paginationInfo`, `paginationButton`,

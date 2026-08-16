@@ -46,6 +46,93 @@ describe("FacetTable", () => {
     expect(table.charts).toHaveLength(2);
   });
 
+  it("renders recursive column headers and processes nested measure columns", () => {
+    interface PivotRow {
+      category: string;
+      bengaluruRevenue: number;
+      bengaluruAverage: number;
+      chennaiRevenue: number;
+      chennaiAverage: number;
+    }
+    const element = container();
+    const table = new FacetTable<PivotRow>(element, {
+      rows: [
+        { category: "Beverages", bengaluruRevenue: 949.19, bengaluruAverage: 86.29, chennaiRevenue: 36797.68, chennaiAverage: 1128.37 },
+        { category: "Grocery", bengaluruRevenue: 0, bengaluruAverage: 0, chennaiRevenue: 21451.02, chennaiAverage: 489.64 },
+      ],
+      columns: [
+        { key: "category", header: "Category" },
+        {
+          header: "India",
+          headerStyle: { backgroundColor: "#312e81" },
+          columns: [
+            {
+              header: "Bengaluru",
+              columns: [
+                { key: "bengaluruRevenue", header: "Revenue", sortable: true, format: "{value:,.2f}" },
+                { key: "bengaluruAverage", header: "Average", format: "{value:,.2f}" },
+              ],
+            },
+            {
+              header: "Chennai",
+              columns: [
+                { key: "chennaiRevenue", header: "Revenue", filterable: true, format: "{value:,.2f}" },
+                { key: "chennaiAverage", header: "Average", format: "{value:,.2f}" },
+              ],
+            },
+          ],
+        },
+      ],
+      style: {
+        columnGroupHeader: { textTransform: "uppercase" },
+      },
+    });
+
+    const headerRows = element.querySelectorAll<HTMLTableRowElement>("thead tr");
+    expect(headerRows).toHaveLength(3);
+    expect([...headerRows[0].cells].map((cell) => cell.textContent)).toEqual([
+      "Category",
+      "India",
+    ]);
+    expect(headerRows[0].cells[0].rowSpan).toBe(3);
+    expect(headerRows[0].cells[1].colSpan).toBe(4);
+    expect(headerRows[0].cells[1].scope).toBe("colgroup");
+    expect(headerRows[0].cells[1].style.backgroundColor).toBe("#312e81");
+    expect(headerRows[0].cells[1].style.textTransform).toBe("uppercase");
+    expect([...headerRows[1].cells].map((cell) => cell.textContent)).toEqual([
+      "Bengaluru",
+      "Chennai",
+    ]);
+    expect([...headerRows[1].cells].map((cell) => cell.colSpan)).toEqual([2, 2]);
+    expect([...headerRows[2].cells].map((cell) =>
+      cell.querySelector(".facet-table-heading-label")?.textContent ??
+      cell.querySelector(".facet-table-sort-button")?.childNodes[0]?.textContent ??
+      cell.textContent
+    )).toEqual([
+      "Revenue",
+      "Average",
+      "Revenue",
+      "Average",
+    ]);
+    expect(element.querySelectorAll("tbody tr:first-child td")).toHaveLength(5);
+
+    table.sortBy("bengaluruRevenue", "asc");
+    expect(element.querySelector("tbody tr:first-child td")?.textContent).toBe("Grocery");
+    table.setFilter("chennaiRevenue", "36797");
+    expect(element.querySelectorAll("tbody tr")).toHaveLength(1);
+    expect(element.querySelector("tbody tr:first-child td")?.textContent).toBe("Beverages");
+  });
+
+  it("rejects an empty nested column group", () => {
+    expect(() => new FacetTable(container(), {
+      rows: [{ category: "Beverages" }],
+      columns: [
+        { key: "category" },
+        { header: "Empty", columns: [] },
+      ],
+    })).toThrow(/must contain at least one column/);
+  });
+
   it("aligns columns horizontally and vertically and formats text values", () => {
     const element = container();
     new FacetTable(element, {

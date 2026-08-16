@@ -110,7 +110,7 @@ const table = new FacetTable<ProductRow>('#performance', {
 ```ts
 interface FacetTableOptions<Row extends object> {
   rows: Row[];                              // required
-  columns: FacetTableColumn<Row>[];         // required, at least one
+  columns: FacetTableColumnDefinition<Row>[]; // required, at least one leaf
   caption?: string;
   className?: string;
   layout?: FacetTableLayoutOptions;
@@ -151,6 +151,18 @@ interface FacetTableColumn<Row extends object> {
   chart?: FacetTableCellChartOptions<Row>;  // presence makes this a chart cell
 }
 
+type FacetTableColumnDefinition<Row extends object> =
+  FacetTableColumn<Row> | FacetTableColumnGroup<Row>;
+
+interface FacetTableColumnGroup<Row extends object> {
+  header: string;
+  columns: FacetTableColumnDefinition<Row>[]; // leaf columns or nested groups
+  horizontalAlign?: 'left'|'center'|'right'; // default center
+  align?: 'left'|'center'|'right';           // compatibility alias
+  verticalAlign?: 'top'|'middle'|'bottom';   // default middle
+  headerStyle?: Record<string,string|number>;
+}
+
 interface FacetTableCellChartOptions<Row extends object> {
   type?: ChartType;                         // default sparkline
   height?: number;                          // default 44px
@@ -168,6 +180,42 @@ interface FacetTableCellDescriptor<Value = unknown> {
   [cssProperty: string]: unknown;           // direct color/background/etc.
 }
 ```
+
+### FacetTable multi-level column headers
+
+Columns may be recursively grouped for pivot-style headers. A leaf column has
+`key`; a group has `header` and `columns`. FacetTable calculates `colSpan` and
+`rowSpan` automatically and flattens only leaf columns for body cells, sorting,
+filtering, formatting, charts, widths, and borders.
+
+```ts
+new FacetTable('#pivot', {
+  rows,
+  columns: [
+    { key: 'category', header: 'Category' },
+    { key: 'product', header: 'Product' },
+    { header: 'Bengaluru', columns: [
+      { key: 'bengaluruRevenue', header: 'Revenue',
+        format: '{value:,.2f}', sortable: true },
+      { key: 'bengaluruAverage', header: 'Average Price',
+        format: '{value:,.2f}', sortable: true },
+    ] },
+    { header: 'Chennai', columns: [
+      { key: 'chennaiRevenue', header: 'Revenue',
+        format: '{value:,.2f}', sortable: true },
+      { key: 'chennaiAverage', header: 'Average Price',
+        format: '{value:,.2f}', sortable: true },
+    ] },
+  ],
+  style: {
+    columnGroupHeader: { textAlign: 'center', fontWeight: 800 },
+  },
+});
+```
+
+Groups support arbitrary nesting, `horizontalAlign`, `verticalAlign`, and
+`headerStyle`. `style.columnGroupHeader` styles all group headers. Sort and
+filter controls belong only to leaf headings. Empty column groups are invalid.
 
 ### FacetTable pre-grouped rows
 
@@ -276,8 +324,9 @@ Column `style` applies to every body cell in that column and may be a CSS map or
 `(value,row,rowIndex)=>CSSMap`; `headerStyle` applies to its heading. Body-cell
 precedence from highest to lowest is: row cell descriptor, column `style`,
 resolved top-level `style.row`, other top-level style slots, `layout`, then
-`appearance`. Heading precedence is `headerStyle`, `style.headerCell`, layout,
-then appearance.
+`appearance`. Leaf heading precedence is `headerStyle`, `style.headerCell`,
+layout, then appearance. Group heading precedence is group `headerStyle`,
+`style.columnGroupHeader`, `style.headerCell`, layout, then appearance.
 
 Structure and semantic appearance are separate from raw CSS overrides:
 
@@ -413,7 +462,7 @@ recognized unitless properties and CSS custom properties remain as supplied.
 Available slots:
 
 ```txt
-root, table, caption, head, headerRow, headerCell, headerControls, sortButton,
+root, table, caption, head, headerRow, headerCell, columnGroupHeader, headerControls, sortButton,
 sortIndicator, filterButton, activeFilterButton, filterIndicator, filterPanel,
 filterInput, filterActions, filterActionButton, body, row, cell, valueCell,
 chartCell, chartHost, emptyCell, pagination,

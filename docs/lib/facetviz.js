@@ -7772,15 +7772,16 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
 var FacetTable = class {
   constructor(container, options) {
     this.charts = [];
+    this.flattenedColumns = [];
     this.currentPage = 1;
     this.currentPageSize = 25;
     this.currentFilters = /* @__PURE__ */ new Map();
     this.destroyed = !1;
     let element = typeof container == "string" ? document.querySelector(container) : container;
     if (!element) throw new Error("FacetTable: container element not found");
-    if (!options.columns.length)
-      throw new Error("FacetTable: at least one column is required");
-    this.container = element, this.options = { ...options, rows: [...options.rows], columns: [...options.columns] }, this.currentSort = initialSort(this.options.columns), this.currentFilters = initialFilters(this.options.columns), this.syncPagination(options.pagination, !0), this.render(), this.setupReflow();
+    validateTableColumns(options.columns), this.container = element, this.options = { ...options, rows: [...options.rows], columns: [...options.columns] }, this.flattenedColumns = flattenTableColumns(this.options.columns);
+    let columns = this.flattenedColumns;
+    this.currentSort = initialSort(columns), this.currentFilters = initialFilters(columns), this.syncPagination(options.pagination, !0), this.render(), this.setupReflow();
   }
   /** Replace all table rows and their cell charts. */
   setRows(rows) {
@@ -7795,12 +7796,14 @@ var FacetTable = class {
       rows: options.rows ? [...options.rows] : this.options.rows,
       columns: options.columns ? [...options.columns] : this.options.columns
     };
-    if (!next.columns.length)
-      throw new Error("FacetTable: at least one column is required");
-    this.options = next, (options.rows !== void 0 || options.columns !== void 0) && (this.sharedDomainCache = void 0), options.pagination !== void 0 && this.syncPagination(options.pagination, !1), options.columns !== void 0 && ((this.currentSort ? this.options.columns.find((column) => column.key === this.currentSort?.key) : void 0)?.sortable || (this.currentSort = initialSort(this.options.columns)), this.currentFilters = reconcileFilters(
-      this.currentFilters,
-      this.options.columns
-    )), this.clampPage(), this.render();
+    if (validateTableColumns(next.columns), this.options = next, this.flattenedColumns = flattenTableColumns(this.options.columns), (options.rows !== void 0 || options.columns !== void 0) && (this.sharedDomainCache = void 0), options.pagination !== void 0 && this.syncPagination(options.pagination, !1), options.columns !== void 0) {
+      let columns = flattenTableColumns(this.options.columns);
+      (this.currentSort ? columns.find((column) => column.key === this.currentSort?.key) : void 0)?.sortable || (this.currentSort = initialSort(columns)), this.currentFilters = reconcileFilters(
+        this.currentFilters,
+        columns
+      );
+    }
+    this.clampPage(), this.render();
   }
   /** Current 1-based page (always `1` when pagination is disabled). */
   get page() {
@@ -7818,9 +7821,12 @@ var FacetTable = class {
   get filters() {
     return [...this.currentFilters].map(([key, value]) => ({ key, value }));
   }
+  leafColumns() {
+    return this.flattenedColumns;
+  }
   setFilter(key, value) {
     if (this.destroyed) return;
-    if (!this.options.columns.find((candidate) => candidate.key === key)?.filterable)
+    if (!this.leafColumns().find((candidate) => candidate.key === key)?.filterable)
       throw new Error(`FacetTable.setFilter(): column "${key}" is not filterable.`);
     let normalized = value?.trim() ?? "";
     normalized ? this.currentFilters.set(key, normalized) : this.currentFilters.delete(key), this.currentPage = 1, this.sharedDomainCache = void 0, this.render();
@@ -7833,7 +7839,7 @@ var FacetTable = class {
   }
   sortBy(key, direction = "asc") {
     if (this.destroyed) return;
-    if (!this.options.columns.find((candidate) => candidate.key === key)?.sortable)
+    if (!this.leafColumns().find((candidate) => candidate.key === key)?.sortable)
       throw new Error(`FacetTable.sortBy(): column "${key}" is not sortable.`);
     this.currentSort = { key, direction }, this.currentPage = 1, this.render();
   }
@@ -7852,7 +7858,7 @@ var FacetTable = class {
   }
   /** Re-measure all mounted cell charts after an outer layout change. */
   reflow() {
-    this.destroyed || this.charts.forEach((chart) => chart.reflow());
+    this.destroyed || (this.options.layout?.freezeHeaderRow && this.positionStickyHeaderRows(), this.charts.forEach((chart) => chart.reflow()));
   }
   destroy() {
     this.destroyed || (this.destroyed = !0, this.destroyCharts(), this.resizeObserver?.disconnect(), this.resizeObserver = void 0, this.resizeFrame !== void 0 && cancelAnimationFrame(this.resizeFrame), this.resizeFrame = void 0, this.root?.remove(), this.root = void 0, this.table = void 0);
@@ -7876,7 +7882,7 @@ var FacetTable = class {
     let { body, pending } = this.renderBody();
     table.appendChild(body), root.appendChild(table);
     let pagination = this.renderPagination();
-    pagination && root.appendChild(pagination), this.container.replaceChildren(root), this.root = root, this.table = table;
+    pagination && root.appendChild(pagination), this.container.replaceChildren(root), this.root = root, this.table = table, layout?.freezeHeaderRow && this.positionStickyHeaderRows();
     let sharedDomains = this.sharedDomainCache ?? this.sharedDomains();
     this.sharedDomainCache = sharedDomains;
     for (let item of pending) {
@@ -7887,34 +7893,54 @@ var FacetTable = class {
   renderHead() {
     let head = document.createElement("thead");
     applyStyle(head, this.options.style?.head);
-    let row = document.createElement("tr");
-    applyStyle(row, this.options.style?.headerRow);
-    for (let [columnIndex, column] of this.options.columns.entries()) {
-      let cell = document.createElement("th");
-      if (cell.scope = "col", cell.className = column.chart ? "facet-table-heading facet-table-chart-heading" : "facet-table-heading", this.styleCell(cell, column, !0, void 0, columnIndex), this.applyColumnStyle(cell, column, !0), column.sortable || column.filterable) {
-        let controls = document.createElement("div");
-        if (controls.className = "facet-table-header-controls", controls.style.display = "flex", controls.style.alignItems = "center", controls.style.gap = "5px", controls.style.width = "100%", applyStyle(controls, this.options.style?.headerControls), column.sortable) {
-          let direction = this.currentSort?.key === column.key ? this.currentSort.direction : void 0;
-          cell.setAttribute(
-            "aria-sort",
-            direction === "asc" ? "ascending" : direction === "desc" ? "descending" : "none"
-          );
-          let button = document.createElement("button");
-          button.type = "button", button.className = "facet-table-sort-button", button.style.display = "inline-flex", button.style.alignItems = "center", button.style.justifyContent = sortAlignment(
-            this.cellHorizontalAlignment(column, !0)
-          ), button.style.gap = "5px", button.style.flex = "1 1 auto", button.style.minWidth = "0", button.style.padding = "0", button.style.border = "0", button.style.background = "transparent", button.style.color = "inherit", button.style.font = "inherit", button.style.cursor = "pointer", button.append(document.createTextNode(column.header ?? column.key)), applyStyle(button, this.options.style?.sortButton);
-          let indicator = createSortIndicator(direction);
-          indicator.setAttribute("class", "facet-table-sort-indicator"), indicator.style.opacity = direction ? "1" : "0.5", applyStyle(indicator, this.options.style?.sortIndicator), button.appendChild(indicator), button.addEventListener("click", () => this.toggleSort(column)), controls.appendChild(button);
-        } else {
-          let label = document.createElement("span");
-          label.className = "facet-table-heading-label", label.textContent = column.header ?? column.key, label.style.flex = "1 1 auto", label.style.minWidth = "0", controls.appendChild(label);
+    let depth = tableColumnDepth(this.options.columns), rows = Array.from({ length: depth }, () => {
+      let row = document.createElement("tr");
+      return applyStyle(row, this.options.style?.headerRow), head.appendChild(row), row;
+    }), leafIndex = 0, renderColumns = (definitions, level) => {
+      for (let definition of definitions) {
+        if (isTableColumnGroup(definition)) {
+          let count = tableColumnLeafCount(definition);
+          rows[level].appendChild(
+            this.renderColumnGroupHeading(definition, leafIndex, count, level)
+          ), renderColumns(definition.columns, level + 1);
+          continue;
         }
-        column.filterable && (cell.style.position || (cell.style.position = "relative"), controls.appendChild(this.renderFilterControl(column, columnIndex))), cell.appendChild(controls);
-      } else
-        cell.textContent = column.header ?? column.key;
-      row.appendChild(cell);
-    }
-    return head.appendChild(row), head;
+        let rowSpan = depth - level;
+        rows[level].appendChild(
+          this.renderLeafColumnHeading(definition, leafIndex, rowSpan, level)
+        ), leafIndex++;
+      }
+    };
+    return renderColumns(this.options.columns, 0), head;
+  }
+  renderLeafColumnHeading(column, columnIndex, rowSpan, level) {
+    let cell = document.createElement("th");
+    if (cell.setAttribute("scope", "col"), cell.rowSpan = rowSpan, cell.dataset.headerLevel = String(level), cell.className = column.chart ? "facet-table-heading facet-table-chart-heading" : "facet-table-heading", this.styleCell(cell, column, !0, void 0, columnIndex), this.applyColumnStyle(cell, column, !0), column.sortable || column.filterable) {
+      let controls = document.createElement("div");
+      if (controls.className = "facet-table-header-controls", controls.style.display = "flex", controls.style.alignItems = "center", controls.style.gap = "5px", controls.style.width = "100%", applyStyle(controls, this.options.style?.headerControls), column.sortable) {
+        let direction = this.currentSort?.key === column.key ? this.currentSort.direction : void 0;
+        cell.setAttribute(
+          "aria-sort",
+          direction === "asc" ? "ascending" : direction === "desc" ? "descending" : "none"
+        );
+        let button = document.createElement("button");
+        button.type = "button", button.className = "facet-table-sort-button", button.style.display = "inline-flex", button.style.alignItems = "center", button.style.justifyContent = sortAlignment(
+          this.cellHorizontalAlignment(column, !0)
+        ), button.style.gap = "5px", button.style.flex = "1 1 auto", button.style.minWidth = "0", button.style.padding = "0", button.style.border = "0", button.style.background = "transparent", button.style.color = "inherit", button.style.font = "inherit", button.style.cursor = "pointer", button.append(document.createTextNode(column.header ?? column.key)), applyStyle(button, this.options.style?.sortButton);
+        let indicator = createSortIndicator(direction);
+        indicator.setAttribute("class", "facet-table-sort-indicator"), indicator.style.opacity = direction ? "1" : "0.5", applyStyle(indicator, this.options.style?.sortIndicator), button.appendChild(indicator), button.addEventListener("click", () => this.toggleSort(column)), controls.appendChild(button);
+      } else {
+        let label = document.createElement("span");
+        label.className = "facet-table-heading-label", label.textContent = column.header ?? column.key, label.style.flex = "1 1 auto", label.style.minWidth = "0", controls.appendChild(label);
+      }
+      column.filterable && (cell.style.position || (cell.style.position = "relative"), controls.appendChild(this.renderFilterControl(column, columnIndex))), cell.appendChild(controls);
+    } else
+      cell.textContent = column.header ?? column.key;
+    return cell;
+  }
+  renderColumnGroupHeading(group, columnIndex, colSpan, level) {
+    let cell = document.createElement("th");
+    return cell.setAttribute("scope", "colgroup"), cell.colSpan = colSpan, cell.dataset.headerLevel = String(level), cell.className = "facet-table-heading facet-table-column-group-heading", cell.textContent = group.header, this.styleColumnGroupHeading(cell, group, columnIndex, colSpan), cell;
   }
   renderFilterControl(column, columnIndex) {
     let wrapper = document.createElement("span");
@@ -7943,10 +7969,10 @@ var FacetTable = class {
   renderBody() {
     let body = document.createElement("tbody"), bodyTextSize = this.options.layout?.bodyTextSize;
     bodyTextSize !== void 0 && (body.style.fontSize = cssLength(bodyTextSize)), applyStyle(body, this.options.style?.body);
-    let pending = [], visibleRows = this.visibleRows();
+    let pending = [], columns = this.leafColumns(), visibleRows = this.visibleRows();
     if (!visibleRows.length) {
       let row = document.createElement("tr"), cell = document.createElement("td");
-      return cell.colSpan = this.options.columns.length, cell.textContent = this.options.emptyText ?? "No data", cell.className = "facet-table-empty", cell.style.padding = "12px 10px", cell.style.textAlign = "center", applyStyle(cell, this.options.style?.emptyCell), row.appendChild(cell), body.appendChild(row), { body, pending };
+      return cell.colSpan = columns.length, cell.textContent = this.options.emptyText ?? "No data", cell.className = "facet-table-empty", cell.style.padding = "12px 10px", cell.style.textAlign = "center", applyStyle(cell, this.options.style?.emptyCell), row.appendChild(cell), body.appendChild(row), { body, pending };
     }
     return visibleRows.forEach(({ row: dataRow, rowIndex }, visibleRowIndex) => {
       let row = document.createElement("tr"), rowType = tableRowType(dataRow);
@@ -7960,7 +7986,7 @@ var FacetTable = class {
       applyStyle(row, summaryStyle);
       let rowStyle = resolveRowStyle(this.options.style?.row, dataRow, rowIndex);
       applyStyle(row, rowStyle);
-      for (let [columnIndex, column] of this.options.columns.entries()) {
+      for (let [columnIndex, column] of columns.entries()) {
         let cell = document.createElement("td"), sourceValue = dataRow[column.key], descriptor = resolveCellDescriptor(sourceValue), value = descriptor ? descriptor.value : sourceValue;
         if (cell.className = column.chart ? "facet-table-cell facet-table-chart-cell" : "facet-table-cell", this.styleCell(cell, column, !1, value, columnIndex), this.styleBodyCell(
           cell,
@@ -8010,7 +8036,7 @@ var FacetTable = class {
   sortedRows() {
     let rows = this.filteredRows();
     if (!this.currentSort) return rows;
-    let column = this.options.columns.find(
+    let column = this.leafColumns().find(
       (candidate) => candidate.key === this.currentSort?.key && candidate.sortable
     );
     if (!column) return rows;
@@ -8029,7 +8055,7 @@ var FacetTable = class {
     let rows = this.options.rows.map((row, rowIndex) => ({ row, rowIndex }));
     return this.currentFilters.size ? rows.filter(({ row, rowIndex }) => {
       for (let [key, filterValue] of this.currentFilters) {
-        let column = this.options.columns.find(
+        let column = this.leafColumns().find(
           (candidate) => candidate.key === key && candidate.filterable
         );
         if (!column) continue;
@@ -8116,6 +8142,26 @@ var FacetTable = class {
     }
     this.options.layout?.freezeFirstColumn && columnIndex === 0 && (cell.style.position = "sticky", cell.style.left = "0", cell.style.zIndex = heading ? "4" : "2", !heading && !cell.style.backgroundColor && (cell.style.backgroundColor = this.options.appearance?.rowsAndColumns?.rowFill ?? "#fff")), heading && applyStyle(cell, this.options.style?.headerCell);
   }
+  styleColumnGroupHeading(cell, group, columnIndex, colSpan) {
+    cell.style.padding = densityPadding(
+      this.options.layout?.rowDensity,
+      !1,
+      this.container.clientWidth
+    ), this.styleBorders(cell, columnIndex + colSpan - 1), cell.style.textAlign = group.horizontalAlign ?? group.align ?? this.options.appearance?.headerRow?.alignment ?? "center", cell.style.verticalAlign = group.verticalAlign ?? "middle";
+    let wrapText = this.options.layout?.wrapText;
+    wrapText !== void 0 && (cell.style.whiteSpace = wrapText ? "normal" : "nowrap", wrapText && (cell.style.overflowWrap = "anywhere"));
+    let header = this.options.appearance?.headerRow;
+    cell.style.fontWeight = header?.bold === !1 ? "400" : header?.bold ? "700" : "600", cell.style.fontStyle = header?.italic ? "italic" : "normal", cell.style.background = header?.fillColor ?? "var(--facet-table-header-background, #f7f8fa)", header?.textColor && (cell.style.color = header.textColor), header?.textSize !== void 0 && (cell.style.fontSize = cssLength(header.textSize)), this.options.layout?.freezeHeaderRow && (cell.style.position = "sticky", cell.style.top = "0", cell.style.zIndex = "3"), this.options.layout?.freezeFirstColumn && columnIndex === 0 && colSpan === 1 && (cell.style.position = "sticky", cell.style.left = "0", cell.style.zIndex = "4"), applyStyle(cell, this.options.style?.headerCell), applyStyle(cell, this.options.style?.columnGroupHeader), applyStyle(cell, group.headerStyle);
+  }
+  positionStickyHeaderRows() {
+    if (!this.table) return;
+    let top = 0;
+    this.table.querySelectorAll("thead tr").forEach((row) => {
+      row.querySelectorAll(":scope > th").forEach((cell) => {
+        cell.style.top = `${top}px`;
+      }), top += row.getBoundingClientRect().height;
+    });
+  }
   applyColumnStyle(cell, column, heading, value, row, rowIndex = 0) {
     let explicitAlignment = column.horizontalAlign ?? column.align;
     explicitAlignment ? cell.style.textAlign = explicitAlignment : column.role && (cell.style.textAlign = this.cellHorizontalAlignment(column, heading, value)), column.verticalAlign && (cell.style.verticalAlign = column.verticalAlign), column.width !== void 0 && (cell.style.width = typeof column.width == "number" ? `${column.width}px` : column.width), applyStyle(
@@ -8139,7 +8185,7 @@ var FacetTable = class {
   }
   styleBorders(cell, columnIndex) {
     let borders = this.options.appearance?.borders, color = borders?.borderColor ?? "var(--facet-table-border-color, #e5e7eb)", width = cssLength(borders?.borderWidth ?? 1);
-    cell.style.borderBottom = borders?.horizontalBorders === !1 ? "none" : `${width} solid ${color}`, cell.style.borderRight = borders?.verticalBorders && columnIndex < this.options.columns.length - 1 ? `${width} solid ${color}` : "none";
+    cell.style.borderBottom = borders?.horizontalBorders === !1 ? "none" : `${width} solid ${color}`, cell.style.borderRight = borders?.verticalBorders && columnIndex < this.leafColumns().length - 1 ? `${width} solid ${color}` : "none";
   }
   customizedRowBackground(visibleRowIndex) {
     let options = this.options.appearance?.rowsAndColumns;
@@ -8147,7 +8193,7 @@ var FacetTable = class {
   }
   styleBodyCell(cell, columnIndex, rowBackground) {
     let options = this.options.appearance?.rowsAndColumns;
-    options?.textColor && (cell.style.color = options.textColor), options?.bandedColumns && columnIndex % 2 === 1 ? cell.style.backgroundColor = options.bandedColumnsAlternateColor ?? "#f1f5f9" : this.options.layout?.freezeFirstColumn && columnIndex === 0 && (cell.style.backgroundColor = rowBackground || options?.rowFill || "#fff"), (options?.emphasizeFirstColumn && columnIndex === 0 || options?.emphasizeLastColumn && columnIndex === this.options.columns.length - 1) && (cell.style.fontWeight = "700");
+    options?.textColor && (cell.style.color = options.textColor), options?.bandedColumns && columnIndex % 2 === 1 ? cell.style.backgroundColor = options.bandedColumnsAlternateColor ?? "#f1f5f9" : this.options.layout?.freezeFirstColumn && columnIndex === 0 && (cell.style.backgroundColor = rowBackground || options?.rowFill || "#fff"), (options?.emphasizeFirstColumn && columnIndex === 0 || options?.emphasizeLastColumn && columnIndex === this.leafColumns().length - 1) && (cell.style.fontWeight = "700");
   }
   bindRowHover(row) {
     let options = this.options.appearance?.rowsAndColumns;
@@ -8195,7 +8241,7 @@ var FacetTable = class {
   }
   sharedDomains() {
     let domains = /* @__PURE__ */ new Map();
-    for (let [columnIndex, column] of this.options.columns.entries()) {
+    for (let [columnIndex, column] of this.leafColumns().entries()) {
       if (column.chart?.scale !== "shared") continue;
       let columnValues = [];
       if (this.filteredRows().forEach(({ row, rowIndex }) => {
@@ -8239,7 +8285,7 @@ var FacetTable = class {
     return new FacetViz(item.host, options);
   }
   rowName(row, rowIndex) {
-    let labelColumn = this.options.columns.find((column) => !column.chart);
+    let labelColumn = this.leafColumns().find((column) => !column.chart);
     if (!labelColumn) return `row ${rowIndex + 1}`;
     let value = unwrapCellValue(row[labelColumn.key]);
     return value == null || value === "" ? `row ${rowIndex + 1}` : String(value);
@@ -8276,7 +8322,7 @@ var FacetTable = class {
   /** One observer per table is cheaper than one observer per chart cell. */
   setupReflow() {
     typeof ResizeObserver > "u" || (this.resizeObserver = new ResizeObserver(() => {
-      if (this.applyResponsiveDensity(), typeof requestAnimationFrame > "u") {
+      if (this.applyResponsiveDensity(), this.options.layout?.freezeHeaderRow && this.positionStickyHeaderRows(), typeof requestAnimationFrame > "u") {
         this.reflow();
         return;
       }
@@ -8375,6 +8421,46 @@ function paginationAlignment(align) {
 }
 function sortAlignment(align) {
   return align === "center" ? "center" : align === "right" ? "flex-end" : "flex-start";
+}
+function isTableColumnGroup(definition) {
+  return Array.isArray(definition.columns);
+}
+function flattenTableColumns(definitions) {
+  let columns = [];
+  return definitions.forEach((definition) => {
+    isTableColumnGroup(definition) ? columns.push(...flattenTableColumns(definition.columns)) : columns.push(definition);
+  }), columns;
+}
+function tableColumnDepth(definitions) {
+  return definitions.reduce(
+    (maximum, definition) => Math.max(
+      maximum,
+      isTableColumnGroup(definition) ? 1 + tableColumnDepth(definition.columns) : 1
+    ),
+    1
+  );
+}
+function tableColumnLeafCount(definition) {
+  return isTableColumnGroup(definition) ? definition.columns.reduce(
+    (total, child) => total + tableColumnLeafCount(child),
+    0
+  ) : 1;
+}
+function validateTableColumns(definitions) {
+  if (!definitions.length)
+    throw new Error("FacetTable: at least one column is required");
+  let visit = (items) => {
+    items.forEach((definition) => {
+      if (isTableColumnGroup(definition)) {
+        if (!definition.columns.length)
+          throw new Error(
+            `FacetTable: column group "${definition.header}" must contain at least one column.`
+          );
+        visit(definition.columns);
+      }
+    });
+  };
+  visit(definitions);
 }
 function initialSort(columns) {
   let column = columns.find(
