@@ -764,6 +764,7 @@ One object per series in the `series` array.
 | `type`           | [`ChartType`](#chart-types)                               | `chart.type`  | Series type; enables combination charts.                                                                                                                                                                                                        |
 | `name`           | `string`                                                  | –             | Series name (legend, tooltip).                                                                                                                                                                                                                  |
 | `color`          | `string`                                                  | palette       | Series colour.                                                                                                                                                                                                                                  |
+| `fillColor`      | `string \| LinearGradientColor`                            | series colour | Area/areaspline interior fill. A gradient uses `{ linearGradient: { x1, y1, x2, y2 }, stops: [[offset, color, opacity?], ...] }`.                                                                                                                |
 | `visible`        | `boolean`                                                 | `true`        | Initial visibility (toggled via the legend).                                                                                                                                                                                                    |
 | `showInLegend`   | `boolean`                                                 | `true`        | Set to `false` to omit this series from the chart legend.                                                                                                                                                                                       |
 | `stack`          | `string \| number`                                        | –             | Series sharing a stack id pile together.                                                                                                                                                                                                        |
@@ -792,6 +793,28 @@ One object per series in the `series` array.
 
 Any extra keys you add to a series or point are preserved and surfaced back in
 tooltips and event payloads.
+
+**Gradient area fill.** `area` and `areaspline` series accept an SVG linear
+gradient through `fillColor`. Coordinates default to the series bounding box,
+so `0` to `1` spans the fill from edge to edge:
+
+```ts
+series: [{
+  type: 'area',
+  color: '#2caffe',              // boundary line
+  fillColor: {
+    linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+    stops: [
+      [0, '#2caffe', 0.8],
+      [1, '#544fc5', 0.1],
+    ],
+  },
+  data: [3, 4, 3, 5, 4, 6],
+}]
+```
+
+Each stop is `[offset, color]` or `[offset, color, opacity]`. Offsets and
+coordinates can also be percentage strings such as `'50%'`.
 
 **Secondary y-axis (dual axis).** Works with a plain categorical x-axis too —
 not just [nested](#nested-hierarchical-x-axis) — for the common "bars +

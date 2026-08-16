@@ -2013,7 +2013,7 @@ export class FacetViz {
       ? primaryVisible
       : allVisible;
     let [vMin, vMax] = this.valueDomain(primaryDomainSeries);
-    const preservePrimaryZeroMin = this.hasNonNegativeColumnsOrBars(
+    const preservePrimaryZeroMin = this.hasNonNegativeZeroBasedSeries(
       primaryDomainSeries,
       vMin,
     );
@@ -2030,7 +2030,7 @@ export class FacetViz {
     let secondaryPreservesZeroMin = false;
     if (hasSecondary && yOpts1) {
       [vMin2, vMax2] = this.valueDomain(secondaryVisible);
-      const preserveSecondaryZeroMin = this.hasNonNegativeColumnsOrBars(
+      const preserveSecondaryZeroMin = this.hasNonNegativeZeroBasedSeries(
         secondaryVisible,
         vMin2,
       );
@@ -2615,7 +2615,7 @@ export class FacetViz {
     const polarValueScale = (items: BaseSeries[], options: AxisOptions) => {
       const domainSeries = items.length ? items : series;
       let domain = this.valueDomain(domainSeries);
-      const preserveZeroMin = this.hasNonNegativeColumnsOrBars(
+      const preserveZeroMin = this.hasNonNegativeZeroBasedSeries(
         domainSeries,
         domain[0],
       );
@@ -3279,7 +3279,7 @@ export class FacetViz {
       const scaleFor = (list: BaseSeries[], opts: AxisOptions) => {
         const domainSeries = list.length ? list : aggSeries;
         let [lo, hi] = this.valueDomain(domainSeries);
-        const preserveZeroMin = this.hasNonNegativeColumnsOrBars(
+        const preserveZeroMin = this.hasNonNegativeZeroBasedSeries(
           domainSeries,
           lo,
         );
@@ -3384,7 +3384,7 @@ export class FacetViz {
         range: [plot.y, plot.y + plot.height],
       });
       let [lo, hi] = this.valueDomain(aggSeries);
-      const preserveZeroMin = this.hasNonNegativeColumnsOrBars(aggSeries, lo);
+      const preserveZeroMin = this.hasNonNegativeZeroBasedSeries(aggSeries, lo);
       lo = Math.min(lo, 0);
       hi = Math.max(hi, 0);
       valScale0 = this.valueScale(
@@ -4104,7 +4104,7 @@ export class FacetViz {
       ? primaryVisible
       : ySource;
     let [vMin, vMax] = this.valueDomain(primaryDomainSeries);
-    const preservePrimaryZeroMin = this.hasNonNegativeColumnsOrBars(
+    const preservePrimaryZeroMin = this.hasNonNegativeZeroBasedSeries(
       primaryDomainSeries,
       vMin,
     );
@@ -4283,7 +4283,7 @@ export class FacetViz {
     if (hasSecondary) {
       const secondaryVisible = ySource.filter(onSecondary);
       let [vMin2, vMax2] = this.valueDomain(secondaryVisible);
-      const preserveSecondaryZeroMin = this.hasNonNegativeColumnsOrBars(
+      const preserveSecondaryZeroMin = this.hasNonNegativeZeroBasedSeries(
         secondaryVisible,
         vMin2,
       );
@@ -4373,13 +4373,15 @@ export class FacetViz {
     return [Math.min(...mins), Math.max(...maxs)];
   }
 
-  private hasNonNegativeColumnsOrBars(
+  private hasNonNegativeZeroBasedSeries(
     series: BaseSeries[],
     domainMin: number,
   ): boolean {
     return (
       domainMin >= 0 &&
-      series.some((item) => item.type === "column" || item.type === "bar")
+      series.some((item) =>
+        ["column", "bar", "area", "areaspline"].includes(item.type),
+      )
     );
   }
 

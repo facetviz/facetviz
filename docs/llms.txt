@@ -773,6 +773,12 @@ interface SeriesOptions {
   name?: string;
   data: PointInput[];
   color?: string;
+  fillColor?: string | {
+    linearGradient: { x1?: number|string; y1?: number|string;
+      x2?: number|string; y2?: number|string;
+      gradientUnits?: 'objectBoundingBox'|'userSpaceOnUse' };
+    stops: Array<[number|string, string] | [number|string, string, number]>;
+  }; // area / areaspline
   visible?: boolean; showInLegend?: boolean;
   stack?: string|number; stacking?: 'normal'|'percent';
   startAngle?: number; endAngle?: number;        // radialbar degrees; defaults -90 → 180

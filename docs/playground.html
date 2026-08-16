@@ -446,8 +446,24 @@
           title: { text: "Stacked area" },
           xAxis: { categories: months },
           series: [
-            { name: "A", stacking: "normal", data: [3, 4, 3, 5, 4, 6] },
-            { name: "B", stacking: "normal", data: [2, 3, 4, 3, 5, 4] },
+            {
+              name: "A",
+              stacking: "normal",
+              fillColor: {
+                linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+                stops: [[0, "#2caffe", 0.8], [1, "#2caffe", 0.15]],
+              },
+              data: [3, 4, 3, 5, 4, 6],
+            },
+            {
+              name: "B",
+              stacking: "normal",
+              fillColor: {
+                linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+                stops: [[0, "#544fc5", 0.8], [1, "#544fc5", 0.15]],
+              },
+              data: [2, 3, 4, 3, 5, 4],
+            },
           ],
         },
         "Line with min/max range": {

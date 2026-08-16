@@ -37,6 +37,8 @@ describe('FacetViz rendering', () => {
   it.each([
     ['column', '.facet-axis-left'],
     ['bar', '.facet-axis-bottom'],
+    ['area', '.facet-axis-left'],
+    ['areaspline', '.facet-axis-left'],
   ] as const)('starts a non-negative %s value axis at zero', (type, axis) => {
     const el = container();
     new FacetViz(el, {
@@ -46,6 +48,24 @@ describe('FacetViz rendering', () => {
     });
 
     const ticks = [...el.querySelectorAll(`${axis} text`)]
+      .map((node) => Number(node.textContent))
+      .filter(Number.isFinite);
+    expect(Math.min(...ticks)).toBe(0);
+    expect(Math.max(...ticks)).toBeGreaterThan(10);
+  });
+
+  it('starts a non-negative stacked area value axis at zero', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { type: 'area', animation: false },
+      xAxis: { categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'] },
+      series: [
+        { stacking: 'normal', data: [3, 4, 3, 5, 4, 6] },
+        { stacking: 'normal', data: [2, 3, 4, 3, 5, 4] },
+      ],
+    });
+
+    const ticks = [...el.querySelectorAll('.facet-axis-left text')]
       .map((node) => Number(node.textContent))
       .filter(Number.isFinite);
     expect(Math.min(...ticks)).toBe(0);

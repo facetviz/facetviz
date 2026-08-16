@@ -50,6 +50,10 @@ export type {
 export type {
   ChartOptions,
   SeriesOptions,
+  AreaFillColor,
+  LinearGradientColor,
+  GradientCoordinate,
+  GradientOffset,
   AxisOptions,
   ChartType,
   PointOptions,

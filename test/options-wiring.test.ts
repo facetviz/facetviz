@@ -375,6 +375,36 @@ describe('configuration option wiring', () => {
     expect(area.querySelector<SVGPathElement>('.facet-area path')?.getAttribute('fill'))
       .toBe('rgba(51, 102, 153, 0.72)');
 
+    const gradientArea = container();
+    new FacetViz(gradientArea, {
+      chart: { ...baseChart, type: 'area' },
+      series: [{
+        color: '#336699',
+        fillColor: {
+          linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+          stops: [[0, '#2caffe', 0.8], [1, '#544fc5', 0.1]],
+        },
+        data: [1, 3, 2],
+      }],
+    });
+    const gradient = gradientArea.querySelector<SVGLinearGradientElement>('linearGradient')!;
+    const gradientStops = [...gradient.querySelectorAll('stop')];
+    expect(gradient.getAttribute('x1')).toBe('0');
+    expect(gradient.getAttribute('y2')).toBe('1');
+    expect(gradient.getAttribute('gradientUnits')).toBe('objectBoundingBox');
+    expect(gradientStops.map((stop) => [
+      stop.getAttribute('offset'),
+      stop.getAttribute('stop-color'),
+      stop.getAttribute('stop-opacity'),
+    ])).toEqual([
+      ['0', '#2caffe', '0.8'],
+      ['1', '#544fc5', '0.1'],
+    ]);
+    expect(
+      gradientArea.querySelector<SVGPathElement>(".facet-area path:not([fill='none'])")
+        ?.getAttribute('fill'),
+    ).toBe(`url(#${gradient.id})`);
+
     const hidden = container();
     new FacetViz(hidden, {
       chart: { ...baseChart, type: 'scatter' },

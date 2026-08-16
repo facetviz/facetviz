@@ -154,6 +154,11 @@ export interface SeriesOptions
   name?: string;
   data: PointInput[];
   color?: string;
+  /**
+   * Area/areaspline interior fill. A string uses a solid SVG paint; a linear
+   * gradient uses object-bounding-box coordinates (0..1) by default.
+   */
+  fillColor?: AreaFillColor;
   /** Group id used for stacking / grouping. Series sharing a stack pile up. */
   stack?: string | number;
   stacking?: StackingMode;
@@ -186,6 +191,26 @@ export interface SeriesOptions
   /** Arbitrary user data. */
   [key: string]: unknown;
 }
+
+export type GradientCoordinate = number | `${number}%`;
+export type GradientOffset = number | `${number}%`;
+
+export interface LinearGradientColor {
+  linearGradient: {
+    x1?: GradientCoordinate;
+    y1?: GradientCoordinate;
+    x2?: GradientCoordinate;
+    y2?: GradientCoordinate;
+    gradientUnits?: "objectBoundingBox" | "userSpaceOnUse";
+  };
+  /** `[offset, color]`, with an optional SVG stop opacity. */
+  stops: Array<
+    | [offset: GradientOffset, color: string]
+    | [offset: GradientOffset, color: string, opacity: number]
+  >;
+}
+
+export type AreaFillColor = string | LinearGradientColor;
 
 export interface MarkerOptions {
   enabled?: boolean;
