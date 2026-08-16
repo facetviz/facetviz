@@ -1,21 +1,23 @@
-# FacetViz — chart-generation guide for coding agents
+# FacetViz — chart and FacetTable generation guide for coding agents
 
 FacetViz is a dependency-free TypeScript/SVG charting library with a declarative
-configuration API. Use this file to generate valid, readable, maintainable chart
-options. Capability guide: `docs/features.html`. Full API: `docs/API.md`.
-Executable examples: `docs/examples-data.js`.
+configuration API plus a semantic HTML table component for charts inside cells.
+Use this file to generate valid, readable, maintainable chart or table options.
+Capability guide: `docs/features.html`. Full API: `docs/API.md`. Executable
+examples: `docs/examples-data.js`.
 
 ## Agent output contract
 
-When asked to create a chart:
+When asked to create a chart or chart table:
 
 1. Identify the analytical goal before choosing a type: comparison, trend,
    distribution, relationship, composition, range, hierarchy, flow, schedule,
    or small multiples.
 2. Inspect the data shape, units, cardinality, missing values, and whether x is
    categorical, numeric, or time-based.
-3. Produce one complete `ChartOptions` object with `series` present. Do not
-   invent option names or chart types.
+3. Produce one complete `ChartOptions` object with `series` present. For a
+   semantic table with charts in cells, produce `FacetTableOptions<Row>` with
+   `rows` and `columns` instead. Do not invent option names or chart types.
 4. Prefer the simplest chart that answers the question. Add advanced options
    only when the data or request justifies them.
 5. Include a descriptive title, axis titles with units, useful series names,
@@ -25,9 +27,11 @@ When asked to create a chart:
    milliseconds or treating categories as ordered.
 7. For application code, create one chart instance and update it. Do not mount a
    new instance into the same container on every data/theme change.
-8. When configuration comes from generated JSON or another untrusted source,
-   call `validateChartOptions(candidate)` and repair every error before render.
-   Use `validation:{mode:'error'}` when later runtime updates must be guarded too.
+8. When a `ChartOptions` configuration comes from generated JSON or another
+   untrusted source, call `validateChartOptions(candidate)` and repair every
+   error before render. Use `validation:{mode:'error'}` when later runtime
+   updates must be guarded too. Do not pass a whole `FacetTableOptions` object
+   to `validateChartOptions`; it validates chart options, not table structure.
 
 ```ts
 import { FacetViz } from 'facetviz';
@@ -52,6 +56,328 @@ and butterfly, `range` registers both area-range aliases, and `scatter`
 registers jitter. Use `facetviz/series/all` when dynamic configurations may use
 arbitrary chart types. If validation reports `chart.type.unknown` with the core
 entrypoint, import the matching family before changing the chart configuration.
+
+## FacetTable: values and charts in table cells
+
+Use `FacetTable` when each data record should remain a semantic HTML table row
+and one or more columns should contain compact FacetViz charts. Use a normal
+`FacetViz` chart for a standalone visualization and `trellis` for repeated SVG
+panels that do not need native table cells.
+
+```ts
+import { FacetTable } from 'facetviz';
+
+// `ChartTable` is an exported alias, but prefer the canonical `FacetTable` name.
+
+interface ProductRow {
+  product: string;
+  revenue: number;
+  growth: number;
+  trend: number[];
+}
+
+const table = new FacetTable<ProductRow>('#performance', {
+  caption: 'Product performance',
+  rows: [
+    { product: 'Atlas', revenue: 128400, growth: 0.124,
+      trend: [64,69,72,70,78,82,86,91,96,104,112,128] },
+    { product: 'Beacon', revenue: 86900, growth: 0.071,
+      trend: [48,51,49,54,58,57,61,63,60,66,72,87] },
+  ],
+  columns: [
+    { key: 'product', header: 'Product', sortable: true, filterable: true,
+      horizontalAlign: 'left', verticalAlign: 'top' },
+    { key: 'revenue', header: 'Revenue', sortable: true,
+      horizontalAlign: 'right', verticalAlign: 'bottom',
+      format: '{value:$,.0f}' },
+    { key: 'growth', header: 'YoY', horizontalAlign: 'center',
+      format: '{value:.1%}' },
+    { key: 'trend', header: '12-month trend', width: 240,
+      chart: {
+        type: 'sparkline', height: 44, minWidth: 180, scale: 'shared',
+        options: {
+          plotOptions: { sparkline: { sparkline: { min: true, max: true } } },
+          tooltip: { valueSuffix: 'k' },
+        },
+      } },
+  ],
+  pagination: { pageSize: 25, pageSizeOptions: [10,25,50,100] },
+});
+```
+
+### FacetTable options
+
+```ts
+interface FacetTableOptions<Row extends object> {
+  rows: Row[];                              // required
+  columns: FacetTableColumn<Row>[];         // required, at least one
+  caption?: string;
+  className?: string;
+  layout?: FacetTableLayoutOptions;
+  emptyText?: string;                       // default 'No data'
+  appearance?: FacetTableAppearanceOptions;
+  style?: FacetTableStyleOptions<Row>;
+  pagination?: boolean | FacetTablePaginationOptions; // default false
+}
+
+interface FacetTableColumn<Row extends object> {
+  key: keyof Row & string;                  // property read from every row
+  header?: string;                          // defaults to key
+  width?: number|string;                    // number means pixels
+  horizontalAlign?: 'left'|'center'|'right';
+  align?: 'left'|'center'|'right';          // compatibility alias
+  verticalAlign?: 'top'|'middle'|'bottom';  // default middle
+  role?: 'dimension'|'value';               // inferred when omitted
+  style?: Record<string,string|number> |
+          ((value, row: Row, rowIndex: number) => Record<string,string|number>);
+  headerStyle?: Record<string,string|number>;
+  sortable?: boolean | {
+    initialDirection?: 'asc'|'desc';
+    compare?: (a, b, rowA: Row, rowB: Row) => number;
+  };
+  filterable?: boolean | {
+    initialValue?: string;
+    placeholder?: string;
+    predicate?: (value: unknown, filterValue: string, row: Row,
+                 rowIndex: number) => boolean;
+  };
+  format?: string;                          // normal value cells only
+  formatter?: (value, row: Row, rowIndex: number) => string|Node;
+  chart?: FacetTableCellChartOptions<Row>;  // presence makes this a chart cell
+}
+
+interface FacetTableCellChartOptions<Row extends object> {
+  type?: ChartType;                         // default sparkline
+  height?: number;                          // default 44px
+  minWidth?: number;                        // default 120px
+  scale?: 'independent'|'shared';           // default independent
+  options?: Omit<ChartOptions,'series'>;
+  series?: 'value' | ((value, row: Row, rowIndex: number) => SeriesOptions[]);
+}
+
+interface FacetTableCellDescriptor<Value = unknown> {
+  value: Value;                             // raw value used by table behavior
+  prefix?: string|number;                   // normal value cells only
+  suffix?: string|number;                   // normal value cells only
+  style?: Record<string,string|number>;     // arbitrary nested CSS
+  [cssProperty: string]: unknown;           // direct color/background/etc.
+}
+```
+
+`horizontalAlign` and `verticalAlign` apply to both the heading and body cells,
+including chart cells. A sortable header's button follows the horizontal
+alignment. A filterable header adds a funnel button and an accessible
+Apply/Clear panel. `align` is an older alias; prefer `horizontalAlign` in new
+code.
+
+`format` uses the library's text-format syntax and receives `value`, `row`,
+`rowIndex`, and `column`; dotted paths are supported. Examples:
+
+```ts
+{ key: 'revenue', format: '{value:$,.0f}' }
+{ key: 'ratio', format: '{value:.1%}' }       // 0.124 -> 12.4%
+{ key: 'score', format: '{row.product}: {value:,.1f}' }
+```
+
+Use `formatter` when formatting requires arbitrary logic or a DOM `Node`.
+`formatter` takes precedence when both `formatter` and `format` are present.
+Both are ignored for chart cells. Sorting and default filtering use raw cell
+values, not the displayed formatted text. Default filtering is a
+case-insensitive contains check. A filter object can supply a custom predicate;
+multiple active column filters use AND logic and run before sorting and
+pagination.
+
+A row property may be a `FacetTableCellDescriptor`. Its `value` is unwrapped
+before formatting, sorting, filtering, `style.cell` callbacks, or chart-series
+construction. `prefix` and `suffix` wrap normal displayed values. All other
+recognized CSS properties, plus the nested `style` map, apply only to that cell
+and take precedence over table-wide styles. Example:
+
+```ts
+{ revenue: { value: 128400, color: 'red', backgroundColor: 'green',
+             fontWeight: 900 },
+  growth: { value: 12.4, prefix: '+', suffix: '%', color: '#45f354' } }
+```
+
+Column `style` applies to every body cell in that column and may be a CSS map or
+`(value,row,rowIndex)=>CSSMap`; `headerStyle` applies to its heading. Body-cell
+precedence from highest to lowest is: row cell descriptor, column `style`,
+resolved top-level `style.row`, other top-level style slots, `layout`, then
+`appearance`. Heading precedence is `headerStyle`, `style.headerCell`, layout,
+then appearance.
+
+Structure and semantic appearance are separate from raw CSS overrides:
+
+```ts
+interface FacetTableLayoutOptions {
+  tableLayout?: 'auto'|'fixed';
+  rowDensity?: 'responsive'|'compact'|'cozy'|'crazy'|'comfortable';
+  bodyTextSize?: number|string;
+  showHeaderRow?: boolean;
+  wrapText?: boolean;
+  freezeHeaderRow?: boolean;
+  freezeFirstColumn?: boolean;
+}
+
+interface FacetTableAppearanceOptions {
+  headerRow?: {
+    fillColor?: string; textColor?: string; textSize?: number|string;
+    alignment?: 'left'|'center'|'right'; bold?: boolean; italic?: boolean;
+  };
+  rowsAndColumns?: {
+    textColor?: string; rowFill?: string;
+    dimensionAlignment?: 'left'|'center'|'right';
+    valueAlignment?: 'left'|'center'|'right';
+    displayEmptyCellAs?: string;
+    bandedRows?: boolean; bandedRowsAlternateColor?: string;
+    bandedColumns?: boolean; bandedColumnsAlternateColor?: string;
+    emphasizeFirstColumn?: boolean; emphasizeLastColumn?: boolean;
+    highlightRowOnHover?: boolean; hoverColor?: string;
+  };
+  borders?: {
+    horizontalBorders?: boolean; verticalBorders?: boolean;
+    outsideBorder?: boolean; borderColor?: string;
+    borderWidth?: number|string;
+  };
+}
+```
+
+Responsive density uses compact padding below 600px, cozy padding from
+600–899px, and comfortable padding at 900px or wider. `crazy` aliases `cozy`.
+Numeric and chart cells infer role `value`; other cells infer `dimension`.
+Explicit column alignment wins over role/header alignment. Low-level `style`
+slots are applied after `layout` and `appearance` and may override their CSS.
+
+### Cell charts and multi-series combo cells
+
+When `chart.series` is omitted, an array cell value is one series' point data;
+a scalar is wrapped as one point. The callback form can build any number of
+series from the cell value or the entire row:
+
+```ts
+interface ComparisonRow {
+  product: string;
+  actual: number[];
+  target: number[];
+}
+
+const columns: FacetTableColumn<ComparisonRow>[] = [
+  { key: 'product', header: 'Product' },
+  { key: 'actual', header: 'Actual + target', chart: {
+    type: 'column', height: 100,
+    series: (_value, row) => [
+      { type: 'column', name: 'Actual', data: row.actual },
+      { type: 'line', name: 'Target', data: row.target,
+        marker: { enabled: true } },
+    ],
+    options: {
+      xAxis: { categories: ['Q1','Q2','Q3','Q4'] },
+      legend: { enabled: true },
+      tooltip: { shared: true },
+    },
+  } },
+];
+```
+
+For JSON-only configurations, store a complete `SeriesOptions[]` in the cell
+and set `series:'value'`:
+
+```ts
+{
+  rows: [{
+    product: 'Atlas',
+    comparison: [
+      { type: 'column', name: 'Actual', data: [22,28,31,38] },
+      { type: 'line', name: 'Target', data: [24,27,33,36] },
+    ],
+  }],
+  columns: [
+    { key: 'product' },
+    { key: 'comparison', chart: { type: 'column', series: 'value' } },
+  ],
+}
+```
+
+Axes, legend, background, animation, responsive font scaling, and per-chart
+resize observation are disabled/minimized by default for compact cell charts.
+Override axes, legend, tooltip, and plot settings through `chart.options`.
+Set `xAxis.visible:true`/`yAxis.visible:true` when axes should be drawn.
+FacetTable uses one ResizeObserver for the whole table. `scale:'shared'` computes
+one value-axis domain from all rows in that chart column, including rows on
+other pages; use it when magnitudes must be comparable. `independent` emphasizes
+each row's shape. Only charts on the visible page are mounted. Unless explicitly
+provided, each cell chart receives an accessibility description derived from
+the chart-column heading and the first non-chart value in its row.
+
+### Sorting, pagination, and table styling
+
+Sortable headers cycle ascending -> descending -> original row order. Sorting
+is stable, happens before pagination, resets to page 1, uses natural comparison
+for numbers/dates/booleans/text, and keeps nullish values last. Supply `compare`
+for domain-specific or formatted-string values.
+
+```ts
+pagination: true // 25 rows/page; choices 10,25,50,100
+
+pagination: {
+  enabled: true,
+  pageSize: 25,
+  page: 1,
+  pageSizeOptions: [10,25,50,100],
+  showPageSize: true,
+  showPageNumbers: true,
+  maxPageButtons: 5,
+  alwaysShow: false,
+  align: 'right',
+  labels: { first: 'First', previous: 'Previous', next: 'Next', last: 'Last',
+            page: 'Page', of: 'of', rows: 'rows', perPage: 'Rows per page' },
+  onPageChange: (page, pageSize) => {},
+}
+```
+
+`style` accepts CSS property maps. Numeric dimensional values become pixels;
+recognized unitless properties and CSS custom properties remain as supplied.
+Available slots:
+
+```txt
+root, table, caption, head, headerRow, headerCell, headerControls, sortButton,
+sortIndicator, filterButton, activeFilterButton, filterIndicator, filterPanel,
+filterInput, filterActions, filterActionButton, body, row, cell, valueCell,
+chartCell, chartHost, emptyCell, pagination,
+paginationInfo, paginationButton, activePageButton, pageSizeLabel, pageSizeSelect
+```
+
+`row` may be a style map or `(row,rowIndex)=>style`. `cell` may be a style map
+or `(value,row,rowIndex,column)=>style`; use these for stripes and conditional
+formatting without changing source data.
+
+### FacetTable runtime API
+
+```ts
+table.setRows(nextRows);
+table.update({ columns, style, pagination });
+table.page;                                // current 1-based page
+table.pageSize;
+table.pageCount;
+table.setPage(2);
+table.setPageSize(50);
+table.sort;                                // {key,direction} | undefined
+table.sortBy('revenue', 'desc');           // column must be sortable
+table.clearSort();
+table.filters;                             // [{key,value}, ...]
+table.setFilter('product', 'atlas');       // column must be filterable
+table.clearFilter('product');
+table.clearFilters();
+table.charts;                              // FacetViz[] mounted on current page
+table.reflow();
+table.destroy();
+```
+
+FacetTable renders native `table`, `thead`, `tbody`, `th`, and `td` elements;
+do not replace it with a grid of unrelated SVG charts when table semantics,
+selection, or screen-reader navigation matter. Keep cell charts compact, avoid
+repeating titles in every cell, and enable legends only when multiple series
+cannot be understood from surrounding headings/context.
 
 ## Choose the chart type
 
@@ -657,6 +983,12 @@ unmounts.
 
 Before returning generated chart code, verify:
 
+- A FacetTable has non-empty `columns`, every column key belongs to the row
+  schema (with missing values intentional), pagination values are positive
+  integers, and `series:'value'` cells contain `SeriesOptions[]` rather than
+  ordinary point arrays.
+- FacetTable formatting and sorting use raw typed values (especially numbers and
+  dates); do not pre-format source values merely to control their display.
 - `series` exists, every series has `data`, and every `type` is supported.
 - `xAxis.categories.length` matches aligned numeric arrays.
 - Every range has `low <= high`; every boxplot has
@@ -689,6 +1021,11 @@ Before returning generated chart code, verify:
 
 ## Common mistakes to avoid
 
+- Do not manually mount one independent FacetViz instance per HTML table cell;
+  use FacetTable so chart cleanup, reflow, pagination, shared scales, and table
+  semantics remain coordinated.
+- Do not repeat axes, titles, and legends in every tiny cell chart unless the
+  cell dimensions and missing surrounding context genuinely require them.
 - Do not use `chart.type:'bar'` together with manual negative values merely to
   make bars point left; `bar` already means horizontal orientation.
 - Do not use categorical string x values for a continuous scatter/time axis.

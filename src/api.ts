@@ -2,6 +2,33 @@
 
 export { FacetViz } from "./core/chart.js";
 export { FacetViz as Chart } from "./core/chart.js";
+export { FacetTable } from "./core/table.js";
+export { FacetTable as ChartTable } from "./core/table.js";
+
+export type {
+  FacetTableRow,
+  FacetTableCellDescriptor,
+  FacetTableColumnStyle,
+  FacetTableOptions,
+  FacetTableColumn,
+  FacetTableCellFormatter,
+  FacetTableCellChartOptions,
+  FacetTableStyle,
+  FacetTableStyleOptions,
+  FacetTablePaginationLabels,
+  FacetTablePaginationOptions,
+  FacetTableSortDirection,
+  FacetTableColumnSortOptions,
+  FacetTableSortState,
+  FacetTableColumnFilterOptions,
+  FacetTableFilterState,
+  FacetTableRowDensity,
+  FacetTableLayoutOptions,
+  FacetTableHeaderAppearance,
+  FacetTableRowsAndColumnsAppearance,
+  FacetTableBorderAppearance,
+  FacetTableAppearanceOptions,
+} from "./core/table.js";
 
 export type {
   ChartOptions,

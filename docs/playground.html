@@ -4,8 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>FacetViz Playground</title>
+    <script src="./docs-theme.js"></script>
     <style>
       :root {
+        color-scheme: light;
         --bg: #f5f6fb;
         --panel: #ffffff;
         --border: #e7e8f0;
@@ -25,7 +27,7 @@
         --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
       }
       @media (prefers-color-scheme: dark) {
-        :root {
+        :root:not([data-docs-theme]) {
           --bg: #0b0e16;
           --panel: #141926;
           --border: #232a3b;
@@ -34,6 +36,19 @@
           --chip: #1e2333;
           --chip-fg: #a5b4fc;
         }
+      }
+      :root[data-docs-theme="dark"] {
+        color-scheme: dark;
+        --bg: #0b0e16;
+        --panel: #141926;
+        --border: #232a3b;
+        --text: #e7ecf6;
+        --muted: #97a0b5;
+        --chip: #1e2333;
+        --chip-fg: #a5b4fc;
+      }
+      :root[data-docs-theme="light"] {
+        color-scheme: light;
       }
       * {
         box-sizing: border-box;
@@ -126,6 +141,19 @@
         border: 0;
         font-weight: 600;
       }
+      .docs-theme-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        min-width: 78px;
+        white-space: nowrap;
+      }
+      .docs-theme-icon {
+        width: 1em;
+        font-size: 16px;
+        line-height: 1;
+      }
       button:hover {
         filter: brightness(0.97);
       }
@@ -212,6 +240,15 @@
         box-shadow: inset -14px -14px 0 -12px
           color-mix(in srgb, var(--muted) 30%, transparent);
       }
+      #preview.table-preview {
+        overflow: auto;
+      }
+      #preview .facet-table {
+        color: var(--text);
+        font-size: 13px;
+        --facet-table-border-color: var(--border);
+        --facet-table-header-background: var(--bg);
+      }
       #previewSize {
         font-variant-numeric: tabular-nums;
         color: var(--muted);
@@ -253,6 +290,13 @@
           border-right: 0;
           border-bottom: 1px solid var(--border);
         }
+        .docs-theme-toggle {
+          min-width: 36px;
+          padding-inline: 9px;
+        }
+        .docs-theme-label {
+          display: none;
+        }
       }
     </style>
   </head>
@@ -284,7 +328,7 @@
         </div>
         <textarea id="editor" spellcheck="false" autocomplete="off"></textarea>
         <div class="hint">
-          Data-only JSON (no functions). <kbd>Tab</kbd> inserts spaces ·
+          Data-only FacetViz or FacetTable JSON (no functions). <kbd>Tab</kbd> inserts spaces ·
           <kbd>Ctrl/Cmd</kbd>+<kbd>Enter</kbd> runs.
         </div>
       </section>
@@ -309,7 +353,7 @@
     </main>
 
     <script type="module">
-      import { FacetViz } from "./lib/facetviz.js";
+      import { FacetViz, FacetTable } from "./lib/facetviz.js";
 
       const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
       const trellisMonths = ["Jan", "Feb", "Mar", "Apr"];
@@ -725,6 +769,215 @@
               data: [5, 8, 6, 9, 12, 10, 14, 13, 16],
             },
           ],
+        },
+        "Charts in table cells": {
+          caption: "Product performance",
+          rows: [
+            {
+              product: "Atlas",
+              revenue: {
+                value: 128400,
+                color: "#b91c1c",
+                backgroundColor: "#fef2f2",
+                fontWeight: 900,
+              },
+              growth: {
+                value: 12.4,
+                prefix: "+",
+                suffix: "%",
+                color: "#16a34a",
+                fontWeight: 700,
+              },
+              trend: [64, 69, 72, 70, 78, 82, 86, 91, 96, 104, 112, 128],
+            },
+            {
+              product: "Beacon",
+              revenue: 86900,
+              growth: "+7.1%",
+              trend: [48, 51, 49, 54, 58, 57, 61, 63, 60, 66, 72, 87],
+            },
+            {
+              product: "Comet",
+              revenue: 54200,
+              growth: "−2.8%",
+              trend: [38, 41, 45, 43, 47, 50, 49, 46, 44, 48, 52, 54],
+            },
+            {
+              product: "Delta",
+              revenue: 97600,
+              growth: "+15.2%",
+              trend: [52, 55, 59, 63, 61, 68, 72, 75, 81, 86, 91, 98],
+            },
+            {
+              product: "Echo",
+              revenue: 43700,
+              growth: "−5.4%",
+              trend: [49, 47, 50, 48, 46, 45, 47, 44, 43, 45, 42, 44],
+            },
+            {
+              product: "Flux",
+              revenue: 71300,
+              growth: "+3.6%",
+              trend: [57, 60, 58, 62, 65, 63, 67, 69, 68, 72, 70, 71],
+            },
+          ],
+          columns: [
+            { key: "product", header: "Product", width: 120, horizontalAlign: "left", verticalAlign: "top", sortable: true, filterable: { placeholder: "Find product" } },
+            {
+              key: "revenue",
+              header: "Revenue",
+              width: 110,
+              horizontalAlign: "right",
+              verticalAlign: "bottom",
+              format: "{value:$,.0f}",
+              sortable: true,
+              filterable: true,
+              style: { color: "#1d4ed8" },
+              headerStyle: { backgroundColor: "#dbeafe", color: "#1e3a8a" },
+            },
+            { key: "growth", header: "YoY", width: 80, horizontalAlign: "center", verticalAlign: "middle", filterable: true, style: { fontWeight: 600 } },
+            {
+              key: "trend",
+              header: "12-month trend",
+              width: 240,
+              chart: {
+                type: "sparkline",
+                height: 38,
+                scale: "shared",
+                options: {
+                  plotOptions: {
+                    sparkline: {
+                      color: "#6366f1",
+                      lineWidth: 2,
+                      sparkline: { min: true, max: true },
+                    },
+                  },
+                  tooltip: { valuePrefix: "$", valueSuffix: "k" },
+                },
+              },
+            },
+          ],
+          pagination: {
+            pageSize: 3,
+            pageSizeOptions: [3, 6],
+            align: "right",
+          },
+          style: {
+            headerCell: { fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.04em" },
+            sortIndicator: { color: "#6366f1" },
+            filterIndicator: { color: "#6366f1" },
+            pagination: { fontSize: "11px" },
+            paginationButton: { padding: "3px 7px" },
+            activePageButton: { background: "#6366f1" },
+          },
+        },
+        "Multi-series charts in table cells": {
+          caption: "Quarterly actual versus target",
+          rows: [
+            {
+              product: "Atlas",
+              comparison: [
+                { type: "column", name: "Actual", color: "#6366f1", data: [22, 28, 31, 38] },
+                { type: "line", name: "Target", color: "#f97316", lineWidth: 2, marker: { enabled: true }, data: [24, 27, 33, 36] },
+              ],
+            },
+            {
+              product: "Beacon",
+              comparison: [
+                { type: "column", name: "Actual", color: "#6366f1", data: [18, 24, 23, 30] },
+                { type: "line", name: "Target", color: "#f97316", lineWidth: 2, marker: { enabled: true }, data: [20, 22, 26, 29] },
+              ],
+            },
+          ],
+          columns: [
+            { key: "product", header: "Product", width: 120, sortable: true },
+            {
+              key: "comparison",
+              header: "Actual + target",
+              width: 360,
+              chart: {
+                type: "column",
+                height: 104,
+                minWidth: 280,
+                scale: "shared",
+                series: "value",
+                options: {
+                  xAxis: { categories: ["Q1", "Q2", "Q3", "Q4"] },
+                  legend: { enabled: true, align: "center" },
+                  tooltip: { shared: true, valueSuffix: "k" },
+                },
+              },
+            },
+          ],
+          style: {
+            headerCell: { fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.04em" },
+            sortIndicator: { color: "#6366f1" },
+          },
+        },
+        "Fully customized FacetTable": {
+          caption: "Regional product performance",
+          rows: [
+            { region: "North America", product: "Atlas Enterprise", revenue: 128400, margin: 0.284, notes: null, trend: [18, 22, 24, 29, 31, 38], status: "Ahead" },
+            { region: "Europe", product: "Beacon Cloud", revenue: 86900, margin: 0.219, notes: "Renewal due next quarter", trend: [14, 17, 16, 21, 24, 27], status: "On track" },
+            { region: "Asia Pacific", product: "Comet Mobile", revenue: 54200, margin: 0.176, notes: null, trend: [12, 15, 18, 17, 20, 22], status: "Watch" },
+            { region: "Latin America", product: "Delta Services", revenue: 97600, margin: 0.251, notes: "New partner channel", trend: [16, 19, 23, 25, 28, 32], status: "Ahead" },
+            { region: "Middle East", product: "Echo Analytics", revenue: 43700, margin: 0.143, notes: null, trend: [13, 12, 15, 14, 16, 17], status: "Watch" },
+            { region: "Africa", product: "Flux Commerce", revenue: 71300, margin: 0.198, notes: "Pilot market expansion", trend: [11, 14, 13, 18, 20, 24], status: "On track" },
+          ],
+          columns: [
+            { key: "region", header: "Region", role: "dimension", width: 150, sortable: true },
+            { key: "product", header: "Product", role: "dimension", width: 170, sortable: true },
+            { key: "revenue", header: "Revenue", role: "value", width: 115, format: "{value:$,.0f}", sortable: true },
+            { key: "margin", header: "Margin", role: "value", width: 90, format: "{value:.1%}" },
+            { key: "notes", header: "Notes", role: "dimension", width: 190 },
+            { key: "trend", header: "Trend", role: "value", width: 190, chart: { height: 30, minWidth: 150, scale: "shared" } },
+            { key: "status", header: "Status", role: "dimension", width: 100 },
+          ],
+          layout: {
+            tableLayout: "fixed",
+            rowDensity: "compact",
+            bodyTextSize: 12,
+            showHeaderRow: true,
+            wrapText: false,
+            freezeHeaderRow: true,
+            freezeFirstColumn: true,
+          },
+          appearance: {
+            headerRow: {
+              fillColor: "#312e81",
+              textColor: "#ffffff",
+              textSize: 11,
+              alignment: "center",
+              bold: true,
+              italic: true,
+            },
+            rowsAndColumns: {
+              textColor: "#1f2937",
+              rowFill: "#ffffff",
+              dimensionAlignment: "left",
+              valueAlignment: "right",
+              displayEmptyCellAs: "—",
+              bandedRows: true,
+              bandedRowsAlternateColor: "#f8fafc",
+              bandedColumns: true,
+              bandedColumnsAlternateColor: "#eef2ff",
+              emphasizeFirstColumn: true,
+              emphasizeLastColumn: true,
+              highlightRowOnHover: true,
+              hoverColor: "#e0e7ff",
+            },
+            borders: {
+              horizontalBorders: true,
+              verticalBorders: true,
+              outsideBorder: true,
+              borderColor: "#c7d2fe",
+              borderWidth: 1,
+            },
+          },
+          style: {
+            root: { maxHeight: 250, borderRadius: 6 },
+            table: { minWidth: 1005 },
+          },
         },
         "Column range — rounded": {
           chart: { type: "columnrange", height: 380 },
@@ -1259,6 +1512,17 @@
             ],
           },
         },
+        "Light theme": {
+          chart: { type: "column", height: 380 },
+          theme: "light",
+          title: { text: "Monthly sales" },
+          xAxis: { categories: months },
+          yAxis: { title: { text: "Units" } },
+          series: [
+            { name: "North", data: [5, 3, 4, 7, 2, 6] },
+            { name: "South", data: [2, 4, 6, 3, 5, 4] },
+          ],
+        },
         "Dark theme": {
           chart: { type: "column", height: 380 },
           theme: "dark",
@@ -1280,6 +1544,7 @@
       const presetSel = document.getElementById("preset");
       const previewSizeEl = document.getElementById("previewSize");
       const resetSizeBtn = document.getElementById("resetSize");
+      let previewInstance;
 
       // Drag the preview's bottom-right corner (native CSS `resize`) to check
       // how the chart behaves as its container shrinks or grows — FacetViz's
@@ -1318,10 +1583,16 @@
           return;
         }
         try {
+          previewInstance?.destroy();
+          previewInstance = undefined;
           preview.innerHTML = "";
-          new FacetViz(preview, config);
+          const isTable = Array.isArray(config.rows) && Array.isArray(config.columns);
+          preview.classList.toggle("table-preview", isTable);
+          previewInstance = isTable
+            ? new FacetTable(preview, config)
+            : new FacetViz(preview, config);
           errorEl.classList.remove("show");
-          setStatus(true, "rendered ✓");
+          setStatus(true, `${isTable ? "table" : "chart"} rendered ✓`);
         } catch (e) {
           errorEl.textContent =
             "Render error: " + (e && e.message ? e.message : e);

@@ -4,8 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>FacetViz Theme Builder</title>
+  <script src="./docs-theme.js"></script>
   <style>
     :root {
+      color-scheme: light;
       --bg: #f5f6fb; --panel: #ffffff; --border: #e7e8f0; --text: #16181d;
       --muted: #6b7280; --accent: #6366f1; --accent-2: #8b5cf6; --accent-fg: #fff;
       --editor-bg: #0d1117; --editor-fg: #e6edf7;
@@ -13,8 +15,10 @@
       --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     }
     @media (prefers-color-scheme: dark) {
-      :root { --bg:#0b0e16; --panel:#141926; --border:#232a3b; --text:#e7ecf6; --muted:#97a0b5; }
+      :root:not([data-docs-theme]) { --bg:#0b0e16; --panel:#141926; --border:#232a3b; --text:#e7ecf6; --muted:#97a0b5; }
     }
+    :root[data-docs-theme="dark"] { color-scheme: dark; --bg:#0b0e16; --panel:#141926; --border:#232a3b; --text:#e7ecf6; --muted:#97a0b5; }
+    :root[data-docs-theme="light"] { color-scheme: light; }
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; }
     body { font-family: var(--sans); background: var(--bg); color: var(--text); display: flex; flex-direction: column; }
@@ -37,6 +41,8 @@
     }
     button.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--accent-fg); border: 0; font-weight: 600; }
     button:hover { filter: brightness(0.97); }
+    .docs-theme-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 78px; white-space: nowrap; }
+    .docs-theme-icon { width: 1em; font-size: 16px; line-height: 1; }
 
     main { flex: 1; display: grid; grid-template-columns: minmax(300px, 34%) 1fr; min-height: 0; }
     .pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }

@@ -20,7 +20,320 @@ const chart = new FacetViz(container, options);
 - [tooltip](#tooltipoptions) · [legend](#legendoptions) · [plotOptions](#plotoptions)
 - [trellis](#trellisoptions) · [nested x-axis](#nested-hierarchical-x-axis) · [chart text](#chart-text)
 - [Events](#events) · [Data formats](#point-data-formats) · [Chart types](#chart-types)
+- [Charts inside table cells](#charts-inside-table-cells)
 - [Instance methods](#instance-methods) · [Exports](#package-exports)
+
+---
+
+## Charts inside table cells
+
+`FacetTable` combines semantic HTML value columns with compact FacetViz charts.
+Mark a column with `chart` and its row value becomes the chart's data. The
+default cell renderer is a 44 px sparkline; every other column remains normal
+text, so formatting, selection, and screen-reader table navigation keep working.
+
+```ts
+import { FacetTable } from "facetviz";
+
+const table = new FacetTable("#performance", {
+  caption: "Product performance",
+  rows: [
+    { product: "Alpha", revenue: 120000, trend: [5, 8, 6, 11, 14] },
+    { product: "Beta",  revenue:  85000, trend: [4, 5, 7,  8,  9] },
+  ],
+  columns: [
+    { key: "product", header: "Product", sortable: true, filterable: true },
+    {
+      key: "revenue",
+      header: "Revenue",
+      horizontalAlign: "right",
+      verticalAlign: "bottom",
+      sortable: { initialDirection: "desc" },
+      format: "{value:$,.0f}",
+    },
+    {
+      key: "trend",
+      header: "Trend",
+      width: 180,
+      chart: {
+        type: "sparkline",
+        scale: "shared",
+        options: {
+          tooltip: { valuePrefix: "$" },
+          plotOptions: { sparkline: { sparkline: { min: true, max: true } } },
+        },
+      },
+    },
+  ],
+  pagination: {
+    pageSize: 25,
+    pageSizeOptions: [10, 25, 50, 100],
+    align: "right",
+  },
+  style: {
+    table: { fontSize: "13px" },
+    headerCell: { backgroundColor: "#eef2ff", color: "#312e81" },
+    row: (_row, index) => ({
+      backgroundColor: index % 2 ? "#f8fafc" : "#fff",
+    }),
+    chartHost: { borderRadius: "4px" },
+    pagination: { borderTop: "1px solid #e5e7eb" },
+  },
+});
+
+table.setRows(nextRows);
+table.setPage(2);
+table.setPageSize(50);
+table.sortBy("revenue", "asc");
+table.clearSort();
+table.setFilter("product", "alp");
+table.clearFilter("product");
+table.clearFilters();
+table.reflow(); // after a hidden/resizable parent becomes visible
+table.destroy();
+```
+
+Use `chart.scale: "independent"` (the default) when each sparkline should
+emphasize its own shape. Use `"shared"` when heights or bar lengths must be
+comparable across rows. For advanced cells, `chart.series(value, row, rowIndex)`
+can return any FacetViz series configuration, so a cell can use `bar`, `bullet`,
+or another registered chart type instead of a sparkline. For data-only JSON,
+set `chart.series: "value"` and store a complete `SeriesOptions[]` in the cell;
+this supports multi-series and combo cells without a callback.
+
+### `FacetTableOptions<Row>`
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `rows` | `Row[]` | required | Objects rendered as table rows. |
+| `columns` | `FacetTableColumn<Row>[]` | required | Value and chart column definitions. |
+| `caption` | `string` | – | Native table caption. |
+| `className` | `string` | – | Additional class on the generated table. |
+| `layout` | `FacetTableLayoutOptions` | – | Structure, density, wrapping, frozen rows/columns, and CSS table layout. |
+| `emptyText` | `string` | `"No data"` | Message shown when `rows` is empty. |
+| `appearance` | `FacetTableAppearanceOptions` | – | Semantic header, row/column, hover, and border presentation. |
+| `style` | `FacetTableStyleOptions<Row>` | – | Top-level CSS overrides for every table region. |
+| `pagination` | `boolean \| FacetTablePaginationOptions` | `false` | Render only the current page and add navigation controls. |
+
+Each column requires `key` and accepts `header`, `width`, `horizontalAlign`,
+`verticalAlign`, `sortable`, `filterable`, `style`, and `headerStyle`.
+`horizontalAlign` accepts `"left"`, `"center"`,
+or `"right"`; the older `align` field remains an alias. `verticalAlign` accepts
+`"top"`, `"middle"`, or `"bottom"` and defaults to `"middle"`.
+
+A normal column can provide a declarative `format` string such as
+`"{value:$,.0f}"`, `"{value:.1%}"`, or `"{row.product}: {value}"`. Available
+tokens are `value`, `row`, `rowIndex`, and `column`, including dotted paths.
+`formatter(value, row, rowIndex)` remains available for custom text or DOM nodes
+and takes precedence over `format`. Adding `chart` turns the column into a chart
+column; chart options are `type`, `height`, `minWidth`, `scale`, `options`, and
+the optional `series` factory.
+
+### Column and per-cell styles
+
+Set `style` on a column to style every body cell in that column. It accepts a
+CSS map or `(value, row, rowIndex) => CSSMap`; the callback receives the raw
+cell value. Use `headerStyle` for that column's heading:
+
+```ts
+columns: [
+  {
+    key: "revenue",
+    header: "Revenue",
+    style: (value) => ({
+      color: Number(value) < 0 ? "#b91c1c" : "#1d4ed8",
+      fontWeight: 700,
+    }),
+    headerStyle: { backgroundColor: "#dbeafe", color: "#1e3a8a" },
+  },
+]
+```
+
+A row property can be a `FacetTableCellDescriptor` when one cell needs its own
+content decoration or CSS. Put the raw data in `value`; `prefix` and `suffix`
+wrap the formatted display value. Add CSS properties directly to the descriptor
+or use its nested `style` map:
+
+```ts
+rows: [
+  {
+    product: "Atlas",
+    revenue: {
+      value: 128400,
+      color: "red",
+      backgroundColor: "green",
+      fontWeight: 900,
+      style: { borderLeft: "3px solid orange" },
+    },
+    growth: {
+      value: 12.4,
+      prefix: "+",
+      suffix: "%",
+      color: "#45f354",
+    },
+  },
+]
+```
+
+The raw `value` is passed to column formatting, formatter callbacks, sorting,
+filtering, conditional `style.cell` callbacks, and chart-series construction.
+Cell-descriptor CSS is applied last, so it overrides table-wide and column-wide
+styles only for that cell. `prefix` and `suffix` decorate normal value cells;
+chart cells use `value` as their chart data while still applying the cell CSS.
+
+Body-cell style precedence, from highest to lowest, is:
+
+1. Row cell descriptor (`{ value, color, style, ... }`).
+2. Column `style`.
+3. Resolved row style from top-level `style.row`.
+4. Other top-level `style` slots such as `cell`, `valueCell`, and `chartCell`.
+5. `layout` defaults.
+6. `appearance` defaults.
+
+For headings, `headerStyle` wins over top-level `style.headerCell`, `layout`,
+and `appearance`.
+
+### Table layout and appearance
+
+`layout` controls structure and responsive behavior. `appearance` controls
+semantic presentation without requiring raw CSS:
+
+```ts
+layout: {
+  tableLayout: "fixed", // auto | fixed
+  rowDensity: "compact", // responsive | compact | cozy | crazy | comfortable
+  bodyTextSize: 12,
+  showHeaderRow: true,
+  wrapText: false,
+  freezeHeaderRow: true,
+  freezeFirstColumn: true,
+},
+appearance: {
+  headerRow: {
+    fillColor: "#312e81",
+    textColor: "#fff",
+    textSize: 12,
+    alignment: "center",
+    bold: true,
+    italic: false,
+  },
+  rowsAndColumns: {
+    textColor: "#1f2937",
+    rowFill: "#fff",
+    dimensionAlignment: "left",
+    valueAlignment: "right",
+    displayEmptyCellAs: "—",
+    bandedRows: true,
+    bandedRowsAlternateColor: "#f8fafc",
+    bandedColumns: true,
+    bandedColumnsAlternateColor: "#eef2ff",
+    emphasizeFirstColumn: true,
+    emphasizeLastColumn: true,
+    highlightRowOnHover: true,
+    hoverColor: "#e0e7ff",
+  },
+  borders: {
+    horizontalBorders: true,
+    verticalBorders: true,
+    outsideBorder: true,
+    borderColor: "#c7d2fe",
+    borderWidth: 1,
+  },
+}
+```
+
+Density values use compact padding below 600 px, cozy padding from 600–899 px,
+and comfortable padding at 900 px or wider when `responsive` is selected.
+`crazy` is accepted as an alias for `cozy`. Frozen rows/columns make the table
+root scrollable; constrain it with `style.root.maxHeight` and use a table
+`minWidth` when both horizontal and vertical scrolling should be demonstrated.
+
+Set a column's `role` to `"dimension"` or `"value"` to choose the corresponding
+alignment. Without a role, chart and numeric cells are values; other cells are
+dimensions. Per-column `horizontalAlign`/`align` overrides role-based and header
+alignment. Low-level `style` slots are applied after `layout` and `appearance`
+and can override individual CSS properties.
+
+### Column sorting
+
+Set `sortable: true` on any value or chart column to add an accessible header
+button. Each click cycles ascending, descending, and original row order. Sorting
+happens before pagination and returns to page 1, so the current page always shows
+the correct slice of the sorted data.
+
+Use `sortable: { initialDirection: "asc" | "desc" }` to start sorted. For
+formatted or domain-specific values, provide
+`compare(a, b, rowA, rowB) => number` in the same object. The default comparator
+handles numbers, dates, booleans, and natural text ordering; nullish values stay
+at the end. Runtime state is available through `sort`, `sortBy(key, direction)`,
+and `clearSort()`.
+
+### Column filtering
+
+Set `filterable: true` to add a funnel button to a column header. The button
+opens an accessible filter panel with an input and Apply/Clear actions. Default
+matching is a case-insensitive containment check against the raw cell value.
+Multiple active column filters are combined with AND logic.
+
+```ts
+columns: [
+  { key: "product", filterable: true },
+  {
+    key: "revenue",
+    filterable: {
+      initialValue: "50000",
+      placeholder: "Minimum revenue",
+      predicate: (value, filterValue) => Number(value) >= Number(filterValue),
+    },
+  },
+]
+```
+
+Filtering happens before sorting and pagination, resets the table to page 1,
+and updates the pagination totals. Use `filters`, `setFilter(key, value)`,
+`clearFilter(key)`, and `clearFilters()` for programmatic control. An empty
+filter value removes that column's filter. If filtering leaves no matching rows,
+the table displays `emptyText`.
+
+### Table styling
+
+`style` accepts CSS property maps for `root`, `table`, `caption`, `head`,
+`headerRow`, `headerCell`, `headerControls`, `sortButton`, `sortIndicator`,
+`filterButton`, `activeFilterButton`, `filterIndicator`, `filterPanel`,
+`filterInput`, `filterActions`, `filterActionButton`, `body`, `row`, `cell`, `valueCell`, `chartCell`,
+`chartHost`, `emptyCell`, `pagination`, `paginationInfo`, `paginationButton`,
+`activePageButton`, `pageSizeLabel`, and `pageSizeSelect`. CSS may use camelCase
+or kebab-case names; numeric dimensional values are interpreted as pixels.
+
+`row` can also be `(row, rowIndex) => style`, and its resolved CSS is applied
+to the row and its cells so row-level styling outranks generic cell styles.
+`cell` can be
+`(value, row, rowIndex, column) => style`, enabling zebra stripes and
+conditional formatting without changing the row data.
+
+### Table pagination
+
+Pass `pagination: true` for a 25-row page with the default 10/25/50/100 page
+sizes, or configure it with:
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | `boolean` | `true` | Disable an existing pagination configuration. |
+| `pageSize` | `number` | `25` | Rows rendered per page. |
+| `page` | `number` | `1` | Initial 1-based page. |
+| `pageSizeOptions` | `number[]` | `[10, 25, 50, 100]` | Page-size choices. |
+| `showPageSize` | `boolean` | `true` | Show the page-size selector. |
+| `showPageNumbers` | `boolean` | `true` | Show numbered page buttons. |
+| `maxPageButtons` | `number` | `5` | Maximum numbered buttons at once. |
+| `alwaysShow` | `boolean` | `false` | Show controls when all rows fit on one page. |
+| `align` | `"left" \| "center" \| "right"` | `"left"` | Control alignment. |
+| `labels` | `FacetTablePaginationLabels` | – | Override navigation and information labels. |
+| `onPageChange` | `(page, pageSize) => void` | – | Called after page or page-size changes. |
+
+Only the current page's cell charts are mounted, keeping large tables light.
+A shared chart-column scale still uses all rows, so comparisons remain stable
+while paging. Runtime state is exposed through `page`, `pageSize`, `pageCount`,
+`setPage(page)`, and `setPageSize(size)`.
 
 ---
 
@@ -611,6 +924,7 @@ Set `theme` to a built-in name or a custom object. Explicit `colors`,
 **Built-in themes:** `'light'` (default), `'dark'`, `'high-contrast'`, `'pastel'`.
 
 ```ts
+{ theme: 'light', series: [...] } // explicit light theme
 { theme: 'dark', series: [...] }
 ```
 

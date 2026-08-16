@@ -3628,9 +3628,8 @@ var NestedAxis = class {
           y1: plotExtent,
           x2: bx,
           y2: axisExtent,
-          stroke: "red",
-          // color,
-          "stroke-width": 2,
+          stroke: color,
+          "stroke-width": 1,
           class: "facet-nested-group-separator"
         },
         g
@@ -7768,12 +7767,687 @@ var svgResourceId = 0, SMALL_CHART_DATA_LABEL_THRESHOLD = 180, TITLE_DEFAULT_MAR
     this.destroyed || (this.destroyed = !0, this.initialReflowFrame !== void 0 && cancelAnimationFrame(this.initialReflowFrame), this.resizeFrame !== void 0 && cancelAnimationFrame(this.resizeFrame), this.initialReflowFrame = void 0, this.resizeFrame = void 0, this.boostHoverCleanups.forEach((cleanup) => cleanup()), this.boostHoverCleanups = [], this.tooltip?.destroy(), this.resizeObserver?.disconnect(), this.events.clear(), this.renderer?.root.remove());
   }
 };
+
+// src/core/table.ts
+var FacetTable = class {
+  constructor(container, options) {
+    this.charts = [];
+    this.currentPage = 1;
+    this.currentPageSize = 25;
+    this.currentFilters = /* @__PURE__ */ new Map();
+    this.destroyed = !1;
+    let element = typeof container == "string" ? document.querySelector(container) : container;
+    if (!element) throw new Error("FacetTable: container element not found");
+    if (!options.columns.length)
+      throw new Error("FacetTable: at least one column is required");
+    this.container = element, this.options = { ...options, rows: [...options.rows], columns: [...options.columns] }, this.currentSort = initialSort(this.options.columns), this.currentFilters = initialFilters(this.options.columns), this.syncPagination(options.pagination, !0), this.render(), this.setupReflow();
+  }
+  /** Replace all table rows and their cell charts. */
+  setRows(rows) {
+    this.destroyed || (this.options = { ...this.options, rows: [...rows] }, this.sharedDomainCache = void 0, this.clampPage(), this.render());
+  }
+  /** Merge table-level options and rebuild the affected cells. */
+  update(options) {
+    if (this.destroyed) return;
+    let next = {
+      ...this.options,
+      ...options,
+      rows: options.rows ? [...options.rows] : this.options.rows,
+      columns: options.columns ? [...options.columns] : this.options.columns
+    };
+    if (!next.columns.length)
+      throw new Error("FacetTable: at least one column is required");
+    this.options = next, (options.rows !== void 0 || options.columns !== void 0) && (this.sharedDomainCache = void 0), options.pagination !== void 0 && this.syncPagination(options.pagination, !1), options.columns !== void 0 && ((this.currentSort ? this.options.columns.find((column) => column.key === this.currentSort?.key) : void 0)?.sortable || (this.currentSort = initialSort(this.options.columns)), this.currentFilters = reconcileFilters(
+      this.currentFilters,
+      this.options.columns
+    )), this.clampPage(), this.render();
+  }
+  /** Current 1-based page (always `1` when pagination is disabled). */
+  get page() {
+    return this.paginationOptions() ? this.currentPage : 1;
+  }
+  get pageSize() {
+    return this.currentPageSize;
+  }
+  get pageCount() {
+    return this.paginationOptions() ? Math.max(1, Math.ceil(this.filteredRows().length / this.currentPageSize)) : 1;
+  }
+  get sort() {
+    return this.currentSort ? { ...this.currentSort } : void 0;
+  }
+  get filters() {
+    return [...this.currentFilters].map(([key, value]) => ({ key, value }));
+  }
+  setFilter(key, value) {
+    if (this.destroyed) return;
+    if (!this.options.columns.find((candidate) => candidate.key === key)?.filterable)
+      throw new Error(`FacetTable.setFilter(): column "${key}" is not filterable.`);
+    let normalized = value?.trim() ?? "";
+    normalized ? this.currentFilters.set(key, normalized) : this.currentFilters.delete(key), this.currentPage = 1, this.sharedDomainCache = void 0, this.render();
+  }
+  clearFilter(key) {
+    this.destroyed || !this.currentFilters.has(key) || (this.currentFilters.delete(key), this.currentPage = 1, this.sharedDomainCache = void 0, this.render());
+  }
+  clearFilters() {
+    this.destroyed || !this.currentFilters.size || (this.currentFilters.clear(), this.currentPage = 1, this.sharedDomainCache = void 0, this.render());
+  }
+  sortBy(key, direction = "asc") {
+    if (this.destroyed) return;
+    if (!this.options.columns.find((candidate) => candidate.key === key)?.sortable)
+      throw new Error(`FacetTable.sortBy(): column "${key}" is not sortable.`);
+    this.currentSort = { key, direction }, this.currentPage = 1, this.render();
+  }
+  clearSort() {
+    this.destroyed || !this.currentSort || (this.currentSort = void 0, this.currentPage = 1, this.render());
+  }
+  setPage(page) {
+    if (this.destroyed || !this.paginationOptions()) return;
+    let next = clampInteger(page, 1, this.pageCount, "FacetTable.setPage(): page");
+    next !== this.currentPage && (this.currentPage = next, this.render(), this.paginationOptions()?.onPageChange?.(this.currentPage, this.currentPageSize));
+  }
+  setPageSize(pageSize) {
+    if (this.destroyed || !this.paginationOptions()) return;
+    let next = positiveInteger(pageSize, "FacetTable.setPageSize(): pageSize");
+    next !== this.currentPageSize && (this.currentPageSize = next, this.currentPage = 1, this.render(), this.paginationOptions()?.onPageChange?.(this.currentPage, this.currentPageSize));
+  }
+  /** Re-measure all mounted cell charts after an outer layout change. */
+  reflow() {
+    this.destroyed || this.charts.forEach((chart) => chart.reflow());
+  }
+  destroy() {
+    this.destroyed || (this.destroyed = !0, this.destroyCharts(), this.resizeObserver?.disconnect(), this.resizeObserver = void 0, this.resizeFrame !== void 0 && cancelAnimationFrame(this.resizeFrame), this.resizeFrame = void 0, this.root?.remove(), this.root = void 0, this.table = void 0);
+  }
+  render() {
+    this.destroyCharts(), this.clampPage();
+    let root = document.createElement("div");
+    root.className = "facet-table-root", root.style.width = "100%";
+    let layout = this.options.layout;
+    (layout?.freezeHeaderRow || layout?.freezeFirstColumn) && (root.style.overflow = "auto"), applyStyle(root, this.options.style?.root);
+    let table = document.createElement("table");
+    table.className = ["facet-table", this.options.className].filter(Boolean).join(" "), table.style.width = "100%";
+    let needsStickyLayout = layout?.freezeHeaderRow || layout?.freezeFirstColumn;
+    table.style.borderCollapse = needsStickyLayout ? "separate" : "collapse", needsStickyLayout && (table.style.borderSpacing = "0"), table.style.tableLayout = layout?.tableLayout ?? "auto";
+    let borders = this.options.appearance?.borders;
+    if (borders?.outsideBorder && (table.style.borderStyle = "solid", table.style.borderColor = borders.borderColor ?? "#e5e7eb", table.style.borderWidth = cssLength(borders.borderWidth ?? 1)), applyStyle(table, this.options.style?.table), this.options.caption) {
+      let caption = document.createElement("caption");
+      caption.textContent = this.options.caption, caption.style.textAlign = "left", caption.style.padding = "0 0 8px", applyStyle(caption, this.options.style?.caption), table.appendChild(caption);
+    }
+    layout?.showHeaderRow !== !1 && table.appendChild(this.renderHead());
+    let { body, pending } = this.renderBody();
+    table.appendChild(body), root.appendChild(table);
+    let pagination = this.renderPagination();
+    pagination && root.appendChild(pagination), this.container.replaceChildren(root), this.root = root, this.table = table;
+    let sharedDomains = this.sharedDomainCache ?? this.sharedDomains();
+    this.sharedDomainCache = sharedDomains;
+    for (let item of pending) {
+      let domain = sharedDomains.get(item.columnIndex);
+      this.charts.push(this.mountChart(item, domain));
+    }
+  }
+  renderHead() {
+    let head = document.createElement("thead");
+    applyStyle(head, this.options.style?.head);
+    let row = document.createElement("tr");
+    applyStyle(row, this.options.style?.headerRow);
+    for (let [columnIndex, column] of this.options.columns.entries()) {
+      let cell = document.createElement("th");
+      if (cell.scope = "col", cell.className = column.chart ? "facet-table-heading facet-table-chart-heading" : "facet-table-heading", this.styleCell(cell, column, !0, void 0, columnIndex), this.applyColumnStyle(cell, column, !0), column.sortable || column.filterable) {
+        let controls = document.createElement("div");
+        if (controls.className = "facet-table-header-controls", controls.style.display = "flex", controls.style.alignItems = "center", controls.style.gap = "5px", controls.style.width = "100%", applyStyle(controls, this.options.style?.headerControls), column.sortable) {
+          let direction = this.currentSort?.key === column.key ? this.currentSort.direction : void 0;
+          cell.setAttribute(
+            "aria-sort",
+            direction === "asc" ? "ascending" : direction === "desc" ? "descending" : "none"
+          );
+          let button = document.createElement("button");
+          button.type = "button", button.className = "facet-table-sort-button", button.style.display = "inline-flex", button.style.alignItems = "center", button.style.justifyContent = sortAlignment(
+            this.cellHorizontalAlignment(column, !0)
+          ), button.style.gap = "5px", button.style.flex = "1 1 auto", button.style.minWidth = "0", button.style.padding = "0", button.style.border = "0", button.style.background = "transparent", button.style.color = "inherit", button.style.font = "inherit", button.style.cursor = "pointer", button.append(document.createTextNode(column.header ?? column.key)), applyStyle(button, this.options.style?.sortButton);
+          let indicator = createSortIndicator(direction);
+          indicator.setAttribute("class", "facet-table-sort-indicator"), indicator.style.opacity = direction ? "1" : "0.5", applyStyle(indicator, this.options.style?.sortIndicator), button.appendChild(indicator), button.addEventListener("click", () => this.toggleSort(column)), controls.appendChild(button);
+        } else {
+          let label = document.createElement("span");
+          label.className = "facet-table-heading-label", label.textContent = column.header ?? column.key, label.style.flex = "1 1 auto", label.style.minWidth = "0", controls.appendChild(label);
+        }
+        column.filterable && (cell.style.position || (cell.style.position = "relative"), controls.appendChild(this.renderFilterControl(column, columnIndex))), cell.appendChild(controls);
+      } else
+        cell.textContent = column.header ?? column.key;
+      row.appendChild(cell);
+    }
+    return head.appendChild(row), head;
+  }
+  renderFilterControl(column, columnIndex) {
+    let wrapper = document.createElement("span");
+    wrapper.className = "facet-table-filter", wrapper.style.display = "inline-flex", wrapper.style.position = "relative", wrapper.style.flex = "0 0 auto";
+    let activeValue = this.currentFilters.get(column.key) ?? "", panelId = `facet-table-filter-${columnIndex}-${filterIdCounter++}`, button = document.createElement("button");
+    button.type = "button", button.className = "facet-table-filter-button", button.classList.toggle("is-active", !!activeValue), button.dataset.active = String(!!activeValue), button.setAttribute("aria-label", `Filter ${column.header ?? column.key}`), button.setAttribute("aria-expanded", "false"), button.setAttribute("aria-controls", panelId), button.style.display = "inline-flex", button.style.alignItems = "center", button.style.justifyContent = "center", button.style.width = "24px", button.style.height = "24px", button.style.padding = "3px", button.style.border = "0", button.style.borderRadius = "4px", button.style.background = activeValue ? "var(--facet-table-filter-active-background, #eef2ff)" : "transparent", button.style.color = activeValue ? "var(--facet-table-filter-active-color, #4f46e5)" : "inherit", button.style.cursor = "pointer", applyStyle(button, this.options.style?.filterButton), activeValue && applyStyle(button, this.options.style?.activeFilterButton);
+    let indicator = createFilterIndicator();
+    indicator.setAttribute("class", "facet-table-filter-indicator"), applyStyle(indicator, this.options.style?.filterIndicator), button.appendChild(indicator);
+    let panel = document.createElement("form");
+    panel.id = panelId, panel.className = "facet-table-filter-panel", panel.hidden = !0, panel.style.position = "absolute", panel.style.top = "calc(100% + 5px)", panel.style.right = "0", panel.style.zIndex = "20", panel.style.width = "220px", panel.style.padding = "8px", panel.style.border = "1px solid var(--facet-table-border-color, #d1d5db)", panel.style.borderRadius = "6px", panel.style.background = "var(--facet-table-filter-background, Canvas)", panel.style.color = "var(--facet-table-filter-color, CanvasText)", panel.style.fontWeight = "400", panel.style.fontStyle = "normal", panel.style.textAlign = "left", panel.style.textTransform = "none", panel.style.letterSpacing = "normal", panel.style.boxShadow = "0 8px 24px rgba(0, 0, 0, 0.16)", applyStyle(panel, this.options.style?.filterPanel);
+    let filterOptions = typeof column.filterable == "object" ? column.filterable : void 0, input = document.createElement("input");
+    input.type = "search", input.className = "facet-table-filter-input", input.value = activeValue, input.placeholder = filterOptions?.placeholder ?? "Filter\u2026", input.setAttribute("aria-label", `Filter value for ${column.header ?? column.key}`), input.style.width = "100%", input.style.padding = "6px 8px", input.style.border = "1px solid var(--facet-table-border-color, #d1d5db)", input.style.borderRadius = "4px", input.style.background = "var(--facet-table-filter-input-background, Canvas)", input.style.color = "inherit", input.style.font = "inherit", applyStyle(input, this.options.style?.filterInput), panel.appendChild(input);
+    let actions = document.createElement("span");
+    actions.className = "facet-table-filter-actions", actions.style.display = "flex", actions.style.justifyContent = "flex-end", actions.style.gap = "6px", actions.style.marginTop = "8px", applyStyle(actions, this.options.style?.filterActions);
+    let clear = filterActionButton("Clear", this.options.style?.filterActionButton), apply = filterActionButton("Apply", this.options.style?.filterActionButton);
+    return apply.type = "submit", apply.style.background = "var(--facet-table-filter-apply-background, #4f46e5)", apply.style.color = "var(--facet-table-filter-apply-color, #fff)", actions.append(clear, apply), panel.appendChild(actions), button.addEventListener("click", () => {
+      panel.hidden = !panel.hidden, button.setAttribute("aria-expanded", String(!panel.hidden)), panel.hidden || input.focus();
+    }), panel.addEventListener("submit", (event) => {
+      event.preventDefault(), this.setFilter(column.key, input.value);
+    }), clear.addEventListener("click", () => {
+      input.value = "", this.currentFilters.has(column.key) ? this.clearFilter(column.key) : (panel.hidden = !0, button.setAttribute("aria-expanded", "false"), button.focus());
+    }), input.addEventListener("keydown", (event) => {
+      event.key === "Escape" && (panel.hidden = !0, button.setAttribute("aria-expanded", "false"), button.focus());
+    }), wrapper.append(button, panel), wrapper;
+  }
+  renderBody() {
+    let body = document.createElement("tbody"), bodyTextSize = this.options.layout?.bodyTextSize;
+    bodyTextSize !== void 0 && (body.style.fontSize = cssLength(bodyTextSize)), applyStyle(body, this.options.style?.body);
+    let pending = [], visibleRows = this.visibleRows();
+    if (!visibleRows.length) {
+      let row = document.createElement("tr"), cell = document.createElement("td");
+      return cell.colSpan = this.options.columns.length, cell.textContent = this.options.emptyText ?? "No data", cell.className = "facet-table-empty", cell.style.padding = "12px 10px", cell.style.textAlign = "center", applyStyle(cell, this.options.style?.emptyCell), row.appendChild(cell), body.appendChild(row), { body, pending };
+    }
+    return visibleRows.forEach(({ row: dataRow, rowIndex }, visibleRowIndex) => {
+      let row = document.createElement("tr");
+      row.className = "facet-table-row";
+      let rowBackground = this.customizedRowBackground(visibleRowIndex);
+      rowBackground && (row.style.backgroundColor = rowBackground);
+      let rowStyle = resolveRowStyle(this.options.style?.row, dataRow, rowIndex);
+      applyStyle(row, rowStyle);
+      for (let [columnIndex, column] of this.options.columns.entries()) {
+        let cell = document.createElement("td"), sourceValue = dataRow[column.key], descriptor = resolveCellDescriptor(sourceValue), value = descriptor ? descriptor.value : sourceValue;
+        if (cell.className = column.chart ? "facet-table-cell facet-table-chart-cell" : "facet-table-cell", this.styleCell(cell, column, !1, value, columnIndex), this.styleBodyCell(
+          cell,
+          columnIndex,
+          row.style.backgroundColor || rowBackground
+        ), applyStyle(
+          cell,
+          resolveCellStyle(this.options.style?.cell, value, dataRow, rowIndex, column)
+        ), applyStyle(
+          cell,
+          column.chart ? this.options.style?.chartCell : this.options.style?.valueCell
+        ), applyStyle(cell, rowStyle), this.applyColumnStyle(cell, column, !1, value, dataRow, rowIndex), applyStyle(cell, descriptorStyle(descriptor)), column.chart) {
+          let host = document.createElement("div");
+          host.className = "facet-table-chart", host.style.width = "100%", host.style.height = `${column.chart.height ?? column.chart.options?.chart?.height ?? 44}px`, host.style.minWidth = `${column.chart.minWidth ?? 120}px`, applyStyle(host, this.options.style?.chartHost), cell.appendChild(host), pending.push({
+            host,
+            column,
+            columnIndex,
+            value,
+            row: dataRow,
+            rowIndex,
+            series: this.cellSeries(column, value, dataRow, rowIndex)
+          });
+        } else
+          this.renderValue(cell, column, value, dataRow, rowIndex, descriptor);
+        row.appendChild(cell);
+      }
+      this.bindRowHover(row), body.appendChild(row);
+    }), { body, pending };
+  }
+  visibleRows() {
+    let rows = this.sortedRows(), pagination = this.paginationOptions(), start = pagination ? (this.currentPage - 1) * this.currentPageSize : 0, end = pagination ? Math.min(rows.length, start + this.currentPageSize) : rows.length;
+    return rows.slice(start, end);
+  }
+  sortedRows() {
+    let rows = this.filteredRows();
+    if (!this.currentSort) return rows;
+    let column = this.options.columns.find(
+      (candidate) => candidate.key === this.currentSort?.key && candidate.sortable
+    );
+    if (!column) return rows;
+    let sortOptions = typeof column.sortable == "object" ? column.sortable : void 0, direction = this.currentSort.direction === "asc" ? 1 : -1;
+    return rows.sort((a, b) => {
+      let valueA = unwrapCellValue(a.row[column.key]), valueB = unwrapCellValue(b.row[column.key]), nullOrder = compareNullsLast(valueA, valueB);
+      if (nullOrder !== void 0) return nullOrder || a.rowIndex - b.rowIndex;
+      let compared = sortOptions?.compare ? sortOptions.compare(valueA, valueB, a.row, b.row) : compareTableValues(valueA, valueB), normalized = Number.isFinite(compared) ? compared : 0;
+      return normalized === 0 ? a.rowIndex - b.rowIndex : normalized * direction;
+    });
+  }
+  filteredRows() {
+    let rows = this.options.rows.map((row, rowIndex) => ({ row, rowIndex }));
+    return this.currentFilters.size ? rows.filter(({ row, rowIndex }) => {
+      for (let [key, filterValue] of this.currentFilters) {
+        let column = this.options.columns.find(
+          (candidate) => candidate.key === key && candidate.filterable
+        );
+        if (!column) continue;
+        let value = unwrapCellValue(row[column.key]), filterOptions = typeof column.filterable == "object" ? column.filterable : void 0;
+        if (!(filterOptions?.predicate ? filterOptions.predicate(value, filterValue, row, rowIndex) : String(value ?? "").toLocaleLowerCase().includes(
+          filterValue.toLocaleLowerCase()
+        ))) return !1;
+      }
+      return !0;
+    }) : rows;
+  }
+  toggleSort(column) {
+    let current = this.currentSort?.key === column.key ? this.currentSort.direction : void 0;
+    this.currentSort = current === "asc" ? { key: column.key, direction: "desc" } : current === "desc" ? void 0 : { key: column.key, direction: "asc" }, this.currentPage = 1, this.render();
+  }
+  renderPagination() {
+    let options = this.paginationOptions(), rowCount = this.filteredRows().length;
+    if (!options || !rowCount) return;
+    let canReducePageSize = options.showPageSize !== !1 && pageSizeChoices(options, this.currentPageSize).some(
+      (size) => size < rowCount
+    );
+    if (!options.alwaysShow && this.pageCount <= 1 && !canReducePageSize)
+      return;
+    let labels = paginationLabels(options.labels), nav = document.createElement("nav");
+    if (nav.className = "facet-table-pagination", nav.setAttribute("aria-label", "Table pagination"), nav.style.display = "flex", nav.style.alignItems = "center", nav.style.flexWrap = "wrap", nav.style.gap = "6px", nav.style.justifyContent = paginationAlignment(options.align), nav.style.padding = "10px 0 0", applyStyle(nav, this.options.style?.pagination), nav.appendChild(this.paginationButton(labels.first, 1, this.currentPage === 1)), nav.appendChild(
+      this.paginationButton(labels.previous, this.currentPage - 1, this.currentPage === 1)
+    ), options.showPageNumbers !== !1)
+      for (let page of visiblePageNumbers(
+        this.currentPage,
+        this.pageCount,
+        options.maxPageButtons ?? 5
+      )) {
+        let button = this.paginationButton(String(page), page, !1);
+        button.classList.add("facet-table-page-button"), page === this.currentPage && (button.classList.add("is-active"), button.setAttribute("aria-current", "page"), button.style.background = "var(--facet-table-page-active-background, #6366f1)", button.style.color = "var(--facet-table-page-active-color, #fff)", applyStyle(button, this.options.style?.activePageButton)), nav.appendChild(button);
+      }
+    nav.appendChild(
+      this.paginationButton(labels.next, this.currentPage + 1, this.currentPage === this.pageCount)
+    ), nav.appendChild(
+      this.paginationButton(labels.last, this.pageCount, this.currentPage === this.pageCount)
+    );
+    let info = document.createElement("span");
+    if (info.className = "facet-table-pagination-info", info.textContent = `${labels.page} ${this.currentPage} ${labels.of} ${this.pageCount} \xB7 ${this.pageRangeText()} ${labels.rows}`, info.style.marginInline = "4px", applyStyle(info, this.options.style?.paginationInfo), nav.appendChild(info), options.showPageSize !== !1) {
+      let label = document.createElement("label");
+      label.className = "facet-table-page-size", label.style.display = "inline-flex", label.style.alignItems = "center", label.style.gap = "5px", label.append(document.createTextNode(`${labels.perPage} `)), applyStyle(label, this.options.style?.pageSizeLabel);
+      let select = document.createElement("select");
+      select.className = "facet-table-page-size-select", select.setAttribute("aria-label", labels.perPage);
+      for (let size of pageSizeChoices(options, this.currentPageSize)) {
+        let option = document.createElement("option");
+        option.value = String(size), option.textContent = String(size), option.selected = size === this.currentPageSize, select.appendChild(option);
+      }
+      select.addEventListener("change", () => this.setPageSize(Number(select.value))), applyStyle(select, this.options.style?.pageSizeSelect), label.appendChild(select), nav.appendChild(label);
+    }
+    return nav;
+  }
+  paginationButton(label, page, disabled) {
+    let button = document.createElement("button");
+    return button.type = "button", button.className = "facet-table-pagination-button", button.textContent = label, button.disabled = disabled, button.style.padding = "4px 8px", button.style.border = "1px solid var(--facet-table-border-color, #e5e7eb)", button.style.borderRadius = "4px", button.style.background = "var(--facet-table-page-background, transparent)", button.style.color = "inherit", button.style.cursor = disabled ? "default" : "pointer", applyStyle(button, this.options.style?.paginationButton), button.addEventListener("click", () => this.setPage(page)), button;
+  }
+  pageRangeText() {
+    let rowCount = this.filteredRows().length;
+    if (!rowCount) return "0";
+    let start = (this.currentPage - 1) * this.currentPageSize + 1, end = Math.min(rowCount, start + this.currentPageSize - 1);
+    return `${start}\u2013${end} / ${rowCount}`;
+  }
+  renderValue(cell, column, value, row, rowIndex, descriptor) {
+    let formatted = value == null && !column.formatter ? this.options.appearance?.rowsAndColumns?.displayEmptyCellAs ?? "" : column.formatter ? column.formatter(value, row, rowIndex) : column.format ? formatString(column.format, {
+      value,
+      row,
+      rowIndex,
+      column
+    }) : String(value), prefix = descriptor?.prefix == null ? "" : String(descriptor.prefix), suffix = descriptor?.suffix == null ? "" : String(descriptor.suffix);
+    typeof formatted == "string" ? cell.textContent = `${prefix}${formatted}${suffix}` : (prefix && cell.append(prefix), cell.appendChild(formatted), suffix && cell.append(suffix));
+  }
+  styleCell(cell, column, heading, value, columnIndex = 0) {
+    cell.style.padding = densityPadding(
+      this.options.layout?.rowDensity,
+      !!column.chart,
+      this.container.clientWidth
+    ), this.styleBorders(cell, columnIndex), cell.style.textAlign = this.baseCellHorizontalAlignment(column, heading, value), cell.style.verticalAlign = "middle";
+    let wrapText = this.options.layout?.wrapText;
+    if (wrapText !== void 0 && (cell.style.whiteSpace = wrapText ? "normal" : "nowrap", wrapText && (cell.style.overflowWrap = "anywhere")), heading) {
+      let header = this.options.appearance?.headerRow;
+      cell.style.fontWeight = header?.bold === !1 ? "400" : header?.bold ? "700" : "600", cell.style.fontStyle = header?.italic ? "italic" : "normal", cell.style.background = header?.fillColor ?? "var(--facet-table-header-background, #f7f8fa)", header?.textColor && (cell.style.color = header.textColor), header?.textSize !== void 0 && (cell.style.fontSize = cssLength(header.textSize)), this.options.layout?.freezeHeaderRow && (cell.style.position = "sticky", cell.style.top = "0", cell.style.zIndex = "3");
+    }
+    this.options.layout?.freezeFirstColumn && columnIndex === 0 && (cell.style.position = "sticky", cell.style.left = "0", cell.style.zIndex = heading ? "4" : "2", !heading && !cell.style.backgroundColor && (cell.style.backgroundColor = this.options.appearance?.rowsAndColumns?.rowFill ?? "#fff")), heading && applyStyle(cell, this.options.style?.headerCell);
+  }
+  applyColumnStyle(cell, column, heading, value, row, rowIndex = 0) {
+    let explicitAlignment = column.horizontalAlign ?? column.align;
+    explicitAlignment ? cell.style.textAlign = explicitAlignment : column.role && (cell.style.textAlign = this.cellHorizontalAlignment(column, heading, value)), column.verticalAlign && (cell.style.verticalAlign = column.verticalAlign), column.width !== void 0 && (cell.style.width = typeof column.width == "number" ? `${column.width}px` : column.width), applyStyle(
+      cell,
+      heading ? column.headerStyle : resolveColumnStyle(column.style, value, row, rowIndex)
+    );
+  }
+  baseCellHorizontalAlignment(column, heading, value) {
+    if (heading)
+      return this.options.appearance?.headerRow?.alignment ?? (column.chart ? "center" : "left");
+    let role = column.role ?? (column.chart || typeof value == "number" ? "value" : "dimension"), rowsAndColumns = this.options.appearance?.rowsAndColumns;
+    return rowsAndColumns ? role === "value" ? rowsAndColumns.valueAlignment ?? (column.chart ? "center" : "left") : rowsAndColumns.dimensionAlignment ?? "left" : column.chart ? "center" : "left";
+  }
+  cellHorizontalAlignment(column, heading, value) {
+    let explicit = column.horizontalAlign ?? column.align;
+    if (explicit) return explicit;
+    if (heading)
+      return this.options.appearance?.headerRow?.alignment ?? (column.chart ? "center" : "left");
+    let role = column.role ?? (column.chart || typeof value == "number" ? "value" : "dimension"), rowsAndColumns = this.options.appearance?.rowsAndColumns;
+    return rowsAndColumns ? role === "value" ? rowsAndColumns?.valueAlignment ?? (column.chart ? "center" : "left") : rowsAndColumns?.dimensionAlignment ?? "left" : column.chart ? "center" : "left";
+  }
+  styleBorders(cell, columnIndex) {
+    let borders = this.options.appearance?.borders, color = borders?.borderColor ?? "var(--facet-table-border-color, #e5e7eb)", width = cssLength(borders?.borderWidth ?? 1);
+    cell.style.borderBottom = borders?.horizontalBorders === !1 ? "none" : `${width} solid ${color}`, cell.style.borderRight = borders?.verticalBorders && columnIndex < this.options.columns.length - 1 ? `${width} solid ${color}` : "none";
+  }
+  customizedRowBackground(visibleRowIndex) {
+    let options = this.options.appearance?.rowsAndColumns;
+    return options?.bandedRows && visibleRowIndex % 2 === 1 ? options.bandedRowsAlternateColor ?? "#f8fafc" : options?.rowFill;
+  }
+  styleBodyCell(cell, columnIndex, rowBackground) {
+    let options = this.options.appearance?.rowsAndColumns;
+    options?.textColor && (cell.style.color = options.textColor), options?.bandedColumns && columnIndex % 2 === 1 ? cell.style.backgroundColor = options.bandedColumnsAlternateColor ?? "#f1f5f9" : this.options.layout?.freezeFirstColumn && columnIndex === 0 && (cell.style.backgroundColor = rowBackground || options?.rowFill || "#fff"), (options?.emphasizeFirstColumn && columnIndex === 0 || options?.emphasizeLastColumn && columnIndex === this.options.columns.length - 1) && (cell.style.fontWeight = "700");
+  }
+  bindRowHover(row) {
+    let options = this.options.appearance?.rowsAndColumns;
+    if (!options?.highlightRowOnHover) return;
+    let cells = [...row.cells], backgrounds = [];
+    row.addEventListener("mouseenter", () => {
+      backgrounds = cells.map((cell) => ({
+        value: cell.style.getPropertyValue("background-color"),
+        priority: cell.style.getPropertyPriority("background-color")
+      })), cells.forEach(
+        (cell) => cell.style.setProperty(
+          "background-color",
+          options.hoverColor ?? "#eef2ff",
+          "important"
+        )
+      );
+    }), row.addEventListener("mouseleave", () => {
+      cells.forEach((cell, index) => {
+        let previous = backgrounds[index];
+        previous?.value ? cell.style.setProperty("background-color", previous.value, previous.priority) : cell.style.removeProperty("background-color");
+      });
+    });
+  }
+  applyResponsiveDensity() {
+    this.options.layout?.rowDensity !== "responsive" || !this.root || this.root.querySelectorAll("th, td").forEach((cell) => {
+      cell.style.padding = densityPadding(
+        "responsive",
+        cell.classList.contains("facet-table-chart-cell") || cell.classList.contains("facet-table-chart-heading"),
+        this.container.clientWidth
+      );
+    });
+  }
+  cellSeries(column, value, row, rowIndex) {
+    if (column.chart?.series === "value") {
+      if (!Array.isArray(value))
+        throw new TypeError(
+          `FacetTable: chart column "${column.key}" uses series: "value" but its cell value is not an array.`
+        );
+      return value;
+    }
+    if (typeof column.chart?.series == "function")
+      return column.chart.series(value, row, rowIndex);
+    let data = Array.isArray(value) ? value : value == null ? [] : [value];
+    return [{ name: column.header ?? column.key, data }];
+  }
+  sharedDomains() {
+    let domains = /* @__PURE__ */ new Map();
+    for (let [columnIndex, column] of this.options.columns.entries()) {
+      if (column.chart?.scale !== "shared") continue;
+      let columnValues = [];
+      if (this.filteredRows().forEach(({ row, rowIndex }) => {
+        this.cellSeries(column, unwrapCellValue(row[column.key]), row, rowIndex).forEach(
+          (series) => series.data.forEach((point) => columnValues.push(...pointValues(point)))
+        );
+      }), !columnValues.length) continue;
+      let type = column.chart.type ?? column.chart.options?.chart?.type ?? "sparkline";
+      domains.set(columnIndex, paddedDomain(columnValues, type));
+    }
+    return domains;
+  }
+  mountChart(item, domain) {
+    let cell = item.column.chart, type = cell.type ?? cell.options?.chart?.type ?? "sparkline", height = cell.height ?? cell.options?.chart?.height ?? 44, options = merge(
+      {
+        chart: {
+          type,
+          height,
+          animation: !1,
+          backgroundColor: "transparent",
+          spacing: [2, 2, 2, 2],
+          responsive: !1,
+          scaleFonts: !1,
+          reflow: !1
+        },
+        xAxis: { visible: !1 },
+        yAxis: { visible: !1 },
+        legend: { enabled: !1 },
+        series: item.series
+      },
+      cell.options,
+      { series: item.series }
+    );
+    if (options.chart = { ...options.chart, type, height }, domain && (options = withSharedDomain(options, domain)), !options.accessibility?.description) {
+      let rowName = this.rowName(item.row, item.rowIndex);
+      options.accessibility = {
+        ...options.accessibility,
+        description: `${item.column.header ?? item.column.key} for ${rowName}`
+      };
+    }
+    return new FacetViz(item.host, options);
+  }
+  rowName(row, rowIndex) {
+    let labelColumn = this.options.columns.find((column) => !column.chart);
+    if (!labelColumn) return `row ${rowIndex + 1}`;
+    let value = unwrapCellValue(row[labelColumn.key]);
+    return value == null || value === "" ? `row ${rowIndex + 1}` : String(value);
+  }
+  destroyCharts() {
+    this.charts.forEach((chart) => chart.destroy()), this.charts.length = 0;
+  }
+  paginationOptions() {
+    let pagination = this.options.pagination;
+    if (pagination)
+      return pagination === !0 ? {} : pagination.enabled === !1 ? void 0 : pagination;
+  }
+  syncPagination(pagination, initial) {
+    let options = !pagination || typeof pagination == "object" && pagination.enabled === !1 ? void 0 : pagination === !0 ? {} : pagination;
+    if (!options) {
+      this.currentPage = 1, initial && (this.currentPageSize = 25);
+      return;
+    }
+    (initial || options.pageSize !== void 0) && (this.currentPageSize = positiveInteger(
+      options.pageSize ?? 25,
+      "FacetTable pagination.pageSize"
+    )), (initial || options.page !== void 0) && (this.currentPage = positiveInteger(
+      options.page ?? 1,
+      "FacetTable pagination.page"
+    ));
+  }
+  clampPage() {
+    if (!this.paginationOptions()) {
+      this.currentPage = 1;
+      return;
+    }
+    this.currentPage = Math.min(Math.max(1, this.currentPage), this.pageCount);
+  }
+  /** One observer per table is cheaper than one observer per chart cell. */
+  setupReflow() {
+    typeof ResizeObserver > "u" || (this.resizeObserver = new ResizeObserver(() => {
+      if (this.applyResponsiveDensity(), typeof requestAnimationFrame > "u") {
+        this.reflow();
+        return;
+      }
+      this.resizeFrame !== void 0 && cancelAnimationFrame(this.resizeFrame), this.resizeFrame = requestAnimationFrame(() => {
+        this.resizeFrame = void 0, this.reflow();
+      });
+    }), this.resizeObserver.observe(this.container));
+  }
+}, UNITLESS_STYLE_PROPERTIES = /* @__PURE__ */ new Set([
+  "animationIterationCount",
+  "flexGrow",
+  "flexShrink",
+  "fontWeight",
+  "lineHeight",
+  "opacity",
+  "order",
+  "zIndex"
+]), filterIdCounter = 0;
+function cssLength(value) {
+  return typeof value == "number" ? `${value}px` : value;
+}
+function densityPadding(density, chartCell, containerWidth = 0) {
+  return density === "responsive" ? containerWidth >= 900 ? chartCell ? "6px 12px" : "10px 12px" : containerWidth >= 600 ? chartCell ? "3px 8px" : "6px 8px" : chartCell ? "2px 6px" : "4px 6px" : density === "compact" ? chartCell ? "2px 6px" : "4px 6px" : density === "cozy" || density === "crazy" ? chartCell ? "3px 8px" : "6px 8px" : density === "comfortable" ? chartCell ? "6px 12px" : "10px 12px" : chartCell ? "4px 10px" : "8px 10px";
+}
+function applyStyle(element, style) {
+  if (style)
+    for (let [property, rawValue] of Object.entries(style)) {
+      let customProperty = property.startsWith("--"), value = typeof rawValue == "number" && !customProperty && !UNITLESS_STYLE_PROPERTIES.has(property) ? `${rawValue}px` : String(rawValue);
+      customProperty || property.includes("-") ? element.style.setProperty(property, value) : element.style[property] = value;
+    }
+}
+function resolveCellDescriptor(value) {
+  if (!value || typeof value != "object" || Array.isArray(value) || value instanceof Date || !Object.prototype.hasOwnProperty.call(value, "value")) return;
+  let candidate = value;
+  return Object.keys(candidate).some(
+    (property) => property === "prefix" || property === "suffix" || property === "style" || isDirectCellStyleProperty(property)
+  ) ? candidate : void 0;
+}
+function unwrapCellValue(value) {
+  let descriptor = resolveCellDescriptor(value);
+  return descriptor ? descriptor.value : value;
+}
+function descriptorStyle(descriptor) {
+  if (!descriptor) return;
+  let style = { ...descriptor.style ?? {} };
+  for (let [property, value] of Object.entries(descriptor))
+    property === "value" || property === "prefix" || property === "suffix" || property === "style" || !isDirectCellStyleProperty(property) || typeof value != "string" && typeof value != "number" || (style[property] = value);
+  return Object.keys(style).length ? style : void 0;
+}
+function isDirectCellStyleProperty(property) {
+  return property.startsWith("--") || property.includes("-") || property in document.documentElement.style;
+}
+function createSortIndicator(direction) {
+  let namespace = "http://www.w3.org/2000/svg", indicator = document.createElementNS(namespace, "svg");
+  indicator.setAttribute("viewBox", "0 0 14 14"), indicator.setAttribute("width", "16"), indicator.setAttribute("height", "16"), indicator.setAttribute("fill", "currentColor"), indicator.setAttribute("stroke", "currentColor"), indicator.setAttribute("stroke-width", "1.8"), indicator.setAttribute("stroke-linecap", "round"), indicator.setAttribute("stroke-linejoin", "round"), indicator.setAttribute("aria-hidden", "true"), indicator.setAttribute("focusable", "false"), indicator.dataset.direction = direction ?? "none", indicator.style.display = "block", indicator.style.width = "16px", indicator.style.height = "16px", indicator.style.flex = "0 0 16px";
+  let paths = direction === "asc" ? ["M4 10l4-4 4 4z"] : direction === "desc" ? ["M4 6l4 4 4-4z"] : ["M4 6l4-3 4 3z", "M4 10l4 3 4-3z"];
+  for (let pathData of paths) {
+    let path = document.createElementNS(namespace, "path");
+    path.setAttribute("d", pathData), indicator.appendChild(path);
+  }
+  return indicator;
+}
+function createFilterIndicator() {
+  let namespace = "http://www.w3.org/2000/svg", indicator = document.createElementNS(namespace, "svg");
+  indicator.setAttribute("viewBox", "0 0 16 16"), indicator.setAttribute("width", "16"), indicator.setAttribute("height", "16"), indicator.setAttribute("fill", "currentColor"), indicator.setAttribute("aria-hidden", "true"), indicator.setAttribute("focusable", "false"), indicator.style.display = "block", indicator.style.width = "16px", indicator.style.height = "16px", indicator.style.flex = "0 0 16px";
+  let path = document.createElementNS(namespace, "path");
+  return path.setAttribute("d", "M2 3h12L9.5 8.2v3.6L6.5 13V8.2L2 3z"), indicator.appendChild(path), indicator;
+}
+function filterActionButton(label, style) {
+  let button = document.createElement("button");
+  return button.type = "button", button.className = "facet-table-filter-action", button.textContent = label, button.style.padding = "4px 8px", button.style.border = "1px solid var(--facet-table-border-color, #d1d5db)", button.style.borderRadius = "4px", button.style.background = "transparent", button.style.color = "inherit", button.style.font = "inherit", button.style.cursor = "pointer", applyStyle(button, style), button;
+}
+function resolveRowStyle(style, row, rowIndex) {
+  return typeof style == "function" ? style(row, rowIndex) : style;
+}
+function resolveColumnStyle(style, value, row, rowIndex) {
+  return typeof style == "function" ? style(value, row, rowIndex) : style;
+}
+function resolveCellStyle(style, value, row, rowIndex, column) {
+  return typeof style == "function" ? style(value, row, rowIndex, column) : style;
+}
+function paginationLabels(labels) {
+  return {
+    first: labels?.first ?? "First",
+    previous: labels?.previous ?? "Previous",
+    next: labels?.next ?? "Next",
+    last: labels?.last ?? "Last",
+    page: labels?.page ?? "Page",
+    of: labels?.of ?? "of",
+    rows: labels?.rows ?? "rows",
+    perPage: labels?.perPage ?? "Rows per page"
+  };
+}
+function paginationAlignment(align) {
+  return align === "center" ? "center" : align === "right" ? "flex-end" : "flex-start";
+}
+function sortAlignment(align) {
+  return align === "center" ? "center" : align === "right" ? "flex-end" : "flex-start";
+}
+function initialSort(columns) {
+  let column = columns.find(
+    (candidate) => typeof candidate.sortable == "object" && candidate.sortable.initialDirection
+  );
+  if (!(!column || typeof column.sortable != "object" || !column.sortable.initialDirection))
+    return { key: column.key, direction: column.sortable.initialDirection };
+}
+function initialFilters(columns) {
+  let filters = /* @__PURE__ */ new Map();
+  for (let column of columns) {
+    if (typeof column.filterable != "object") continue;
+    let value = column.filterable.initialValue?.trim();
+    value && filters.set(column.key, value);
+  }
+  return filters;
+}
+function reconcileFilters(current, columns) {
+  let filters = initialFilters(columns);
+  for (let [key, value] of current)
+    columns.some((column) => column.key === key && column.filterable) && filters.set(key, value);
+  return filters;
+}
+function compareNullsLast(a, b) {
+  let aNull = a == null, bNull = b == null;
+  if (!(!aNull && !bNull))
+    return aNull && bNull ? 0 : aNull ? 1 : -1;
+}
+function compareTableValues(a, b) {
+  return typeof a == "number" && typeof b == "number" ? a - b : a instanceof Date && b instanceof Date ? a.getTime() - b.getTime() : typeof a == "boolean" && typeof b == "boolean" ? Number(a) - Number(b) : String(a).localeCompare(String(b), void 0, {
+    numeric: !0,
+    sensitivity: "base"
+  });
+}
+function pageSizeChoices(options, current) {
+  let valid = (options.pageSizeOptions ?? [10, 25, 50, 100]).filter(
+    (value) => Number.isSafeInteger(value) && value > 0
+  );
+  return [.../* @__PURE__ */ new Set([...valid, current])].sort((a, b) => a - b);
+}
+function visiblePageNumbers(current, count, requestedMaximum) {
+  let maximum = Math.max(1, Math.floor(requestedMaximum) || 1), visible = Math.min(count, maximum), start = Math.min(
+    Math.max(1, current - Math.floor(visible / 2)),
+    Math.max(1, count - visible + 1)
+  );
+  return Array.from({ length: visible }, (_, index) => start + index);
+}
+function positiveInteger(value, label) {
+  if (!Number.isSafeInteger(value) || value <= 0)
+    throw new RangeError(`${label} must be a positive integer.`);
+  return value;
+}
+function clampInteger(value, min, max, label) {
+  let integer = positiveInteger(value, label);
+  return Math.min(max, Math.max(min, integer));
+}
+function pointValues(point) {
+  return typeof point == "number" ? Number.isFinite(point) ? [point] : [] : Array.isArray(point) ? point.slice(1).filter(
+    (value) => typeof value == "number" && Number.isFinite(value)
+  ) : !point || typeof point != "object" ? [] : [point.y, point.low, point.high, point.value].filter(
+    (value) => typeof value == "number" && Number.isFinite(value)
+  );
+}
+function paddedDomain(values, type) {
+  let min = Math.min(...values), max = Math.max(...values), zeroBased = type === "bar" || type === "column" || type === "lollipop";
+  if (zeroBased && (min = Math.min(0, min), max = Math.max(0, max)), min === max) {
+    let padding2 = Math.abs(min) * 0.05 || 1;
+    return zeroBased && min >= 0 ? [0, max + padding2] : [min - padding2, max + padding2];
+  }
+  let padding = (max - min) * 0.05;
+  return [zeroBased && min === 0 ? 0 : min - padding, zeroBased && max === 0 ? 0 : max + padding];
+}
+function withSharedDomain(options, [min, max]) {
+  if (Array.isArray(options.yAxis)) {
+    let axes = options.yAxis.length ? [...options.yAxis] : [{}];
+    return axes[0] = { ...axes[0], min: axes[0].min ?? min, max: axes[0].max ?? max }, { ...options, yAxis: axes };
+  }
+  return {
+    ...options,
+    yAxis: {
+      ...options.yAxis,
+      min: options.yAxis?.min ?? min,
+      max: options.yAxis?.max ?? max
+    }
+  };
+}
 export {
   BaseSeries,
   CategoryScale,
   FacetViz as Chart,
+  FacetTable as ChartTable,
   ChartValidationError,
   DEFAULT_COLORS,
+  FacetTable,
   FacetViz,
   LIGHT_THEME,
   LinearScale,

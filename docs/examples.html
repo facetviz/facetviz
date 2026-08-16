@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>FacetViz — Examples</title>
+  <script src="./docs-theme.js"></script>
   <link rel="stylesheet" href="./lib/hljs-github-dark.css" />
   <link rel="stylesheet" href="./style.css" />
   <script src="./lib/highlight.min.js"></script>
@@ -31,14 +32,14 @@
     </aside>
     <main class="content" style="max-width:1680px">
       <h1>Examples</h1>
-      <p class="lead">Every chart type and advanced feature, live. Expand <em>Show config</em> to study the smallest working options, or open an example in the playground to adapt it.</p>
+      <p class="lead">Every chart type and FacetTable capability, live. Expand <em>Show config</em> to study the smallest working options, or open an example in the playground to adapt it.</p>
       <div class="note">New to FacetViz? Start with the <a href="./features.html">feature guide</a> for explanations of when and why to use each capability.</div>
       <div id="gallery"></div>
     </main>
   </div>
 
   <script type="module">
-    import { FacetViz, renderChart, pretty, highlight, initChrome, scrollspy } from './site.js';
+    import { FacetViz, FacetTable, renderChart, pretty, highlight, initChrome, scrollspy } from './site.js';
     import { EXAMPLES, slug } from './examples-data.js';
 
     const catSlug = (s) => 'cat-' + s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
@@ -53,7 +54,7 @@
       for (const ex of EXAMPLES.filter((e) => e.cat === cat)) {
         const id = slug(ex.title);
         const wrap = document.createElement('section');
-        wrap.className = 'example panel' + (ex.tall ? ' tall' : ''); wrap.id = id;
+        wrap.className = 'example panel' + (ex.tall ? ' tall' : '') + (ex.wide ? ' wide' : ''); wrap.id = id;
         wrap.innerHTML = `<div class="head">
             <a class="anchor" href="#${id}" title="Link to this example">#</a>
             <h4>${ex.title}</h4><p>${ex.desc}</p><span class="spacer"></span>
@@ -62,14 +63,18 @@
           <div class="chart"></div>
           <details><summary>Show config</summary><pre><code class="language-js"></code></pre></details>`;
         grid.appendChild(wrap);
-        wrap.querySelector('code').textContent = 'new FacetViz(el, ' + pretty(ex.cfg) + ');';
+        const Constructor = ex.kind === 'table' ? FacetTable : FacetViz;
+        const constructorName = ex.kind === 'table' ? 'FacetTable' : 'FacetViz';
+        wrap.querySelector('code').textContent = `new ${constructorName}(el, ` + pretty(ex.cfg) + ');';
         // Hand THIS config to the playground (via sessionStorage — no giant URLs).
         wrap.querySelector('.pg-link').addEventListener('click', () => {
           try { sessionStorage.setItem('facetviz:playground', JSON.stringify({ title: ex.title, cfg: ex.cfg })); } catch (e) {}
         });
         // Thumbnail only: let the card's fixed-height container drive sizing.
-        const thumbCfg = { ...ex.cfg, chart: { ...ex.cfg.chart, height: undefined, width: undefined } };
-        renderChart(FacetViz, wrap.querySelector('.chart'), thumbCfg);
+        const thumbCfg = ex.kind === 'table'
+          ? ex.cfg
+          : { ...ex.cfg, chart: { ...ex.cfg.chart, height: undefined, width: undefined } };
+        renderChart(Constructor, wrap.querySelector('.chart'), thumbCfg);
       }
     }
 
