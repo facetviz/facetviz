@@ -21,7 +21,72 @@ const chart = new FacetViz(container, options);
 - [trellis](#trellisoptions) · [nested x-axis](#nested-hierarchical-x-axis) · [chart text](#chart-text)
 - [Events](#events) · [Data formats](#point-data-formats) · [Chart types](#chart-types)
 - [Charts inside table cells](#charts-inside-table-cells)
+- [Metric cards](#metric-cards)
 - [Instance methods](#instance-methods) · [Exports](#package-exports)
+
+---
+
+## Metric cards
+
+`FacetCard` renders a title and primary measure, with optional derived change
+analysis and an embedded FacetViz chart.
+
+```ts
+import { FacetCard } from "facetviz";
+
+const card = new FacetCard("#revenue", {
+  title: { text: "Revenue", subtitle: "Current month" },
+  value: 1284000,
+  format: "$,.1s",
+  comparison: {
+    previousValue: 1150000,
+    display: "both",
+    label: "vs last month",
+  },
+  chart: {
+    chart: { type: "sparkline" },
+    series: [{ data: [82, 91, 88, 105, 116, 128] }],
+  },
+});
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `value` | `number \| string` | required | Primary measure. |
+| `title` | `string \| { text, subtitle? }` | – | Card heading and optional supporting line. |
+| `format` | `string` | – | FacetViz number format for the primary measure. |
+| `valueFormatter` | `(context) => string` | – | Custom primary-value formatter. |
+| `label` | `string` | – | Short label below the measure. |
+| `comparison` | `CardComparisonOptions \| false` | – | Previous value or explicit difference/percentage analysis; `layout: "split"` creates a side-by-side period comparison. |
+| `progress` | `CardProgressOptions \| false` | – | Linear progress toward `target`, using the card value by default. |
+| `breakdown` | `CardBreakdownOptions \| false` | – | Compact labeled contribution values. |
+| `goal` | `CardGoalOptions \| false` | – | Radial current-versus-target indicator. |
+| `status` | `CardStatusOptions \| false` | – | Health or threshold state band with semantic tone. |
+| `range` | `CardRangeOptions \| false` | – | Current marker on a min/max scale with an optional target marker. |
+| `forecast` | `CardForecastOptions \| false` | – | Compact forecast line and optional low/high confidence interval. |
+| `context` | `CardContextOptions \| false` | – | Min, average, and max context for the primary measure. |
+| `summary` | `CardSummaryOptions \| false` | – | Component-level operational status rows. |
+| `chart` | `ChartOptions \| false` | – | Embedded chart; axes, legend, titles, and animation default off for the compact card but can be overridden. |
+| `layout` | `"vertical" \| "horizontal"` | `"vertical"` | Place the chart below or beside the content. |
+| `chartHeight` | `number` | `76` / `120` | Embedded chart height for vertical/horizontal layouts. |
+| `footer` | `string` | – | Muted source or freshness note. |
+| `theme` | `ThemeInput` | `"light"` | Theme shared by the card and its chart. |
+| `style` | `CardStyleOptions` | – | CSS overrides for every card region, including the new progress, breakdown, goal, range, context, summary, and status blocks. |
+| `accessibility` | `{ enabled?, description? }` | enabled | Card group label controls. |
+
+`comparison.previousValue` derives both the absolute difference and percentage.
+Alternatively supply `difference` or `percentChange` directly. Use `display` to
+show `"difference"`, `"percent"`, or `"both"`; `favorableDirection:
+"decrease"` makes a falling measure positive for metrics such as latency.
+Formatting can be overridden with `format`, `percentFormat`, or `formatter`.
+
+All analytical blocks are optional and composable. `progress`, `goal`, and
+`range` use the numeric card `value` unless their own `value`/`current` is
+provided. `forecast.range` accepts `[x, low, high]` tuples and is drawn behind
+the central `forecast.data` line. Status and summary `tone` accepts
+`"positive"`, `"negative"`, `"warning"`, `"neutral"`, or `"info"`.
+
+Cards expose `update(options)`, `setValue(value)`, `reflow()`, and `destroy()`.
 
 ---
 
@@ -1730,6 +1795,10 @@ if the container hadn't finished layout yet.
 import {
   FacetViz,
   Chart, // main class (Chart is an alias)
+  FacetCard,
+  Card, // metric card (Card is an alias)
+  FacetTable,
+  ChartTable, // table renderer alias
   registerSeriesType,
   isSeriesTypeRegistered,
   createSeries, // custom series extensibility
@@ -1758,5 +1827,5 @@ also exports its concrete renderer class and a `register…Series()` function.
 The full entrypoint remains backward compatible.
 
 All option interfaces are exported as types for TypeScript users
-(`ChartOptions`, `ChartTextOptions`, `SeriesOptions`, `AxisOptions`,
-`DataLabelOptions`, …).
+(`ChartOptions`, `FacetCardOptions`, `CardComparisonOptions`,
+`ChartTextOptions`, `SeriesOptions`, `AxisOptions`, `DataLabelOptions`, …).

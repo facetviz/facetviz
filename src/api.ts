@@ -4,7 +4,32 @@ export { FacetViz } from "./core/chart.js";
 export { FacetViz as Chart } from "./core/chart.js";
 export { FacetTable } from "./core/table.js";
 export { FacetTable as ChartTable } from "./core/table.js";
+export { FacetCard } from "./core/card.js";
+export { FacetCard as Card } from "./core/card.js";
 export { pivotData } from "./core/pivot.js";
+
+export type {
+  CardValue,
+  CardStyle,
+  CardTitleOptions,
+  CardValueContext,
+  CardComparisonContext,
+  CardComparisonOptions,
+  CardTone,
+  CardProgressOptions,
+  CardBreakdownItem,
+  CardBreakdownOptions,
+  CardGoalOptions,
+  CardStatusOptions,
+  CardRangeOptions,
+  CardForecastOptions,
+  CardContextOptions,
+  CardSummaryItem,
+  CardSummaryOptions,
+  CardStyleOptions,
+  CardAccessibilityOptions,
+  FacetCardOptions,
+} from "./core/card.js";
 
 export type {
   PivotAggregateOperation,

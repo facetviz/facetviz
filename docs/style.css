@@ -180,6 +180,14 @@ pre code { font-family: var(--mono); background: none; padding: 0; color: #e6edf
 .type-links a[aria-disabled] { opacity: .55; pointer-events: none; }
 .type-cat { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); font-weight: 700; margin: 16px 0 2px; }
 .example .chart { padding: 8px; min-width: 0; height: 220px; overflow: hidden; }
+.example.card-example .chart {
+  display: flex;
+  align-items: center;
+  height: 280px;
+  padding: 14px;
+  background: var(--panel-2);
+}
+.example.card-example .facet-card { max-height: 100%; }
 .example.tall .chart { height: 360px; }
 .example.wide { grid-column: span 2; }
 .example.wide .chart { height: 300px; overflow: auto; }

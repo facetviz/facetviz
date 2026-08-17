@@ -328,7 +328,7 @@
         </div>
         <textarea id="editor" spellcheck="false" autocomplete="off"></textarea>
         <div class="hint">
-          Data-only FacetViz or FacetTable JSON (no functions). <kbd>Tab</kbd> inserts spaces ·
+          Data-only FacetViz, FacetCard, or FacetTable JSON (no functions). <kbd>Tab</kbd> inserts spaces ·
           <kbd>Ctrl/Cmd</kbd>+<kbd>Enter</kbd> runs.
         </div>
       </section>
@@ -353,7 +353,8 @@
     </main>
 
     <script type="module">
-      import { FacetViz, FacetTable, pivotData } from "./lib/facetviz.js";
+      import { FacetViz, FacetTable, FacetCard, pivotData } from "./lib/facetviz.js";
+      import { EXAMPLES } from "./examples-data.js";
 
       const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
       const trellisMonths = ["Jan", "Feb", "Mar", "Apr"];
@@ -1735,6 +1736,11 @@
         },
       };
 
+      // Keep every data-only card example in the playground without
+      // duplicating its configuration here.
+      for (const example of EXAMPLES.filter((entry) => entry.kind === "card"))
+        PRESETS[example.title] = example.cfg;
+
       // -- Wiring ----------------------------------------------------------------
       const editor = document.getElementById("editor");
       const preview = document.getElementById("preview");
@@ -1786,12 +1792,15 @@
           previewInstance = undefined;
           preview.innerHTML = "";
           const isTable = Array.isArray(config.rows) && Array.isArray(config.columns);
+          const isCard = !isTable && Object.hasOwn(config, "value");
           preview.classList.toggle("table-preview", isTable);
           previewInstance = isTable
             ? new FacetTable(preview, config)
-            : new FacetViz(preview, config);
+            : isCard
+              ? new FacetCard(preview, config)
+              : new FacetViz(preview, config);
           errorEl.classList.remove("show");
-          setStatus(true, `${isTable ? "table" : "chart"} rendered ✓`);
+          setStatus(true, `${isTable ? "table" : isCard ? "card" : "chart"} rendered ✓`);
         } catch (e) {
           errorEl.textContent =
             "Render error: " + (e && e.message ? e.message : e);

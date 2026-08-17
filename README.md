@@ -33,6 +33,37 @@ new FacetViz('#chart', {
 });
 ```
 
+### Metric cards
+
+`FacetCard` renders a dashboard measure with optional change analysis and any
+FacetViz chart. When `previousValue` is supplied, the difference and percentage
+change are derived automatically.
+
+```ts
+import { FacetCard } from 'facetviz';
+
+new FacetCard('#revenue-card', {
+  title: { text: 'Revenue', subtitle: 'Current month' },
+  value: 1284000,
+  format: '$,.1s',
+  comparison: {
+    previousValue: 1150000,
+    display: 'both',
+    label: 'vs last month',
+  },
+  chart: {
+    chart: { type: 'sparkline' },
+    series: [{ data: [82, 91, 88, 105, 116, 128] }],
+  },
+});
+```
+
+Use `favorableDirection: 'decrease'` for measures such as response time or
+defect count. Set `layout: 'horizontal'` to place the chart beside the measure.
+First-class analytical blocks include `progress`, `breakdown`, split
+`comparison`, radial `goal`, `status`, `range`, `forecast`, min/max `context`,
+and operational `summary` rows.
+
 ![FacetViz quick-start column chart showing fruit consumption](docs/assets/quick-start.svg)
 
 ## Development
