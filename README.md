@@ -33,6 +33,9 @@ new FacetViz('#chart', {
 });
 ```
 
+![FacetViz quick-start column chart showing fruit consumption](docs/assets/quick-start.svg)
+
+
 ### Metric cards
 
 `FacetCard` renders a dashboard measure with optional change analysis and any
@@ -64,7 +67,6 @@ First-class analytical blocks include `progress`, `breakdown`, split
 `comparison`, radial `goal`, `status`, `range`, `forecast`, min/max `context`,
 and operational `summary` rows.
 
-![FacetViz quick-start column chart showing fruit consumption](docs/assets/quick-start.svg)
 
 ## Development
 
