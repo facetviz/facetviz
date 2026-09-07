@@ -174,12 +174,14 @@ describe('configuration validation', () => {
         { type: 'candlestick', data: [{ open: 10, high: 9, low: 8, close: 11 }] },
         { type: 'gantt', data: [{ name: 'Build', start: 10, end: 5 }] },
         { type: 'gauge', min: 100, max: 0, data: [{ y: 150 }] },
+        { type: 'gauge', startAngle: -90, endAngle: 300, data: [50] },
+        { type: 'gauge', namePosition: 'side', data: [50] },
         { type: 'radialbar', startAngle: 'top', data: [50] },
         { type: 'radialbar', startAngle: -90, endAngle: 300, data: [50] },
       ],
     });
     expect(result.errors.map((issue) => issue.code)).toEqual(expect.arrayContaining([
-      'boxplot.order', 'candlestick.order', 'gantt.range.order', 'gauge.range.order',
+      'boxplot.order', 'candlestick.order', 'gantt.range.order', 'gauge.range.order', 'gauge.angle_sweep.range', 'gauge.name_position.unknown',
       'radialbar.start_angle.finite', 'radialbar.angle_sweep.range',
     ]));
     expect(result.warnings.map((issue) => issue.code)).toContain('gauge.value.outside_range');

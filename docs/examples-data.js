@@ -497,6 +497,37 @@ export const EXAMPLES = [
   },
   {
     cat: "Circular",
+    title: "Full-circle gauge",
+    desc: "A complete dial with rounded ends, a target marker, and a top name.",
+    types: ["gauge"],
+    cfg: {
+      chart: { type: "gauge", height: 320 },
+      title: { text: "API capacity" },
+      plotOptions: {
+        gauge: {
+          color: "#26a69a",
+          roundedEnds: true,
+          showMinLabel: false,
+          markers: [{ value: 80, label: "Target", fontSize: "12px" }],
+        },
+      },
+      series: [
+        {
+          name: "Utilization",
+          min: 0,
+          max: 100,
+          maxLabel: "100%",
+          startAngle: -90,
+          endAngle: 270,
+          namePosition: "top",
+          centerFormatter: (value) => `${value}%`,
+          data: [{ name: "API", y: 82 }],
+        },
+      ],
+    },
+  },
+  {
+    cat: "Circular",
     title: "Sunburst",
     desc: "Multi-level radial hierarchy.",
     types: ["sunburst"],

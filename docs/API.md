@@ -977,7 +977,9 @@ series: [{
 
 ### Gauge options
 
-A gauge series renders one 180° dial for every point in `data`. Dials are
+A gauge series renders one dial for every point in `data`. It defaults to a
+180° arc, but `startAngle` and `endAngle` can define any positive sweep up to
+a complete circle. Dials are
 arranged left-to-right by default and top-to-bottom with
 `chart.inverted: true`. Values outside `min`–`max` are clamped when rendered.
 
@@ -991,10 +993,16 @@ arranged left-to-right by default and top-to-bottom with
 | `trackColor`      | `string`                                      | theme grid colour   | Background-track colour.                                             |
 | `trackOpacity`    | `number`                                      | `0.15`              | Background-track opacity.                                            |
 | `thickness`       | `number`                                      | adaptive, about 18% | Band thickness in pixels, capped to fit small dials.                 |
+| `roundedEnds`     | `boolean`                                     | `false`             | Draw circular caps on open track and value-band ends.                |
+| `startAngle`      | `number`                                      | `180`               | Arc start in degrees; 180 is 9 o'clock.                              |
+| `endAngle`        | `number`                                      | `360`               | Arc end in degrees. The sweep must be greater than 0 and at most 360°. |
 | `markers`         | [`GaugeMarkerOptions[]`](#gaugemarkeroptions) | –                   | Reference lines and labels drawn on every dial in the series.        |
-| `showMinMax`      | `boolean`                                     | `true`              | Show the minimum and maximum labels beneath the two band ends.       |
+| `showMinMax`      | `boolean`                                     | `true`              | Show the minimum and maximum labels at the band ends.                |
+| `showMinLabel`    | `boolean`                                     | `true`              | Show the minimum label. `showMinMax: false` overrides this option.   |
+| `showMaxLabel`    | `boolean`                                     | `true`              | Show the maximum label. `showMinMax: false` overrides this option.   |
 | `centerFormatter` | `(value: number) => string`                   | `String(value)`     | Formats each dial's centre value.                                    |
 | `centerFontSize`  | `string`                                      | adaptive, 10–22 px  | CSS centre-value font size, e.g. `'20px'`. Scales with chart size.   |
+| `namePosition`    | `'top' \| 'center' \| 'bottom'`             | `'center'`          | Positions the point or series name within each dial. With `top` or `bottom`, the value moves to the dial centre. |
 
 #### GaugeMarkerOptions
 
@@ -1026,6 +1034,17 @@ series: [{
     { name: 'API', y: 86 },
     { name: 'Workers', y: 74, color: '#f59e0b' },
   ],
+}]
+```
+
+For a full-circle gauge starting at 12 o'clock, use `startAngle: -90` and
+`endAngle: 270`:
+
+```ts
+series: [{
+  type: 'gauge', min: 0, max: 100,
+  startAngle: -90, endAngle: 270,
+  data: [{ name: 'API', y: 82 }],
 }]
 ```
 

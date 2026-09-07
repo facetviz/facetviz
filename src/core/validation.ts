@@ -321,6 +321,32 @@ export function validateChartOptions(options: unknown): ChartValidationResult {
       const max = numberAt(entry, "max") ?? 100;
       if (min >= max)
         add("gauge.range.order", "error", base, "Gauge min must be smaller than max.");
+      const startValue = entry.startAngle;
+      const endValue = entry.endAngle;
+      const startValid =
+        startValue === undefined ||
+        (typeof startValue === "number" && Number.isFinite(startValue));
+      const endValid =
+        endValue === undefined ||
+        (typeof endValue === "number" && Number.isFinite(endValue));
+      if (!startValid)
+        add("gauge.start_angle.finite", "error", `${base}.startAngle`, "startAngle must be a finite number of degrees.");
+      if (!endValid)
+        add("gauge.end_angle.finite", "error", `${base}.endAngle`, "endAngle must be a finite number of degrees.");
+      if (startValid && endValid) {
+        const startAngle = (startValue as number | undefined) ?? 180;
+        const endAngle = (endValue as number | undefined) ?? 360;
+        const sweep = endAngle - startAngle;
+        if (sweep <= 0 || sweep > 360)
+          add(
+            "gauge.angle_sweep.range",
+            "error",
+            base,
+            "startAngle and endAngle must define a positive sweep of at most 360 degrees.",
+          );
+      }
+      if (entry.namePosition !== undefined && !["top", "center", "bottom"].includes(String(entry.namePosition)))
+        add("gauge.name_position.unknown", "error", `${base}.namePosition`, "Gauge namePosition must be top, center, or bottom.");
       data.forEach((point, pointIndex) => {
         const value = pointValue(point);
         if (value !== undefined && (value < min || value > max))

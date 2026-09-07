@@ -637,6 +637,31 @@
             },
           ],
         },
+        "Full-circle gauge": {
+          chart: { type: "gauge", height: 380 },
+          title: { text: "API capacity" },
+          plotOptions: {
+            gauge: {
+              color: "#26a69a",
+              roundedEnds: true,
+              showMinLabel: false,
+              markers: [{ value: 80, label: "Target", fontSize: 12 }],
+            },
+          },
+          series: [
+            {
+              name: "Utilization",
+              min: 0,
+              max: 100,
+              maxLabel: "100%",
+              startAngle: -90,
+              endAngle: 270,
+              namePosition: "top",
+              centerFormatter: (value) => `${value}%`,
+              data: [{ name: "API", y: 82 }],
+            },
+          ],
+        },
         Waterfall: {
           chart: { type: "waterfall", height: 380 },
           title: { text: "Cash flow" },

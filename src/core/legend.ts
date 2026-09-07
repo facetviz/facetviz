@@ -46,7 +46,23 @@ const DEFAULT_BOTTOM_MARGIN = 22;
 const DEFAULT_SIDE_MARGIN = 8;
 /** Fixed leading inset that preserves the established top-legend baseline. */
 export const TOP_LEGEND_INSET = 12;
+/** Fallback used only when a canvas 2D context is unavailable. */
 const CHAR_WIDTH_RATIO = 0.6;
+
+let measureCtx: CanvasRenderingContext2D | null | undefined;
+
+/** Measures a label's rendered width with the same font the legend actually
+ * draws with, instead of a fixed characters-times-ratio guess -- labels
+ * like "SUM(Sales)" are wider than average and would otherwise overlap the
+ * next item. Falls back to the char-count estimate if canvas is unavailable. */
+function measureLabelWidth(label: string, fontSize: number, fontFamily: string | undefined): number {
+  if (measureCtx === undefined) {
+    measureCtx = typeof document === 'undefined' ? null : document.createElement('canvas').getContext('2d');
+  }
+  if (!measureCtx) return label.length * fontSize * CHAR_WIDTH_RATIO;
+  measureCtx.font = `${fontSize}px ${fontFamily ?? 'sans-serif'}`;
+  return measureCtx.measureText(label).width;
+}
 
 export type LegendPlacement = 'top' | 'bottom' | 'left' | 'right';
 
@@ -73,7 +89,8 @@ export const legendMargin = (
   );
 
 interface LegendMetrics {
-  charWidth: number;
+  fontSize: number;
+  fontFamily: string | undefined;
   lineHeight: number;
   rowHeight: number;
 }
@@ -84,9 +101,11 @@ export class Legend {
   private static metrics(options: LegendOptions): LegendMetrics {
     const style = sanitizeStyle(options.itemStyle);
     const fontSize = parseFloat(style['font-size'] ?? FONTS.legend['font-size'] ?? '12') || 12;
+    const fontFamily = style['font-family'] ?? FONTS.legend['font-family'];
     const lineHeight = Math.max(SWATCH, fontSize * 1.2);
     return {
-      charWidth: fontSize * CHAR_WIDTH_RATIO,
+      fontSize,
+      fontFamily,
       lineHeight,
       rowHeight: lineHeight + nonNegative(options.rowGap, DEFAULT_ROW_GAP),
     };
@@ -96,14 +115,14 @@ export class Legend {
     items: LegendItem[],
     options: LegendOptions,
   ): number[] {
-    const { charWidth } = Legend.metrics(options);
+    const { fontSize, fontFamily } = Legend.metrics(options);
     const symbolPadding = nonNegative(
       options.symbolPadding,
       DEFAULT_SYMBOL_PADDING,
     );
     const itemGap = nonNegative(options.itemGap, DEFAULT_ITEM_GAP);
     return items.map(
-      (it) => SWATCH + symbolPadding + it.label.length * charWidth + itemGap,
+      (it) => SWATCH + symbolPadding + measureLabelWidth(it.label, fontSize, fontFamily) + itemGap,
     );
   }
 
@@ -150,13 +169,17 @@ export class Legend {
     placement: LegendPlacement,
     spacingScale = 1,
   ): number {
-    const longest = items.reduce((m, it) => Math.max(m, it.label.length), 0);
+    const { fontSize, fontFamily } = Legend.metrics(options);
+    const longest = items.reduce(
+      (m, it) => Math.max(m, measureLabelWidth(it.label, fontSize, fontFamily)),
+      0,
+    );
     const symbolPadding = nonNegative(
       options.symbolPadding,
       DEFAULT_SYMBOL_PADDING,
     );
     return SWATCH + symbolPadding +
-      longest * Legend.metrics(options).charWidth +
+      longest +
       legendPadding(options) * 2 +
       legendMargin(options, placement, spacingScale);
   }

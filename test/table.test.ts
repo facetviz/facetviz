@@ -401,6 +401,25 @@ describe("FacetTable", () => {
     expect(padding).toBe(expected);
   });
 
+  it.each([
+    ["responsive", "4px 8px"],
+    ["compact", "1px 4px"],
+    ["cozy", "2px 6px"],
+    ["crazy", "2px 6px"],
+    ["comfortable", "4px 8px"],
+  ] as const)("uses tighter %s padding for chart cells", (rowDensity, expected) => {
+    const element = container();
+    if (rowDensity === "responsive")
+      Object.defineProperty(element, "clientWidth", { value: 1000, configurable: true });
+    new FacetTable(element, {
+      rows: [{ trend: [1, 2, 3] }],
+      columns: [{ key: "trend", chart: { type: "line" } }],
+      layout: { rowDensity },
+    });
+    const padding = element.querySelector<HTMLTableCellElement>("td")!.style.padding;
+    expect(padding).toBe(expected);
+  });
+
   it("uses a shared value domain for every chart in a comparable column", () => {
     const table = new FacetTable(container(), {
       rows: [

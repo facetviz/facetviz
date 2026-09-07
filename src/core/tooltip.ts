@@ -26,6 +26,16 @@ export class Tooltip {
     this.el.className = 'facet-tooltip';
     Object.assign(this.el.style, {
       position: 'absolute',
+      // Pin at the origin up front -- otherwise, with no top/left yet (only
+      // set once `move()` runs on the first hover), the browser falls back
+      // to this element's *static* position: right after the SVG in normal
+      // flow. That phantom box (padding alone gives it real height even
+      // while empty and opacity:0) sits below the chart and inflates the
+      // container's scrollHeight, which is what caused table cards with a
+      // chart column to show a spurious scrollbar for content that doesn't
+      // actually overflow.
+      top: '0',
+      left: '0',
       pointerEvents: 'none',
       padding: '6px 10px',
       font: '12px sans-serif',

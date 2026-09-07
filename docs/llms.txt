@@ -781,7 +781,7 @@ interface SeriesOptions {
   }; // area / areaspline
   visible?: boolean; showInLegend?: boolean;
   stack?: string|number; stacking?: 'normal'|'percent';
-  startAngle?: number; endAngle?: number;        // radialbar degrees; defaults -90 → 180
+  startAngle?: number; endAngle?: number;        // radialbar or gauge degrees
   xAxis?: 0 | 1; yAxis?: 0 | 1;
   lineWidth?: number; size?: number;
   marker?: { enabled?: boolean; radius?: number;
@@ -799,10 +799,11 @@ interface SeriesOptions {
   // gauge series
   min?: number; max?: number;
   minLabel?: string; maxLabel?: string;
-  trackColor?: string; trackOpacity?: number; thickness?: number;
-  showMinMax?: boolean;
+  trackColor?: string; trackOpacity?: number; thickness?: number; roundedEnds?: boolean;
+  showMinMax?: boolean; showMinLabel?: boolean; showMaxLabel?: boolean;
   centerFormatter?: (value: number) => string;
   centerFontSize?: number;
+  namePosition?: 'top'|'center'|'bottom'; // top/bottom centres the value
   markers?: Array<{
     value: number; label?: string; color?: string;
     labelPosition?: 'outside'|'inside'; fontSize?: number;
@@ -925,6 +926,12 @@ plotOptions: { gauge: {
 } }
 series: [{ type: 'gauge', min: 0, max: 100,
   data: [{ name: 'API', y: 86 }, { name: 'Workers', y: 74 }] }]
+
+// Full-circle gauge; hide just the minimum label when desired
+series: [{ type: 'gauge', min: 0, max: 100,
+  startAngle: -90, endAngle: 270, showMinLabel: false, roundedEnds: true,
+  namePosition: 'bottom',
+  data: [{ name: 'API', y: 86 }] }]
 
 // heatmap
 data: [{ x: 'Mon', y: 'Morning', value: 18 }]

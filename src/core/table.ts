@@ -534,6 +534,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
       .filter(Boolean)
       .join(" ");
     table.style.width = "100%";
+    table.style.height = "100%";
     const needsStickyLayout =
       layout?.freezeHeaderRow || layout?.freezeFirstColumn;
     table.style.borderCollapse = needsStickyLayout ? "separate" : "collapse";
@@ -1631,15 +1632,15 @@ function densityPadding(
   containerWidth = 0,
 ): string {
   if (density === "responsive") {
-    if (containerWidth >= 900) return chartCell ? "6px 12px" : "10px 12px";
-    if (containerWidth >= 600) return chartCell ? "3px 8px" : "6px 8px";
-    return chartCell ? "2px 6px" : "4px 6px";
+    if (containerWidth >= 900) return chartCell ? "4px 8px" : "10px 12px";
+    if (containerWidth >= 600) return chartCell ? "2px 6px" : "6px 8px";
+    return chartCell ? "1px 4px" : "4px 6px";
   }
-  if (density === "compact") return chartCell ? "2px 6px" : "4px 6px";
+  if (density === "compact") return chartCell ? "1px 4px" : "4px 6px";
   if (density === "cozy" || density === "crazy")
-    return chartCell ? "3px 8px" : "6px 8px";
-  if (density === "comfortable") return chartCell ? "6px 12px" : "10px 12px";
-  return chartCell ? "4px 10px" : "8px 10px";
+    return chartCell ? "2px 6px" : "6px 8px";
+  if (density === "comfortable") return chartCell ? "4px 8px" : "10px 12px";
+  return chartCell ? "2px 6px" : "8px 10px";
 }
 
 function applyStyle(

@@ -343,6 +343,97 @@ describe('FacetViz rendering', () => {
     expect(yPositions[1]).toBeLessThan(yPositions[2]);
   });
 
+  it('renders a full-circle gauge from startAngle and endAngle', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { type: 'gauge', animation: false },
+      series: [{
+        name: 'Utilization',
+        min: 0,
+        max: 100,
+        minLabel: 'Min',
+        maxLabel: 'Max',
+        startAngle: -90,
+        endAngle: 270,
+        data: [{ name: 'API', y: 82 }],
+      }],
+    });
+
+    const paths = el.querySelectorAll<SVGPathElement>('.facet-gauge-item path');
+    // The track is split into two outer and two inner arcs so SVG can render
+    // the otherwise coincident endpoints of a 360° ring.
+    expect(paths[0].getAttribute('d')?.match(/\bA\b/g)).toHaveLength(4);
+    expect(el.querySelector('.facet-gauge-value')?.textContent).toBe('82');
+    const min = [...el.querySelectorAll<SVGTextElement>('text')]
+      .find((node) => node.textContent === 'Min');
+    const max = [...el.querySelectorAll<SVGTextElement>('text')]
+      .find((node) => node.textContent === 'Max');
+    expect(min?.getAttribute('x')).not.toBe(max?.getAttribute('x'));
+  });
+
+  it('can independently hide gauge min and max labels', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { type: 'gauge', animation: false },
+      series: [{
+        minLabel: 'Minimum',
+        maxLabel: 'Maximum',
+        showMinLabel: false,
+        data: [50],
+      }],
+    });
+
+    const labels = [...el.querySelectorAll<SVGTextElement>('text')]
+      .map((node) => node.textContent);
+    expect(labels).not.toContain('Minimum');
+    expect(labels).toContain('Maximum');
+  });
+
+  it('can render gauge track and value bands with rounded ends', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { type: 'gauge', animation: false },
+      series: [{ roundedEnds: true, data: [50] }],
+    });
+
+    expect(el.querySelectorAll('.facet-gauge-track-cap')).toHaveLength(2);
+    expect(el.querySelectorAll('.facet-gauge-value-cap')).toHaveLength(2);
+  });
+
+  it('positions gauge names at the requested item edge or centre', () => {
+    const renderNameY = (namePosition: 'top' | 'center' | 'bottom') => {
+      const el = container();
+      new FacetViz(el, {
+        chart: { type: 'gauge', animation: false },
+        series: [{ namePosition, data: [{ name: 'API', y: 50 }] }],
+      });
+      return Number(el.querySelector<SVGTextElement>('.facet-gauge-label')?.getAttribute('y'));
+    };
+
+    const top = renderNameY('top');
+    const center = renderNameY('center');
+    const bottom = renderNameY('bottom');
+    expect(top).toBeLessThan(center);
+    expect(center).toBeLessThan(bottom);
+  });
+
+  it('centres a gauge value when its name is at the top or bottom', () => {
+    const renderValueY = (namePosition: 'top' | 'center' | 'bottom') => {
+      const el = container();
+      new FacetViz(el, {
+        chart: { type: 'gauge', animation: false },
+        series: [{ namePosition, data: [{ name: 'API', y: 50 }] }],
+      });
+      return Number(el.querySelector<SVGTextElement>('.facet-gauge-value')?.getAttribute('y'));
+    };
+
+    const top = renderValueY('top');
+    const center = renderValueY('center');
+    const bottom = renderValueY('bottom');
+    expect(top).toBe(bottom);
+    expect(top).toBeGreaterThan(center);
+  });
+
   it('shows the hovered donut slice value in the hollow centre', () => {
     const el = container();
     new FacetViz(el, {

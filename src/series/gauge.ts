@@ -1,7 +1,8 @@
 /**
- * Gauge (radial dial). Shows each series value on its own 180° arc from 180°
- * (left) to 360°/0° (right) between `min` and `max` (series options, default
- * 0–100). Gauges are laid out left-to-right, or top-to-bottom when the chart is
+ * Gauge (radial dial). Shows each series value on its own arc between `min`
+ * and `max` (series options, default 0–100). The default arc spans 180° from
+ * 180° (left) to 360°/0° (right); callers can configure any sweep up to a
+ * complete circle. Gauges are laid out left-to-right, or top-to-bottom when the chart is
  * inverted. Each gauge has a coloured value band, optional reference markers,
  * min/max labels at the bottom corners, and a centre value readout.
  * Self-contained (non-cartesian).
@@ -28,6 +29,12 @@ export interface GaugeSeriesOptions {
   trackColor?: string;
   /** Band thickness in pixels (default: auto ~16% of radius). */
   thickness?: number;
+  /** Give open track and value-band ends circular caps (default: false). */
+  roundedEnds?: boolean;
+  /** Arc start in degrees (default 180, at 9 o'clock). */
+  startAngle?: number;
+  /** Arc end in degrees (default 360, at 3 o'clock). The sweep may be up to 360°. */
+  endAngle?: number;
   /** Reference markers on the band. May also be set via `plotOptions.gauge`. */
   markers?: Array<{
     /** Value at which to place the marker (between min and max). */
@@ -41,12 +48,18 @@ export interface GaugeSeriesOptions {
     /** CSS font size, e.g. '14px'. Default '10px'. */
     fontSize?: string;
   }>;
-  /** Show min/max labels at bottom corners (default: true). */
+  /** Show min/max labels at the band ends (default: true). */
   showMinMax?: boolean;
+  /** Show the minimum label. `showMinMax: false` takes precedence. */
+  showMinLabel?: boolean;
+  /** Show the maximum label. `showMinMax: false` takes precedence. */
+  showMaxLabel?: boolean;
   /** Centre value formatter. Receives the numeric value, returns a string. */
   centerFormatter?: (value: number) => string;
   /** CSS centre value font size, e.g. '20px' (default: auto ~10-22px, from the dial's own radius). */
   centerFontSize?: string;
+  /** Position of the point/series name within each gauge (default: 'center'). */
+  namePosition?: "top" | "center" | "bottom";
   /** Track/bg track opacity (default 0.15). */
   trackOpacity?: number;
 }
@@ -63,6 +76,28 @@ function arcBandPath(
   if (endDeg <= startDeg) return "";
   const a0 = (startDeg * Math.PI) / 180;
   const a1 = (endDeg * Math.PI) / 180;
+  const sweep = endDeg - startDeg;
+  // SVG cannot draw a complete circle with one arc because its end points
+  // coincide. Split a full ring into two arcs instead.
+  if (sweep >= 360 - 1e-6) {
+    const mid = a0 + Math.PI;
+    const ox0 = cx + rOuter * Math.cos(a0);
+    const oy0 = cy + rOuter * Math.sin(a0);
+    const oxm = cx + rOuter * Math.cos(mid);
+    const oym = cy + rOuter * Math.sin(mid);
+    const ix0 = cx + rInner * Math.cos(a0);
+    const iy0 = cy + rInner * Math.sin(a0);
+    const ixm = cx + rInner * Math.cos(mid);
+    const iym = cy + rInner * Math.sin(mid);
+    return (
+      `M ${ox0} ${oy0} ` +
+      `A ${rOuter} ${rOuter} 0 0 1 ${oxm} ${oym} ` +
+      `A ${rOuter} ${rOuter} 0 0 1 ${ox0} ${oy0} ` +
+      `L ${ix0} ${iy0} ` +
+      `A ${rInner} ${rInner} 0 0 0 ${ixm} ${iym} ` +
+      `A ${rInner} ${rInner} 0 0 0 ${ix0} ${iy0} Z`
+    );
+  }
   const large = endDeg - startDeg > 180 ? 1 : 0;
   const ox0 = cx + rOuter * Math.cos(a0);
   const oy0 = cy + rOuter * Math.sin(a0);
@@ -146,19 +181,62 @@ export class GaugeSeries extends BaseSeries {
     const value = Math.max(min, Math.min(max, p.y ?? 0));
     const frac = max === min ? 0 : (value - min) / (max - min);
 
-    // Gauge geometry: 180° sweep from 180° (left) to 360° (right)
-    const START_DEG = 180;
-    const SWEEP_DEG = 180;
-    const END_DEG = START_DEG + SWEEP_DEG; // 360
+    // Defaults preserve the existing 180° dial. Callers can choose any
+    // positive sweep up to 360° with startAngle/endAngle.
+    const START_DEG = opts.startAngle ?? 180;
+    const END_DEG = opts.endAngle ?? 360;
+    const SWEEP_DEG = END_DEG - START_DEG;
+    if (
+      !Number.isFinite(START_DEG) ||
+      !Number.isFinite(END_DEG) ||
+      SWEEP_DEG <= 0 ||
+      SWEEP_DEG > 360
+    ) {
+      throw new RangeError(
+        "FacetViz: gauge startAngle/endAngle must define a positive sweep of at most 360 degrees",
+      );
+    }
+    const isFullCircle = SWEEP_DEG >= 360 - 1e-6;
+    const namePosition = opts.namePosition ?? "center";
 
     const cx = plot.x + plot.width / 2;
-    // Position centre lower so the arc sits in the upper portion of the plot area
-    const cy = plot.y + plot.height * 0.7;
-    const radius = Math.min(plot.width * 0.42, plot.height * 0.55);
+    // A semicircle sits above a lower centre; a full circle needs equal room
+    // on every side of a true centre.
+    const cy = plot.y + plot.height * (isFullCircle ? 0.5 : 0.7);
+    const radius = isFullCircle
+      ? Math.min(plot.width, plot.height) * 0.42
+      : Math.min(plot.width * 0.42, plot.height * 0.55);
     const requestedThickness = opts.thickness ?? Math.max(4, radius * 0.18);
     const thickness = Math.min(requestedThickness, radius * 0.8);
     const rOuter = radius;
     const rInner = radius - thickness;
+    const roundedEnds = opts.roundedEnds === true;
+    const capRadius = thickness / 2;
+    const capCentreRadius = (rInner + rOuter) / 2;
+    const addCaps = (
+      startDeg: number,
+      endDeg: number,
+      color: string,
+      opacity: number | undefined,
+      className: string,
+    ) => {
+      if (!roundedEnds || endDeg <= startDeg) return;
+      for (const deg of [startDeg, endDeg]) {
+        const cap = pointOnCircle(cx, cy, capCentreRadius, deg);
+        renderer.create(
+          "circle",
+          {
+            cx: cap.x,
+            cy: cap.y,
+            r: capRadius,
+            fill: color,
+            ...(opacity === undefined ? {} : { opacity }),
+            class: `facet-gauge-cap ${className}`,
+          },
+          g,
+        );
+      }
+    };
 
     // Background track (full 180° arc)
     const trackColor = opts.trackColor ?? THEME.axis.gridLineColor;
@@ -173,6 +251,8 @@ export class GaugeSeries extends BaseSeries {
       },
       g,
     );
+    if (!isFullCircle)
+      addCaps(START_DEG, END_DEG, trackColor, trackOpacity, "facet-gauge-track-cap");
 
     // Value band (from start to current value)
     const valueEndDeg = START_DEG + SWEEP_DEG * frac;
@@ -186,6 +266,10 @@ export class GaugeSeries extends BaseSeries {
       },
       g,
     );
+    // A zero value has no band to cap; a completed full-circle band has no
+    // open ends. Partial bands (including a completed semicircle) cap both.
+    if (valueEndDeg > START_DEG && !(isFullCircle && frac >= 1))
+      addCaps(START_DEG, valueEndDeg, bandColor, undefined, "facet-gauge-value-cap");
 
     // Hover target (transparent path over the band area for events)
     const hitEl = renderer.create(
@@ -252,8 +336,8 @@ export class GaugeSeries extends BaseSeries {
         const labelRadius =
           m.labelPosition === "inside" ? (rInner + rOuter) / 2 : rOuter + 18;
         const labelPt = pointOnCircle(cx, cy, labelRadius, mDeg);
-        const isRightSide = mDeg > 270 && mDeg < 360;
-        const isLeftSide = mDeg > 180 && mDeg < 270;
+        const isRightSide = Math.cos((mDeg * Math.PI) / 180) > 0.2;
+        const isLeftSide = Math.cos((mDeg * Math.PI) / 180) < -0.2;
         const anchor = isRightSide ? "start" : isLeftSide ? "end" : "middle";
         const dx = isRightSide ? 4 : isLeftSide ? -4 : 0;
         renderer.text(
@@ -272,48 +356,46 @@ export class GaugeSeries extends BaseSeries {
       }
     }
 
-    // Min / Max labels at bottom corners
-    if (opts.showMinMax !== false) {
-      // const labelGap = Math.max(6, Math.min(22, radius * 0.28));
-      // Min at 180° (left)
+    // A full circle has a shared start/end seam, so separate its labels.
+    if (opts.showMinMax !== false && (opts.showMinLabel !== false || opts.showMaxLabel !== false)) {
+      const labelRadius = isFullCircle
+        ? rOuter + Math.max(14, thickness * 0.75)
+        : rOuter - (rOuter - rInner) / 2;
       const minPt = pointOnCircle(
-        cx,
-        cy,
-        rOuter - (rOuter - rInner) / 2,
-        START_DEG,
+        cx, cy, labelRadius, isFullCircle ? START_DEG - 18 : START_DEG,
       );
-      renderer.text(
-        minLabel,
-        minPt.x,
-        minPt.y + 20,
-        {
-          "text-anchor": "middle",
-          ...FONTS.dataLabel,
-          "font-size": scaledFontPx(11),
-          fill: THEME.axis.labelColor,
-        },
-        g,
-      );
+      if (opts.showMinLabel !== false) {
+        renderer.text(
+          minLabel,
+          minPt.x,
+          minPt.y + (isFullCircle ? 4 : 20),
+          {
+            "text-anchor": "middle",
+            ...FONTS.dataLabel,
+            "font-size": scaledFontPx(11),
+            fill: THEME.axis.labelColor,
+          },
+          g,
+        );
+      }
 
-      // Max at 360° (right)
       const maxPt = pointOnCircle(
-        cx,
-        cy,
-        rInner + (rOuter - rInner) / 2,
-        END_DEG,
-      ); // + labelGap, END_DEG);
-      renderer.text(
-        maxLabel,
-        maxPt.x,
-        maxPt.y + 20,
-        {
-          "text-anchor": "middle",
-          ...FONTS.dataLabel,
-          "font-size": scaledFontPx(11),
-          fill: THEME.axis.labelColor,
-        },
-        g,
+        cx, cy, labelRadius, isFullCircle ? END_DEG + 18 : END_DEG,
       );
+      if (opts.showMaxLabel !== false) {
+        renderer.text(
+          maxLabel,
+          maxPt.x,
+          maxPt.y + (isFullCircle ? 4 : 20),
+          {
+            "text-anchor": "middle",
+            ...FONTS.dataLabel,
+            "font-size": scaledFontPx(11),
+            fill: THEME.axis.labelColor,
+          },
+          g,
+        );
+      }
     }
 
     // Centre value readout
@@ -327,10 +409,15 @@ export class GaugeSeries extends BaseSeries {
     const centerFontSize = opts.centerFontSize
       ? parseFloat(sanitizeStyle({ "font-size": opts.centerFontSize })["font-size"])
       : Math.max(10, Math.min(22, radius * 0.32));
+    const valueY = namePosition === "center"
+      ? isFullCircle
+        ? cy - 4
+        : cy - rInner / 2 + centerFontSize / 2
+      : cy;
     renderer.text(
       centerValue,
       cx,
-      cy - rInner / 2 + centerFontSize / 2,
+      valueY,
       {
         "text-anchor": "middle",
         ...FONTS.title,
@@ -341,12 +428,21 @@ export class GaugeSeries extends BaseSeries {
       g,
     );
 
-    // Optional series/point name under the value
+    // Optional series/point name. The centre position preserves the previous
+    // layout, while top and bottom position it against the item bounds.
     if (p.name ?? this.name) {
+      const nameFontSize = parseFloat(FONTS.subtitle["font-size"] ?? "12") || 12;
+      const nameY = namePosition === "top"
+        ? plot.y + nameFontSize
+        : namePosition === "bottom"
+          ? plot.y + plot.height - nameFontSize / 2
+          : isFullCircle
+            ? cy + centerFontSize + 4
+            : cy;
       renderer.text(
         String(p.name ?? this.name),
         cx,
-        cy,
+        nameY,
         {
           "text-anchor": "middle",
           ...FONTS.subtitle,
