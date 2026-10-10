@@ -19,6 +19,24 @@ describe('FacetViz rendering', () => {
     expect(el.querySelectorAll('.facet-column .facet-point').length).toBe(2);
   });
 
+  it('fits a log value axis to positive column values, not the zero baseline', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { type: 'column', animation: false },
+      yAxis: { type: 'log' },
+      xAxis: { categories: ['A', 'B', 'C', 'D'] },
+      series: [{ data: [120000, 450000, 900000, 3000] }],
+    });
+    const ticks = [...el.querySelectorAll('.facet-axis-left text')]
+      .map((node) => Number(node.textContent))
+      .filter(Number.isFinite);
+    expect(ticks).toEqual([1000, 10000, 100000, 1000000]);
+    const bottoms = [...el.querySelectorAll('.facet-column .facet-point')].map(
+      (node) => Number(node.getAttribute('y')) + Number(node.getAttribute('height')),
+    );
+    expect(new Set(bottoms.map((b) => b.toFixed(3))).size).toBe(1);
+  });
+
   it('adds breathing room beyond automatic y-axis data extrema', () => {
     const el = container();
     new FacetViz(el, {

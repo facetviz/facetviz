@@ -112,6 +112,40 @@ export interface LogScaleConfig {
   range: [number, number];
   reversed?: boolean;
   format?: (v: number) => string;
+  /** Expand the domain outward to the nearest tick (default false). */
+  nice?: boolean;
+  /** Override nicening for the lower bound independently. */
+  niceMin?: boolean;
+  /** Override nicening for the upper bound independently. */
+  niceMax?: boolean;
+}
+
+/** Strip floating-point dust such as 3 * 0.1 = 0.30000000000000004. */
+const cleanLog = (v: number) => Number(v.toPrecision(12));
+
+/**
+ * Candidate tick values covering [lo, hi] (both > 0), one step beyond each
+ * end so a nice domain can snap outward. Wide ranges tick on powers of ten
+ * (thinned to roughly eight labels); narrower ones fill each decade with
+ * 1-2-5 or 1..9 multiples so the axis never ends up with a single label.
+ */
+function logTickCandidates(lo: number, hi: number): number[] {
+  const e0 = Math.floor(Math.log10(lo));
+  const e1 = Math.ceil(Math.log10(hi));
+  const decades = Math.log10(hi) - Math.log10(lo);
+  if (decades >= 2) {
+    const step = Math.max(1, Math.ceil((e1 - e0) / 8));
+    const out: number[] = [];
+    for (let e = Math.floor(e0 / step) * step; e <= e1 + step; e += step)
+      out.push(cleanLog(Math.pow(10, e)));
+    return out;
+  }
+  const mantissas = decades >= 1 ? [1, 2, 5] : [1, 2, 3, 4, 5, 6, 7, 8, 9];
+  const out: number[] = [];
+  for (let e = e0 - 1; e <= e1; e++)
+    for (const m of mantissas) out.push(cleanLog(m * Math.pow(10, e)));
+  out.push(cleanLog(Math.pow(10, e1 + 1)));
+  return out;
 }
 
 export class LogScale implements Scale {
@@ -119,19 +153,55 @@ export class LogScale implements Scale {
   private l1: number;
   private r0: number;
   private r1: number;
+  private tickValues: number[];
   private format?: (v: number) => string;
 
   constructor(cfg: LogScaleConfig) {
-    const lo = Math.max(cfg.domain[0], 1e-9);
-    const hi = Math.max(cfg.domain[1], lo * 10);
+    let lo = cfg.domain[0] > 0 ? cfg.domain[0] : 1;
+    let hi = cfg.domain[1] > 0 ? cfg.domain[1] : lo * 10;
+    if (hi < lo) [lo, hi] = [hi, lo];
+    if (hi === lo) {
+      // Degenerate range: centre the value inside one decade.
+      lo /= Math.sqrt(10);
+      hi *= Math.sqrt(10);
+    }
+    const niceByDefault = cfg.nice === true;
+    const niceMin = cfg.niceMin ?? niceByDefault;
+    const niceMax = cfg.niceMax ?? niceByDefault;
+    const candidates = logTickCandidates(lo, hi);
+    const eps = 1e-9;
+    if (niceMin) {
+      const below = candidates.filter((t) => t <= lo * (1 + eps));
+      if (below.length) lo = below[below.length - 1];
+    }
+    if (niceMax) {
+      const above = candidates.find((t) => t >= hi * (1 - eps));
+      if (above !== undefined) hi = above;
+    }
     this.l0 = Math.log10(lo);
     this.l1 = Math.log10(hi);
+    this.tickValues = candidates.filter(
+      (t) => t >= lo * (1 - eps) && t <= hi * (1 + eps),
+    );
+    if (this.tickValues.length < 2) {
+      // Too narrow for log ticks to say anything: fall back to linear ticks.
+      this.tickValues = niceTicks(lo, hi, 4).filter(
+        (t) => t > 0 && t >= lo * (1 - eps) && t <= hi * (1 + eps),
+      );
+    }
     [this.r0, this.r1] = cfg.reversed ? [cfg.range[1], cfg.range[0]] : cfg.range;
     this.format = cfg.format;
   }
 
+  get domain(): [number, number] {
+    return [Math.pow(10, this.l0), Math.pow(10, this.l1)];
+  }
+
   scale(value: number | string): number {
-    const v = Math.max(typeof value === 'number' ? value : parseFloat(value), 1e-9);
+    const v = typeof value === 'number' ? value : parseFloat(value);
+    // log(0) is -infinity: anchor zero/negative values (a column's or area's
+    // baseline) at the floor of the axis instead of far outside the plot.
+    if (!(v > 0)) return this.r0;
     const t = (Math.log10(v) - this.l0) / (this.l1 - this.l0);
     return this.r0 + t * (this.r1 - this.r0);
   }
@@ -142,16 +212,12 @@ export class LogScale implements Scale {
   }
 
   ticks(): number[] {
-    const ticks: number[] = [];
-    for (let e = Math.ceil(this.l0); e <= Math.floor(this.l1); e++) {
-      ticks.push(Math.pow(10, e));
-    }
-    return ticks.length ? ticks : [Math.pow(10, this.l0), Math.pow(10, this.l1)];
+    return this.tickValues;
   }
 
   tickLabel(value: number | string): string {
     const v = typeof value === 'number' ? value : parseFloat(value);
-    return this.format ? this.format(v) : String(v);
+    return this.format ? this.format(v) : String(cleanLog(v));
   }
 
   bandwidth(): number {

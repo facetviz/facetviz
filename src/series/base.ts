@@ -119,6 +119,24 @@ export abstract class BaseSeries {
     return [min, max];
   }
 
+  /**
+   * Like {@link valueExtent} but only over strictly positive values, for a
+   * logarithmic value axis (where a column's zero baseline has no position).
+   * Returns undefined when the series has no positive values.
+   */
+  positiveValueExtent(): [number, number] | undefined {
+    let min = Infinity;
+    let max = -Infinity;
+    for (const p of this.points) {
+      for (const v of this.pointValues(p)) {
+        if (v === undefined || !(v > 0)) continue;
+        if (v < min) min = v;
+        if (v > max) max = v;
+      }
+    }
+    return min === Infinity ? undefined : [min, max];
+  }
+
   /** Values a point contributes to the value axis. Overridden by range/box. */
   protected pointValues(p: Point): Array<number | undefined> {
     if (p.stackHigh !== undefined) return [p.stackLow, p.stackHigh];

@@ -68,9 +68,23 @@ describe('LogScale', () => {
     const s = new LogScale({ domain: [1, 1000], range: [0, 300] });
     expect(s.invert(200)).toBeCloseTo(100);
   });
-  it('does not emit powers outside the domain', () => {
+  it('does not emit ticks outside the domain', () => {
     const s = new LogScale({ domain: [2, 20], range: [0, 100] });
-    expect(s.ticks()).toEqual([10]);
+    expect(s.ticks()).toEqual([2, 5, 10, 20]);
+  });
+  it('ticks on powers of ten across wide ranges', () => {
+    const s = new LogScale({ domain: [3, 90000], range: [0, 100], nice: true });
+    expect(s.ticks()).toEqual([1, 10, 100, 1000, 10000, 100000]);
+    expect(s.domain).toEqual([1, 100000]);
+  });
+  it('keeps at least two ticks inside a single decade', () => {
+    const s = new LogScale({ domain: [120, 180], range: [0, 100] });
+    expect(s.ticks().length).toBeGreaterThanOrEqual(2);
+  });
+  it('anchors zero and negative values at the axis floor', () => {
+    const s = new LogScale({ domain: [10, 1000], range: [300, 0] });
+    expect(s.scale(0)).toBe(300);
+    expect(s.scale(-5)).toBe(300);
   });
 });
 

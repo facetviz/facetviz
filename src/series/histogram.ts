@@ -39,6 +39,11 @@ export class HistogramSeries extends BaseSeries {
     return [0, Math.max(1, ...this.bins.map((b) => b.count))];
   }
 
+  override positiveValueExtent(): [number, number] | undefined {
+    const counts = this.bins.map((b) => b.count).filter((c) => c > 0);
+    return counts.length ? [Math.min(...counts), Math.max(...counts)] : undefined;
+  }
+
   private computeBins(): Bin[] {
     const values = (this.options.data as unknown[]).filter((v): v is number => typeof v === 'number');
     if (!values.length) return [];

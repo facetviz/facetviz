@@ -127,6 +127,21 @@ const axisLabelOffset = (options: AxisOptions): number => {
     : 0;
 };
 
+/**
+ * Multiplicative padding equivalent to `px` pixels on a logarithmic axis
+ * spanning [lo, hi] over `axisPx` pixels (additive padding could push the
+ * bound to zero or below, which a log axis cannot show).
+ */
+const logPadFactor = (
+  px: number,
+  axisPx: number,
+  lo: number,
+  hi: number,
+): number => {
+  const decades = lo > 0 && hi > lo ? Math.log10(hi / lo) : 1;
+  return Math.pow(10, (px / Math.max(1, axisPx)) * decades);
+};
+
 export class FacetViz {
   readonly container: HTMLElement;
   readonly options: ChartOptions;
@@ -1193,7 +1208,7 @@ export class FacetViz {
 
   /** Estimated px width of the widest value-axis label. */
   private valueLabelWidth(visible: BaseSeries[], valOpts: AxisOptions): number {
-    const [dmin, dmax] = this.valueDomain(visible);
+    const [dmin, dmax] = this.valueDomain(visible, valOpts);
     const fmt = (v: number) => {
       if (valOpts.labels?.formatter) return String(valOpts.labels.formatter(v));
       const r = Math.abs(v) >= 100 ? Math.round(v) : Math.round(v * 100) / 100;
@@ -2012,12 +2027,13 @@ export class FacetViz {
     const primaryDomainSeries = primaryVisible.length
       ? primaryVisible
       : allVisible;
-    let [vMin, vMax] = this.valueDomain(primaryDomainSeries);
+    let [vMin, vMax] = this.valueDomain(primaryDomainSeries, yOpts0);
     const preservePrimaryZeroMin = this.hasNonNegativeZeroBasedSeries(
       primaryDomainSeries,
       vMin,
     );
     if (
+      yOpts0.type !== "log" &&
       (primaryVisible.length ? primaryVisible : allVisible).some((s) =>
         ["column", "bar", "area", "areaspline", "lollipop"].includes(s.type),
       )
@@ -2029,12 +2045,13 @@ export class FacetViz {
     let vMax2 = 1;
     let secondaryPreservesZeroMin = false;
     if (hasSecondary && yOpts1) {
-      [vMin2, vMax2] = this.valueDomain(secondaryVisible);
+      [vMin2, vMax2] = this.valueDomain(secondaryVisible, yOpts1);
       const preserveSecondaryZeroMin = this.hasNonNegativeZeroBasedSeries(
         secondaryVisible,
         vMin2,
       );
       if (
+        yOpts1.type !== "log" &&
         secondaryVisible.some((s) =>
           ["column", "bar", "area", "areaspline", "lollipop"].includes(s.type),
         )
@@ -2614,7 +2631,7 @@ export class FacetViz {
     const secondary = series.filter(onSecondary);
     const polarValueScale = (items: BaseSeries[], options: AxisOptions) => {
       const domainSeries = items.length ? items : series;
-      let domain = this.valueDomain(domainSeries);
+      let domain = this.valueDomain(domainSeries, options);
       const preserveZeroMin = this.hasNonNegativeZeroBasedSeries(
         domainSeries,
         domain[0],
@@ -3278,13 +3295,15 @@ export class FacetViz {
       const range: [number, number] = [plot.y + plot.height, plot.y];
       const scaleFor = (list: BaseSeries[], opts: AxisOptions) => {
         const domainSeries = list.length ? list : aggSeries;
-        let [lo, hi] = this.valueDomain(domainSeries);
+        let [lo, hi] = this.valueDomain(domainSeries, opts);
         const preserveZeroMin = this.hasNonNegativeZeroBasedSeries(
           domainSeries,
           lo,
         );
-        lo = Math.min(lo, 0);
-        hi = Math.max(hi, 0);
+        if (opts.type !== "log") {
+          lo = Math.min(lo, 0);
+          hi = Math.max(hi, 0);
+        }
         return this.valueScale(
           opts,
           [lo, hi],
@@ -3383,10 +3402,12 @@ export class FacetViz {
         categories: keys,
         range: [plot.y, plot.y + plot.height],
       });
-      let [lo, hi] = this.valueDomain(aggSeries);
+      let [lo, hi] = this.valueDomain(aggSeries, yOpts0);
       const preserveZeroMin = this.hasNonNegativeZeroBasedSeries(aggSeries, lo);
-      lo = Math.min(lo, 0);
-      hi = Math.max(hi, 0);
+      if (yOpts0.type !== "log") {
+        lo = Math.min(lo, 0);
+        hi = Math.max(hi, 0);
+      }
       valScale0 = this.valueScale(
         yOpts0,
         [lo, hi],
@@ -4103,7 +4124,7 @@ export class FacetViz {
     const primaryDomainSeries = primaryVisible.length
       ? primaryVisible
       : ySource;
-    let [vMin, vMax] = this.valueDomain(primaryDomainSeries);
+    let [vMin, vMax] = this.valueDomain(primaryDomainSeries, yAxisOpts);
     const preservePrimaryZeroMin = this.hasNonNegativeZeroBasedSeries(
       primaryDomainSeries,
       vMin,
@@ -4154,9 +4175,15 @@ export class FacetViz {
     if (markerR) {
       const valueAxisOpts = yAxisOpts;
       const valuePx = inverted ? plot.width : plot.height;
-      const padY = (markerR / Math.max(1, valuePx)) * (vMax - vMin || 1);
-      if (valueAxisOpts.min === undefined) vMin -= padY;
-      if (valueAxisOpts.max === undefined) vMax += padY;
+      if (valueAxisOpts.type === "log") {
+        const k = logPadFactor(markerR, valuePx, vMin, vMax);
+        if (valueAxisOpts.min === undefined) vMin /= k;
+        if (valueAxisOpts.max === undefined) vMax *= k;
+      } else {
+        const padY = (markerR / Math.max(1, valuePx)) * (vMax - vMin || 1);
+        if (valueAxisOpts.min === undefined) vMin -= padY;
+        if (valueAxisOpts.max === undefined) vMax += padY;
+      }
     }
 
     // Data-label headroom: an 'outside'/'top' (or default, for non-stacked)
@@ -4176,8 +4203,11 @@ export class FacetViz {
     if (hasOutsideLabel) {
       const valueAxisOpts = yAxisOpts;
       const valuePx = inverted ? plot.width : plot.height;
-      const padY = (18 / Math.max(1, valuePx)) * (vMax - vMin || 1);
-      if (valueAxisOpts.max === undefined) vMax += padY;
+      if (valueAxisOpts.max === undefined) {
+        if (valueAxisOpts.type === "log")
+          vMax *= logPadFactor(18, valuePx, vMin, vMax);
+        else vMax += (18 / Math.max(1, valuePx)) * (vMax - vMin || 1);
+      }
     }
 
     // Numeric/datetime/log x scales.
@@ -4190,7 +4220,11 @@ export class FacetViz {
       const [dmin, dmax] = this.xNumericDomain(list);
       let min = opts.min ?? dmin,
         max = opts.max ?? dmax;
-      if (markerR) {
+      if (markerR && opts.type === "log") {
+        const k = logPadFactor(markerR, plot.width, min, max);
+        if (opts.min === undefined) min /= k;
+        if (opts.max === undefined) max *= k;
+      } else if (markerR) {
         const padX = (markerR / Math.max(1, plot.width)) * (max - min || 1);
         if (opts.min === undefined) min -= padX;
         if (opts.max === undefined) max += padX;
@@ -4204,6 +4238,8 @@ export class FacetViz {
           domain: [min, max],
           range,
           reversed,
+          niceMin: opts.min === undefined,
+          niceMax: opts.max === undefined,
         });
       }
       if (opts.type === "datetime") {
@@ -4282,7 +4318,8 @@ export class FacetViz {
     let yScale2: Scale | undefined;
     if (hasSecondary) {
       const secondaryVisible = ySource.filter(onSecondary);
-      let [vMin2, vMax2] = this.valueDomain(secondaryVisible);
+      const secondaryOpts = axisAt(this.options.yAxis, 1);
+      let [vMin2, vMax2] = this.valueDomain(secondaryVisible, secondaryOpts);
       const preserveSecondaryZeroMin = this.hasNonNegativeZeroBasedSeries(
         secondaryVisible,
         vMin2,
@@ -4297,7 +4334,6 @@ export class FacetViz {
           "lollipop",
         ].includes(s.type),
       );
-      const secondaryOpts = axisAt(this.options.yAxis, 1);
       if (
         (includeZero2 || secondaryOpts.startOnZero === true) &&
         secondaryOpts.type !== "log"
@@ -4336,6 +4372,8 @@ export class FacetViz {
         domain: [min, max],
         range,
         reversed: opts.reversed,
+        niceMin: opts.min === undefined,
+        niceMax: opts.max === undefined,
       });
     }
 
@@ -4360,16 +4398,24 @@ export class FacetViz {
     });
   }
 
-  private valueDomain(visible: BaseSeries[]): [number, number] {
+  private valueDomain(
+    visible: BaseSeries[],
+    axis?: AxisOptions,
+  ): [number, number] {
+    const log = axis?.type === "log";
     const mins: number[] = [];
     const maxs: number[] = [];
     for (const s of visible) {
       if (!s.capabilities().cartesian) continue;
-      const [lo, hi] = s.valueExtent();
-      mins.push(lo);
-      maxs.push(hi);
+      // A log axis skips non-positive values (e.g. a column's zero
+      // baseline): log(0) is -infinity and would drag the axis down to the
+      // scale's epsilon, squashing every bar into the top of the plot.
+      const extent = log ? s.positiveValueExtent() : s.valueExtent();
+      if (!extent) continue;
+      mins.push(extent[0]);
+      maxs.push(extent[1]);
     }
-    if (!mins.length) return [0, 1];
+    if (!mins.length) return log ? [1, 10] : [0, 1];
     return [Math.min(...mins), Math.max(...maxs)];
   }
 
