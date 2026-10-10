@@ -81,6 +81,30 @@ describe("layout, annotations, responsive rules, and polar projection", () => {
     expect(labels.some((node) => node.getAttribute("transform")?.includes("-45"))).toBe(true);
   });
 
+  it("truncates crowded unrotated category labels instead of thinning them", () => {
+    const categories = ["Savings", "Current", "Fixed Deposit", "Recurring", "Salary", "NRI"];
+    const draw = (width: number) => {
+      const element = container(width, 220);
+      new FacetViz(element, {
+        chart: { ...chart, width, height: 220 },
+        xAxis: { categories },
+        series: [{ data: [2, 4, 3, 5, 1, 6] }],
+      });
+      return [...element.querySelectorAll<SVGTextElement>(".facet-axis-bottom text")]
+        .map((node) => node.textContent ?? "");
+    };
+
+    const labels = draw(300);
+    expect(labels).toHaveLength(categories.length);
+    expect(labels.some((text) => text.endsWith("…"))).toBe(true);
+    labels.forEach((text, i) =>
+      expect(categories[i].startsWith(text.replace(/…$/, ""))).toBe(true),
+    );
+
+    // Too narrow for two characters per category: thins, still truncating.
+    expect(draw(90).length).toBeLessThan(categories.length);
+  });
+
   it("renders value-anchored callouts above the series", () => {
     const element = container();
     new FacetViz(element, {

@@ -520,7 +520,8 @@ export class FacetViz {
     // (vertical column). Space is reserved on the chosen side.
     const legendItems = this.buildLegendItems();
     const showLegend =
-      this.options.legend?.enabled !== false && legendItems.length > 1;
+      this.options.legend?.enabled !== false &&
+      (legendItems.length > 1 || legendItems.some((item) => item.scale));
     const legendPlace = this.legendPlacement();
     const legendVertical = legendPlace === "left" || legendPlace === "right";
     let legendReserveH = 0;
@@ -4894,10 +4895,13 @@ export class FacetViz {
     );
   }
 
-  private buildLegendItems(): Array<LegendItem & { seriesIndex?: number }> {
+  private buildLegendItems(): Array<
+    LegendItem & { seriesIndex?: number; seriesIndexes?: number[] }
+  > {
     const first = this.series[0];
+    const scales = this.colorScaleLegendItems();
     if (this.series.length === 1 && first?.options.showInLegend === false) {
-      return [];
+      return scales;
     }
     // A series may supply its own legend (e.g. multi-level pie → inner groups).
     if (this.series.length === 1 && first?.legendItems) {
@@ -4911,17 +4915,34 @@ export class FacetViz {
         visible: !first.hiddenPoints.has(p.index),
       }));
     }
-    return this.series
-      .map((s, seriesIndex) => ({
-        label: s.name,
-        color: s.color,
-        visible: s.visible,
-        seriesIndex,
-      }))
-      .filter(
-        (_, seriesIndex) =>
-          this.series[seriesIndex].options.showInLegend !== false,
-      );
+    return [
+      ...scales,
+      ...this.series
+        .map((s, seriesIndex) => ({
+          label: s.name,
+          color: s.color,
+          visible: s.visible,
+          seriesIndex,
+        }))
+        .filter(
+          (_, seriesIndex) =>
+            this.series[seriesIndex].options.showInLegend !== false,
+        ),
+    ];
+  }
+
+  /** `legend.colorScales` as legend items; visible while any of their series is. */
+  private colorScaleLegendItems(): Array<LegendItem & { seriesIndexes?: number[] }> {
+    return (this.options.legend?.colorScales ?? []).map((scale) => {
+      const indexes = (scale.series ?? []).filter((i) => this.series[i]);
+      return {
+        label: scale.label ?? "",
+        color: scale.colors[scale.colors.length - 1] ?? "",
+        visible: !indexes.length || indexes.some((i) => this.series[i].visible),
+        scale: { min: scale.min, max: scale.max, colors: scale.colors },
+        seriesIndexes: indexes,
+      };
+    });
   }
 
   private toggleSeries(index: number): void {
@@ -4957,8 +4978,21 @@ export class FacetViz {
       this.render();
       return;
     }
+    const item = this.buildLegendItems()[index];
+    // A colour scale toggles all the series it stands for together.
+    if (item?.scale) {
+      const indexes = item.seriesIndexes ?? [];
+      if (!indexes.length) return;
+      for (const i of indexes) this.series[i].visible = !item.visible;
+      this.options.seriesEvents?.legendItemClick?.({
+        series: item.label,
+        visible: !item.visible,
+      });
+      this.render();
+      return;
+    }
     // Filtered series legends need to retain their original series index.
-    const seriesIndex = this.buildLegendItems()[index]?.seriesIndex ?? index;
+    const seriesIndex = item?.seriesIndex ?? index;
     const s = this.series[seriesIndex];
     if (!s) return;
     s.visible = !s.visible;
@@ -5116,11 +5150,12 @@ export class FacetViz {
     return this.buildLegendItems();
   }
 
-  /** Whether a legend will actually render (respects `legend.enabled` and needs >1 entry). */
+  /** Whether a legend will actually render (respects `legend.enabled` and needs >1 entry, or a colour scale). */
   get hasLegend(): boolean {
     return (
       this.options.legend?.enabled !== false &&
-      this.buildLegendItems().length > 1
+      (this.buildLegendItems().length > 1 ||
+        this.buildLegendItems().some((item) => item.scale))
     );
   }
 

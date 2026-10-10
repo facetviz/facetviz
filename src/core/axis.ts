@@ -82,6 +82,9 @@ export function minorGridPositions(
 export class Axis {
   constructor(private cfg: AxisConfig) {}
 
+  /** Width crowded category labels are truncated to this render, if any. */
+  private fitWidth?: number;
+
   private get horizontal(): boolean {
     return this.cfg.position === 'bottom' || this.cfg.position === 'top';
   }
@@ -127,9 +130,11 @@ export class Axis {
     const gridWidth = options.gridLineWidth ?? 1;
 
     // When a categorical axis is too cramped for every label to fit without
-    // overlapping, thin them out (draw every Nth) instead — ticks/gridlines
-    // still render for every value, only the label text skips. Left alone
-    // when the caller already rotated labels to make room.
+    // overlapping, truncate them to their slot or, failing that, thin them
+    // out (draw every Nth) — ticks/gridlines still render for every value,
+    // only the label text skips. Left alone when the caller already rotated
+    // labels to make room.
+    this.fitWidth = undefined;
     let labelStep = Math.max(1, options.labels?.step ?? 1);
     let labelRotation = options.labels?.rotation ?? 0;
     if (isCategory && labelsEnabled && this.horizontal) {
@@ -156,8 +161,26 @@ export class Axis {
         const projected =
           Math.cos(rad) * widest +
           Math.sin(rad) * (parseFloat(style["font-size"] ?? "11") || 11);
-        if (projected + 6 > band * labelStep)
+        if (projected + 6 > band * labelStep) {
+          const requestedStep = labelStep;
           labelStep = Math.ceil((projected + 6) / band);
+          // Unrotated labels are truncated to their slot ("Savi…") rather
+          // than thinned, so every category keeps its initial characters.
+          // Only when a slot can't hold even two of them (a lone "…" reads
+          // worse than a gap) are labels thinned -- to the smallest step
+          // whose slot can, truncating those too, instead of a step wide
+          // enough for the longest label in full. The slot is the full tick
+          // spacing, not the (padded) bar band.
+          if (labelRotation === 0 && options.labels?.overflow !== 'hide') {
+            const spacing = Math.abs((scale as CategoryScale).fullStep());
+            const minSlot = renderer.measureText('Ab…', style).width;
+            const step = Math.max(requestedStep, Math.ceil((minSlot + 6) / spacing));
+            if (step < labelStep) {
+              labelStep = step;
+              this.fitWidth = spacing * step - 6;
+            }
+          }
+        }
       }
     }
 
@@ -476,7 +499,11 @@ export class Axis {
   }
 
   private fitLabel(text: string, style: Record<string, string>): string | undefined {
-    const maxWidth = this.cfg.options.labels?.maxWidth;
+    const configured = this.cfg.options.labels?.maxWidth;
+    const maxWidth =
+      configured && this.fitWidth !== undefined
+        ? Math.min(configured, this.fitWidth)
+        : (configured || this.fitWidth);
     if (!maxWidth || this.cfg.renderer.measureText(text, style).width <= maxWidth)
       return text;
     if (this.cfg.options.labels?.overflow === "hide") return undefined;

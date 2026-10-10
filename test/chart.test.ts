@@ -574,6 +574,45 @@ describe('FacetViz rendering', () => {
     expect(chart.series[2].visible).toBe(false);
   });
 
+  it('draws a colour scale for a run of series and toggles them together', () => {
+    const el = container();
+    const chart = new FacetViz(el, {
+      chart: { type: 'column', animation: false },
+      xAxis: { categories: ['A'] },
+      legend: {
+        colorScales: [{ label: 'Quantity', min: '1', max: '3', colors: ['#ccddff', '#3366cc'], series: [0, 1] }],
+      },
+      series: [
+        { name: '1', data: [3], color: '#ccddff', showInLegend: false },
+        { name: '3', data: [5], color: '#3366cc', showInLegend: false },
+        { name: 'Total', data: [8] },
+      ],
+    });
+
+    expect(chart.hasLegend).toBe(true);
+    expect(chart.legendItems.map((item) => item.label)).toEqual(['Quantity', 'Total']);
+    const scale = el.querySelector('.facet-legend-scale')!;
+    expect([...scale.querySelectorAll('text')].map((t) => t.textContent)).toEqual(['Quantity', '1', '3']);
+    expect([...scale.querySelectorAll('stop')].map((s) => s.getAttribute('stop-color'))).toEqual(['#ccddff', '#3366cc']);
+
+    scale.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(chart.series.map((s) => s.visible)).toEqual([false, false, true]);
+    el.querySelector('.facet-legend-scale')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(chart.series.map((s) => s.visible)).toEqual([true, true, true]);
+  });
+
+  it('shows a legend for a lone colour scale', () => {
+    const el = container();
+    const chart = new FacetViz(el, {
+      chart: { type: 'column', animation: false },
+      xAxis: { categories: ['A'] },
+      legend: { colorScales: [{ min: 'low', max: 'high', colors: ['#eee', '#333'], series: [0] }] },
+      series: [{ name: 'Only', data: [3], showInLegend: false }],
+    });
+    expect(chart.hasLegend).toBe(true);
+    expect(el.querySelectorAll('.facet-legend-scale').length).toBe(1);
+  });
+
   it('applies itemStyle attributes to legend text', () => {
     const el = container();
     new FacetViz(el, {

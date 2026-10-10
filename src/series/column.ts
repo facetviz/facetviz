@@ -30,7 +30,21 @@ export interface ColumnOptions {
    * bar's shorter side. `0`/unset keeps the plain rectangular bar.
    */
   borderRadius?: number;
+  /**
+   * Fraction (0..0.95) of each category's width left empty between
+   * neighbouring categories (default 0.2). Cartesian columns and bars only.
+   */
+  groupPadding?: number;
+  /**
+   * Fraction (0..0.95) of each bar's slot within its category left empty,
+   * i.e. the gap between bars of the same category (default 0.1). Ignored
+   * when an explicit `columnWidth` is set. Cartesian columns and bars only.
+   */
+  pointPadding?: number;
 }
+
+const clampPadding = (v: number | undefined, fallback: number) =>
+  v == null || !Number.isFinite(v) ? fallback : Math.min(0.95, Math.max(0, v));
 
 /** Rect path with only the two corners on `side` rounded; the opposite pair
  *  stays square. `side` names the edge whose corners get rounded. */
@@ -94,8 +108,12 @@ export class ColumnSeries extends BaseSeries {
       class: `facet-series facet-column ${this.name}`,
     });
 
-    const band = catScale.bandwidth();
+    const band =
+      this.options.groupPadding != null && typeof catScale.fullStep === "function"
+        ? Math.abs(catScale.fullStep()) * (1 - clampPadding(this.options.groupPadding, 0.2))
+        : catScale.bandwidth();
     const subWidth = band / groupCount;
+    const pointPadding = clampPadding(this.options.pointPadding, 0.1);
 
     for (const p of this.points) {
       const [loVal, hiVal] = this.valuePair(p);
@@ -103,7 +121,7 @@ export class ColumnSeries extends BaseSeries {
 
       const vLo = valScale.scale(loVal);
       const vHi = valScale.scale(hiVal);
-      const max_colWidth = Math.max(1, subWidth * 0.9);
+      const max_colWidth = Math.max(1, subWidth * (1 - pointPadding));
       // Falling back to max_colWidth already scales with chart size for
       // free (it's a share of bandwidth(), itself proportional to the
       // plot's live pixel size) -- an author's own explicit columnWidth/

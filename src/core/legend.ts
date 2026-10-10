@@ -17,6 +17,8 @@ export interface LegendItem {
   label: string;
   color: string;
   visible: boolean;
+  /** Draw a gradient bar from `min` to `max` instead of a swatch. */
+  scale?: { min: string; max: string; colors: string[] };
 }
 
 export interface LegendConfig {
@@ -33,6 +35,10 @@ export interface LegendConfig {
 }
 
 const SWATCH = 12;
+/** Gradient bar of a colour-scale item. */
+const SCALE_BAR_WIDTH = 96;
+const SCALE_BAR_HEIGHT = 10;
+let scaleGradientId = 0;
 const DEFAULT_SYMBOL_PADDING = 6;
 const DEFAULT_ITEM_GAP = 18;
 const DEFAULT_ROW_GAP = 6;
@@ -121,9 +127,20 @@ export class Legend {
       DEFAULT_SYMBOL_PADDING,
     );
     const itemGap = nonNegative(options.itemGap, DEFAULT_ITEM_GAP);
-    return items.map(
-      (it) => SWATCH + symbolPadding + measureLabelWidth(it.label, fontSize, fontFamily) + itemGap,
-    );
+    return items.map((it) => Legend.contentWidth(it, symbolPadding, fontSize, fontFamily) + itemGap);
+  }
+
+  /** Width of an item without the gap after it. */
+  private static contentWidth(
+    it: LegendItem,
+    symbolPadding: number,
+    fontSize: number,
+    fontFamily: string | undefined,
+  ): number {
+    const text = (t: string) => measureLabelWidth(t, fontSize, fontFamily);
+    if (!it.scale) return SWATCH + symbolPadding + text(it.label);
+    return (it.label ? text(it.label) + symbolPadding * 2 : 0) +
+      text(it.scale.min) + symbolPadding + SCALE_BAR_WIDTH + symbolPadding + text(it.scale.max);
   }
 
   private static rows(
@@ -170,16 +187,15 @@ export class Legend {
     spacingScale = 1,
   ): number {
     const { fontSize, fontFamily } = Legend.metrics(options);
-    const longest = items.reduce(
-      (m, it) => Math.max(m, measureLabelWidth(it.label, fontSize, fontFamily)),
-      0,
-    );
     const symbolPadding = nonNegative(
       options.symbolPadding,
       DEFAULT_SYMBOL_PADDING,
     );
-    return SWATCH + symbolPadding +
-      longest +
+    const widest = items.reduce(
+      (m, it) => Math.max(m, Legend.contentWidth(it, symbolPadding, fontSize, fontFamily)),
+      0,
+    );
+    return widest +
       legendPadding(options) * 2 +
       legendMargin(options, placement, spacingScale);
   }
@@ -203,6 +219,18 @@ export class Legend {
     const visibleTextDecoration = itemStyle['text-decoration'] ?? 'none';
     const centerY = y + lineHeight / 2;
     const item = renderer.group({ class: 'facet-legend-item', style: 'cursor:pointer' }, g);
+    item.addEventListener('click', () => onToggle(index));
+    const textAttrs = {
+      ...FONTS.legend,
+      ...itemStyle,
+      fill: it.visible ? visibleFill : THEME.legend.hiddenColor,
+      'text-decoration': it.visible ? visibleTextDecoration : 'line-through',
+      'dominant-baseline': itemStyle['dominant-baseline'] ?? 'middle',
+    };
+    if (it.scale) {
+      this.drawScale(item, it, x, centerY, symbolPadding, textAttrs);
+      return;
+    }
     renderer.create('rect', {
       x, y: centerY - SWATCH / 2, width: SWATCH, height: SWATCH, rx: 2,
       fill: it.visible ? it.color : THEME.legend.hiddenColor,
@@ -215,7 +243,53 @@ export class Legend {
       'dominant-baseline': itemStyle['dominant-baseline'] ?? 'middle',
     }, item);
     label.style.userSelect = 'none';
-    item.addEventListener('click', () => onToggle(index));
+  }
+
+  /** `label  min [gradient bar] max`. */
+  private drawScale(
+    item: SVGGElement,
+    it: LegendItem,
+    x: number,
+    centerY: number,
+    gap: number,
+    textAttrs: Record<string, string>,
+  ): void {
+    const { renderer, options } = this.cfg;
+    const { fontSize, fontFamily } = Legend.metrics(options);
+    const scale = it.scale!;
+    item.classList.add('facet-legend-scale');
+    let cx = x;
+    const text = (t: string) => {
+      const el = renderer.text(t, cx, centerY, textAttrs, item);
+      el.style.userSelect = 'none';
+      cx += measureLabelWidth(t, fontSize, fontFamily);
+    };
+    if (it.label) {
+      text(it.label);
+      cx += gap * 2;
+    }
+    text(scale.min);
+    cx += gap;
+    const colors = scale.colors.length ? scale.colors : [it.color];
+    let fill = THEME.legend.hiddenColor;
+    if (it.visible) {
+      const id = `facet-legend-scale-${++scaleGradientId}`;
+      const defs = renderer.create('defs', {}, item);
+      const gradient = renderer.create('linearGradient', { id, x1: 0, y1: 0, x2: 1, y2: 0 }, defs);
+      colors.forEach((color, i) =>
+        renderer.create('stop', {
+          offset: colors.length > 1 ? i / (colors.length - 1) : 0,
+          'stop-color': color,
+        }, gradient),
+      );
+      fill = `url(#${id})`;
+    }
+    renderer.create('rect', {
+      x: cx, y: centerY - SCALE_BAR_HEIGHT / 2, width: SCALE_BAR_WIDTH, height: SCALE_BAR_HEIGHT, rx: 2,
+      fill,
+    }, item);
+    cx += SCALE_BAR_WIDTH + gap;
+    text(scale.max);
   }
 
   private renderHorizontal(g: SVGGElement): void {

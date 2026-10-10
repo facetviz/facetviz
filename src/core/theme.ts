@@ -139,19 +139,34 @@ const FONT_SCALE_REFERENCE_PX = Math.sqrt(640 * 400);
 const FONT_SCALE_MIN = 0.7;
 const FONT_SCALE_MAX = 1.6;
 
+// Chrome does not shrink linearly below the reference, though: the authored
+// sizes (11px axis and data labels) are already the smallest that read
+// comfortably, so scaling them down for an ordinary dashboard tile (~400x300,
+// ratio ~0.69) printed 7-8px text beside the same chart at 11px in a
+// full-width view. Between this size and the reference, chrome stays at its
+// authored size; only charts smaller than it -- thumbnails, narrow tiles --
+// shrink, proportionally from here down to the floor.
+const FONT_SCALE_FULL_SIZE_PX = Math.sqrt(320 * 240);
+
+function geometricSize(width: number, height: number): number {
+  return Math.sqrt(Math.max(0, width) * Math.max(0, height));
+}
+
 /** Proportional size of `width` x `height` against the reference chart. */
 function sizeRatio(width: number, height: number): number {
-  const area = Math.max(0, width) * Math.max(0, height);
-  return Math.sqrt(area) / FONT_SCALE_REFERENCE_PX;
+  return geometricSize(width, height) / FONT_SCALE_REFERENCE_PX;
 }
 
 /**
- * Proportional font-size multiplier for a chart of this pixel size, clamped
- * so a thumbnail-sized chart keeps legible (if small) chrome and a very large
- * one doesn't blow up its chrome past readability.
+ * Font-size multiplier for a chart of this pixel size: grows past the
+ * reference size, holds at 1 down to `FONT_SCALE_FULL_SIZE_PX`, then shrinks
+ * -- clamped so a thumbnail-sized chart keeps legible (if small) chrome and a
+ * very large one doesn't blow up its chrome past readability.
  */
 export function chartFontScale(width: number, height: number): number {
-  return Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, sizeRatio(width, height)));
+  const size = geometricSize(width, height);
+  if (size >= FONT_SCALE_REFERENCE_PX) return Math.min(FONT_SCALE_MAX, size / FONT_SCALE_REFERENCE_PX);
+  return Math.max(FONT_SCALE_MIN, Math.min(1, size / FONT_SCALE_FULL_SIZE_PX));
 }
 
 // A positioned text is laid out *beside* the plot rather than inside the

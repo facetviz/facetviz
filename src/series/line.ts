@@ -7,6 +7,8 @@ import { drawMarker } from './marker.js';
 import { drawPointLabels } from './data-label.js';
 import { polarPoint } from "./polar.js";
 
+let blendGradientId = 0;
+
 export class LineSeries extends BaseSeries {
   override capabilities(): SeriesCapabilities {
     return { grouped: false, cartesian: true, stackable: true };
@@ -62,9 +64,22 @@ export class LineSeries extends BaseSeries {
 
   override render(ctx: SeriesRenderContext): void {
     const { renderer } = ctx;
-    const g = renderer.group({ class: `facet-series facet-line ${this.name}` }, renderer.root);
+    const opacity = this.options.opacity;
+    const g = renderer.group(
+      {
+        class: `facet-series facet-line ${this.name}`,
+        ...(typeof opacity === 'number' && Number.isFinite(opacity) ? { opacity: Math.min(1, Math.max(0, opacity)) } : {}),
+      },
+      renderer.root,
+    );
     const segments = this.pixelSegments(ctx);
     const data = segments.flat();
+    if (this.options.blendPointColors === true && !ctx.polar) {
+      this.renderBlended(ctx, g, segments);
+      this.renderMarkers(ctx, g, data);
+      drawPointLabels(ctx.renderer, g, this.options.dataLabels, this.name, data, this.color);
+      return;
+    }
     for (const segment of segments) {
       const points =
         ctx.polar && !ctx.inverted && segments.length === 1 && segment.length > 2
@@ -77,11 +92,51 @@ export class LineSeries extends BaseSeries {
         'stroke-width': this.options.lineWidth ?? this.options.size ?? 2,
         'stroke-linejoin': 'round',
         'stroke-linecap': 'round',
+        ...(this.options.dashStyle ? { 'stroke-dasharray': this.options.dashStyle } : {}),
       }, g);
     }
 
     this.renderMarkers(ctx, g, data);
     drawPointLabels(ctx.renderer, g, this.options.dataLabels, this.name, data, this.color);
+  }
+
+  /**
+   * Straight segments, each shading from its start point's color to its end
+   * point's (points without a color use the series color).
+   */
+  private renderBlended(ctx: SeriesRenderContext, g: SVGGElement, segments: Array<Array<{ pt: Pt; p: Point }>>): void {
+    const { renderer } = ctx;
+    let defs: SVGElement | null = null;
+    const width = this.options.lineWidth ?? this.options.size ?? 2;
+    for (const segment of segments) {
+      for (let i = 1; i < segment.length; i++) {
+        const a = segment[i - 1];
+        const b = segment[i];
+        const from = a.p.color ?? this.color;
+        const to = b.p.color ?? this.color;
+        let stroke = from;
+        if (from !== to) {
+          defs ??= renderer.create('defs', {}, g);
+          const id = `facet-line-blend-${++blendGradientId}`;
+          const gradient = renderer.create(
+            'linearGradient',
+            { id, gradientUnits: 'userSpaceOnUse', x1: a.pt.x, y1: a.pt.y, x2: b.pt.x, y2: b.pt.y },
+            defs,
+          );
+          renderer.create('stop', { offset: 0, 'stop-color': from }, gradient);
+          renderer.create('stop', { offset: 1, 'stop-color': to }, gradient);
+          stroke = `url(#${id})`;
+        }
+        renderer.create('path', {
+          d: linePath([a.pt, b.pt]),
+          fill: 'none',
+          stroke,
+          'stroke-width': width,
+          'stroke-linecap': 'round',
+          ...(this.options.dashStyle ? { 'stroke-dasharray': this.options.dashStyle } : {}),
+        }, g);
+      }
+    }
   }
 
   protected renderMarkers(
@@ -97,7 +152,8 @@ export class LineSeries extends BaseSeries {
         el = drawMarker(ctx.renderer, g, pt.x, pt.y, {
           symbol: marker!.symbol ?? 'circle',
           radius: marker!.radius ?? 4,
-          fill: marker!.fillColor ?? this.color,
+          // A point's own color wins, as for every other point-colored mark.
+          fill: p.color ?? marker!.fillColor ?? this.color,
           stroke: marker!.lineColor ?? '#fff',
           strokeWidth: marker!.lineWidth ?? 1,
           width: marker!.width,

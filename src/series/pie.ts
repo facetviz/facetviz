@@ -33,6 +33,12 @@ export interface PieCenterLabelOptions {
 export interface PieSeriesOptions {
   /** Inner radius as a percentage string, e.g. '60%' (makes a donut). */
   innerSize?: string;
+  /** Outer radius as a percentage of the largest radius that fits, e.g.
+   * '80%' (default '100%'). */
+  outerSize?: string;
+  /** Where the first slice starts, in degrees clockwise from 12 o'clock
+   * (default 0). */
+  startAngle?: number;
   /** Hovered-value label displayed inside the hollow centre. */
   centerLabel?: PieCenterLabelOptions;
   /**
@@ -89,6 +95,18 @@ export class PieSeries extends BaseSeries {
     return this.options.innerSize ? this.parsePercent(this.options.innerSize) : 0;
   }
 
+  private outerRatio(): number {
+    if (!this.options.outerSize) return 1;
+    const n = parseFloat(this.options.outerSize);
+    return Number.isNaN(n) ? 1 : Math.min(1, Math.max(0.1, n / 100));
+  }
+
+  /** The first slice's start: 12 o'clock, turned clockwise by `startAngle`. */
+  private startRadians(): number {
+    const deg = this.options.startAngle ?? 0;
+    return -Math.PI / 2 + ((Number.isFinite(deg) ? deg : 0) * Math.PI) / 180;
+  }
+
   private parsePercent(v: string): number {
     const n = parseFloat(v);
     return Number.isNaN(n) ? 0 : Math.min(0.95, Math.max(0, n / 100));
@@ -106,7 +124,7 @@ export class PieSeries extends BaseSeries {
     const c: PieCenter = {
       cx: plot.x + plot.width / 2,
       cy: plot.y + plot.height / 2,
-      radius: Math.max(10, Math.min(plot.width, plot.height) / 2 - margin),
+      radius: Math.max(10, (Math.min(plot.width, plot.height) / 2 - margin) * this.outerRatio()),
       margin,
       labelMode,
     };
@@ -135,7 +153,7 @@ export class PieSeries extends BaseSeries {
       return minR + (c.radius - minR) * (zMax === zMin ? 1 : (z - zMin) / (zMax - zMin));
     };
 
-    let angle = -Math.PI / 2; // start at 12 o'clock
+    let angle = this.startRadians();
     points.forEach((p) => {
       const value = p.y ?? 0;
       if (value <= 0) return;
@@ -179,7 +197,7 @@ export class PieSeries extends BaseSeries {
     if (total <= 0) return;
 
     const layout: LabelLayout = { lastY: {} };
-    let angle = -Math.PI / 2;
+    let angle = this.startRadians();
     order.forEach((g0, gi) => {
       const ps = buckets.get(g0) ?? [];
       const gVal = groupTotal(ps);

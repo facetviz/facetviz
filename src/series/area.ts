@@ -105,6 +105,7 @@ export class AreaSeries extends LineSeries {
         stroke: this.color,
         'stroke-width': this.options.lineWidth ?? this.options.size ?? 2,
         'stroke-linejoin': 'round',
+        ...(this.options.dashStyle ? { 'stroke-dasharray': this.options.dashStyle } : {}),
       }, g);
       top = [];
       bottom = [];

@@ -169,6 +169,17 @@ export interface SeriesOptions
   /** Whether this series contributes an item to the chart legend. */
   showInLegend?: boolean;
   lineWidth?: number;
+  /** Line-family and area series: SVG dash pattern for the line, e.g. '6 4'
+   * (dashed) or '1 4' (dotted). Unset draws a solid line. */
+  dashStyle?: string;
+  /** Line-family series: opacity (0..1) of the whole series -- line,
+   * markers and data labels. */
+  opacity?: number;
+  /**
+   * Line series: draw each straight segment shading from its start point's
+   * color to its end point's, so per-point colors carry along the line.
+   */
+  blendPointColors?: boolean;
   /**
    * Generic shape-size override, interpreted per series type: rect
    * width/height for bar/column-family series, or tick's line length
@@ -499,8 +510,30 @@ export interface TooltipContext {
   points?: TooltipContext[];
 }
 
+/**
+ * A gradient legend entry standing for a run of series, e.g. one series per
+ * value of a numeric field drawn in shades of one colour.
+ */
+export interface LegendColorScale {
+  /** Text before the bar. */
+  label?: string;
+  /** Labels at the low and high ends of the bar. */
+  min: string;
+  max: string;
+  /** Colours from low to high, spaced evenly along the bar. */
+  colors: string[];
+  /** Indexes of the series the scale stands for; clicking it toggles them together. */
+  series?: number[];
+}
+
 export interface LegendOptions {
   enabled?: boolean;
+  /**
+   * Gradient entries drawn before the series items. Hide the series they
+   * stand for with `showInLegend: false`. A legend with a scale renders even
+   * with a single entry.
+   */
+  colorScales?: LegendColorScale[];
   /** Horizontal alignment (top/bottom legends) or which side (vertical legends). */
   align?: "left" | "center" | "right";
   /** Vertical placement for a horizontal legend. */
