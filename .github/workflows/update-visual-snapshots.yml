@@ -1,0 +1,28 @@
+name: Update visual snapshots
+
+# Run manually from the Actions tab to regenerate the Playwright baselines on
+# the same Linux image the "Visual regression" workflow uses, then download the
+# "visual-snapshots" artifact and commit it into test/visual/__screenshots__/.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:visual:update
+      - uses: actions/upload-artifact@v4
+        with:
+          name: visual-snapshots
+          path: test/visual/__screenshots__
+          retention-days: 7
