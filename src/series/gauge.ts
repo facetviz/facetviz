@@ -27,8 +27,9 @@ export interface GaugeSeriesOptions {
   color?: string;
   /** Background track colour (default: theme grid line colour). */
   trackColor?: string;
-  /** Band thickness in pixels (default: auto ~16% of radius). */
-  thickness?: number;
+  /** Band thickness: pixels, or a percentage of the radius such as `'20%'`
+   * (default: auto ~18% of radius). */
+  thickness?: number | string;
   /** Give open track and value-band ends circular caps (default: false). */
   roundedEnds?: boolean;
   /** Arc start in degrees (default 180, at 9 o'clock). */
@@ -126,6 +127,19 @@ function pointOnCircle(
   return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
 }
 
+/** Band thickness in pixels: a number as is, a percentage string of the
+ * radius, else the automatic ~18% (at least 4px). */
+function gaugeThickness(thickness: number | string | undefined, radius: number): number {
+  if (typeof thickness === "number" && Number.isFinite(thickness)) return thickness;
+  if (typeof thickness === "string") {
+    const m = /^\s*(\d+(?:\.\d+)?)\s*%\s*$/.exec(thickness);
+    if (m) return (radius * Number(m[1])) / 100;
+    const px = Number(thickness);
+    if (thickness.trim() && Number.isFinite(px)) return px;
+  }
+  return Math.max(4, radius * 0.18);
+}
+
 export class GaugeSeries extends BaseSeries {
   override capabilities(): SeriesCapabilities {
     return { grouped: false, cartesian: false, stackable: false };
@@ -206,7 +220,7 @@ export class GaugeSeries extends BaseSeries {
     const radius = isFullCircle
       ? Math.min(plot.width, plot.height) * 0.42
       : Math.min(plot.width * 0.42, plot.height * 0.55);
-    const requestedThickness = opts.thickness ?? Math.max(4, radius * 0.18);
+    const requestedThickness = gaugeThickness(opts.thickness, radius);
     const thickness = Math.min(requestedThickness, radius * 0.8);
     const rOuter = radius;
     const rInner = radius - thickness;

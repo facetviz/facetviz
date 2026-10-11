@@ -419,6 +419,28 @@ describe('FacetViz rendering', () => {
     expect(el.querySelectorAll('.facet-gauge-value-cap')).toHaveLength(2);
   });
 
+  it('sizes the gauge band in pixels or as a percentage of the radius', () => {
+    const band = (thickness: number | string) => {
+      const el = container();
+      new FacetViz(el, {
+        chart: { type: 'gauge', animation: false },
+        series: [{ thickness, min: 0, max: 100, data: [100] }],
+      });
+      // A full band runs from the left end of the dial to the right: its outer
+      // arc ends at x = cx + r, and its inner edge starts the band's width in.
+      const d = el.querySelectorAll<SVGPathElement>('.facet-gauge-item path')[1].getAttribute('d')!;
+      const nums = /^M ([\d.-]+) [\d.-]+ A [^ ]+ [^ ]+ 0 \d 1 ([\d.-]+) [\d.-]+ L ([\d.-]+)/.exec(d)!.map(Number);
+      const [, left, right, inner] = nums;
+      return { width: right - inner, radius: (right - left) / 2 };
+    };
+    expect(band(12).width).toBeCloseTo(12, 5);
+    const quarter = band('25%');
+    expect(quarter.width).toBeCloseTo(quarter.radius / 4, 5);
+    // Past 80% of the radius the band is capped, as for pixels.
+    const thick = band('95%');
+    expect(thick.width).toBeCloseTo(thick.radius * 0.8, 5);
+  });
+
   it('positions gauge names at the requested item edge or centre', () => {
     const renderNameY = (namePosition: 'top' | 'center' | 'bottom') => {
       const el = container();
