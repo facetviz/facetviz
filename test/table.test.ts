@@ -671,6 +671,62 @@ describe("FacetTable", () => {
     expect(visibleNames()).toEqual(["Charlie", "Alpha"]);
   });
 
+  it("draws a custom sort indicator from path data", () => {
+    const element = container();
+    new FacetTable(element, {
+      rows: [{ name: "B" }, { name: "A" }],
+      columns: [{ key: "name", sortable: true }],
+      sortIndicator: {
+        paths: { asc: ["M4 10l3-4 3 4z"], desc: ["M4 4l3 4 3-4z"], none: ["M4 6l3-3 3 3z", "M4 8l3 3 3-3z"] },
+        size: 14,
+        unsortedOpacity: 0.4,
+      },
+      style: { sortIndicator: { marginLeft: 2 } },
+    });
+    const indicator = () => element.querySelector<SVGSVGElement>("svg.facet-table-sort-indicator")!;
+    const paths = () => [...indicator().querySelectorAll("path")].map((path) => path.getAttribute("d"));
+
+    expect(indicator().getAttribute("width")).toBe("14");
+    expect(indicator().style.width).toBe("14px");
+    expect(indicator().hasAttribute("stroke")).toBe(false);
+    expect(indicator().style.opacity).toBe("0.4");
+    expect(indicator().style.marginLeft).toBe("2px");
+    expect(indicator().dataset.direction).toBe("none");
+    expect(paths()).toEqual(["M4 6l3-3 3 3z", "M4 8l3 3 3-3z"]);
+
+    element.querySelector<HTMLButtonElement>(".facet-table-sort-button")!.click();
+    expect(indicator().dataset.direction).toBe("asc");
+    expect(indicator().style.opacity).toBe("1");
+    expect(paths()).toEqual(["M4 10l3-4 3 4z"]);
+
+    element.querySelector<HTMLButtonElement>(".facet-table-sort-button")!.click();
+    expect(paths()).toEqual(["M4 4l3 4 3-4z"]);
+  });
+
+  it("draws a sort indicator returned by a function", () => {
+    const element = container();
+    const render = vi.fn((direction?: "asc" | "desc") => {
+      const icon = document.createElement("span");
+      icon.textContent = direction === "asc" ? "↑" : direction === "desc" ? "↓" : "↕";
+      return icon;
+    });
+    new FacetTable(element, {
+      rows: [{ name: "B" }, { name: "A" }],
+      columns: [{ key: "name", sortable: true }],
+      sortIndicator: render,
+    });
+    const indicator = () => element.querySelector<HTMLElement>(".facet-table-sort-indicator")!;
+
+    expect(render).toHaveBeenCalledWith(undefined);
+    expect(indicator().textContent).toBe("↕");
+    expect(indicator().dataset.direction).toBe("none");
+    expect(indicator().getAttribute("aria-hidden")).toBe("true");
+
+    element.querySelector<HTMLButtonElement>(".facet-table-sort-button")!.click();
+    expect(indicator().textContent).toBe("↑");
+    expect(indicator().dataset.direction).toBe("asc");
+  });
+
   it("supports an initial direction, custom comparator, and programmatic sorting", () => {
     const element = container();
     const table = new FacetTable(element, {

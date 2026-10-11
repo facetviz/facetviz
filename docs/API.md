@@ -568,6 +568,31 @@ and updates the pagination totals. Use `filters`, `setFilter(key, value)`,
 filter value removes that column's filter. If filtering leaves no matching rows,
 the table displays `emptyText`.
 
+### Table sort indicator
+
+`sortIndicator` replaces the arrows drawn in sortable headers. Pass path data,
+drawn filled in `currentColor` (JSON-safe):
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `paths` | `{ asc: string[]; desc: string[]; none: string[] }` | — | SVG path data per state; `none` is an unsorted column. |
+| `viewBox` | `string` | `"0 0 14 14"` | Coordinate system of the paths. |
+| `size` | `number` | `16` | Rendered width and height in pixels. |
+| `unsortedOpacity` | `number` | `0.5` | Opacity of an unsorted column's icon. |
+
+or a function `(direction) => Element`, called with `"asc"`, `"desc"`, or
+`undefined`, that returns the whole icon. Either way the table adds the
+`facet-table-sort-indicator` class, `data-direction` (`asc`, `desc`, `none`),
+`aria-hidden`, and `style.sortIndicator`.
+
+```ts
+sortIndicator: {
+  paths: { asc: ["M4 10l3-4 3 4z"], desc: ["M4 4l3 4 3-4z"], none: ["M4 6l3-3 3 3z", "M4 8l3 3 3-3z"] },
+  size: 14,
+  unsortedOpacity: 0.4,
+}
+```
+
 ### Table styling
 
 `style` accepts CSS property maps for `root`, `table`, `caption`, `head`,

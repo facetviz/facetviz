@@ -548,6 +548,11 @@ For example, 20 cities x four quarters x two measures creates 160 value
 columns. Filter or pre-aggregate high-cardinality column fields before calling
 `pivotData()` when that result would be too wide to read.
 
+`sortIndicator` replaces the header sort arrows: `{paths:{asc,desc,none},viewBox?,size?,unsortedOpacity?}`
+(path data drawn filled in currentColor; defaults viewBox "0 0 14 14", size 16, unsortedOpacity 0.5) or
+`(direction)=>Element` with direction "asc" | "desc" | undefined. The table still adds class
+facet-table-sort-indicator, data-direction (asc/desc/none), aria-hidden and style.sortIndicator.
+
 `style` accepts CSS property maps. Numeric dimensional values become pixels;
 recognized unitless properties and CSS custom properties remain as supplied.
 Available slots:

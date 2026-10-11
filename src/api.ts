@@ -60,6 +60,8 @@ export type {
   FacetTablePaginationLabels,
   FacetTablePaginationOptions,
   FacetTableSortDirection,
+  FacetTableSortIndicator,
+  FacetTableSortIndicatorPaths,
   FacetTableColumnSortOptions,
   FacetTableSortState,
   FacetTableColumnFilterOptions,

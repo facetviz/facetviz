@@ -85,6 +85,27 @@ export interface FacetTableStyleOptions<Row extends FacetTableRow> {
 
 export type FacetTableSortDirection = "asc" | "desc";
 
+/** SVG path data for each sort state, drawn filled in place of the default arrows. */
+export interface FacetTableSortIndicatorPaths {
+  /** Paths per state; `none` is the unsorted column. */
+  paths: { asc: string[]; desc: string[]; none: string[] };
+  /** Coordinate system of the paths. Default `0 0 14 14`. */
+  viewBox?: string;
+  /** Rendered width and height in pixels. Default `16`. */
+  size?: number;
+  /** Opacity of an unsorted column's icon. Default `0.5`. */
+  unsortedOpacity?: number;
+}
+
+/**
+ * Replaces the header sort icon: path data (JSON-safe), or a function that
+ * returns the element for a direction (`undefined` when unsorted). The table
+ * still adds its class, `data-direction`, `aria-hidden`, and `style.sortIndicator`.
+ */
+export type FacetTableSortIndicator =
+  | FacetTableSortIndicatorPaths
+  | ((direction: FacetTableSortDirection | undefined) => Element);
+
 export interface FacetTableColumnSortOptions<Row extends FacetTableRow> {
   /** Apply this sort when the table is first created. */
   initialDirection?: FacetTableSortDirection;
@@ -311,6 +332,8 @@ export interface FacetTableOptions<Row extends FacetTableRow> {
   appearance?: FacetTableAppearanceOptions;
   /** `true` uses defaults; an object customizes paging; omitted/false disables it. */
   pagination?: boolean | FacetTablePaginationOptions;
+  /** Custom header sort icon. Defaults to stroked arrows. */
+  sortIndicator?: FacetTableSortIndicator;
 }
 
 interface PendingChart<Row extends FacetTableRow> {
@@ -671,10 +694,12 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
         button.append(document.createTextNode(column.header ?? column.key));
         applyStyle(button, this.options.style?.sortButton);
 
-        const indicator = createSortIndicator(direction);
+        const indicator = createSortIndicator(direction, this.options.sortIndicator);
         indicator.setAttribute("class", "facet-table-sort-indicator");
-        indicator.style.opacity = direction ? "1" : "0.5";
-        applyStyle(indicator, this.options.style?.sortIndicator);
+        indicator.setAttribute("aria-hidden", "true");
+        if (indicator instanceof HTMLElement || indicator instanceof SVGElement)
+          indicator.dataset.direction = direction ?? "none";
+        applyStyle(indicator as HTMLElement | SVGElement, this.options.style?.sortIndicator);
         button.appendChild(indicator);
         button.addEventListener("click", () => this.toggleSort(column));
         controls.appendChild(button);
@@ -1708,32 +1733,38 @@ function isDirectCellStyleProperty(property: string): boolean {
     property in document.documentElement.style;
 }
 
+const DEFAULT_SORT_PATHS = {
+  asc: ["M4 10l4-4 4 4z"],
+  desc: ["M4 6l4 4 4-4z"],
+  none: ["M4 6l4-3 4 3z", "M4 10l4 3 4-3z"],
+};
+
 function createSortIndicator(
   direction: FacetTableSortDirection | undefined,
-): SVGSVGElement {
+  custom: FacetTableSortIndicator | undefined,
+): Element {
+  if (typeof custom === "function") return custom(direction);
+  const size = custom?.size ?? 16;
   const namespace = "http://www.w3.org/2000/svg";
   const indicator = document.createElementNS(namespace, "svg");
-  indicator.setAttribute("viewBox", "0 0 14 14");
-  indicator.setAttribute("width", "16");
-  indicator.setAttribute("height", "16");
+  indicator.setAttribute("viewBox", custom?.viewBox ?? "0 0 14 14");
+  indicator.setAttribute("width", String(size));
+  indicator.setAttribute("height", String(size));
   indicator.setAttribute("fill", "currentColor");
-  indicator.setAttribute("stroke", "currentColor");
-  indicator.setAttribute("stroke-width", "1.8");
-  indicator.setAttribute("stroke-linecap", "round");
-  indicator.setAttribute("stroke-linejoin", "round");
-  indicator.setAttribute("aria-hidden", "true");
+  if (!custom) {
+    indicator.setAttribute("stroke", "currentColor");
+    indicator.setAttribute("stroke-width", "1.8");
+    indicator.setAttribute("stroke-linecap", "round");
+    indicator.setAttribute("stroke-linejoin", "round");
+  }
   indicator.setAttribute("focusable", "false");
-  indicator.dataset.direction = direction ?? "none";
   indicator.style.display = "block";
-  indicator.style.width = "16px";
-  indicator.style.height = "16px";
-  indicator.style.flex = "0 0 16px";
+  indicator.style.width = `${size}px`;
+  indicator.style.height = `${size}px`;
+  indicator.style.flex = `0 0 ${size}px`;
+  indicator.style.opacity = direction ? "1" : String(custom?.unsortedOpacity ?? 0.5);
 
-  const paths = direction === "asc"
-    ? ["M4 10l4-4 4 4z"]
-    : direction === "desc"
-      ? ["M4 6l4 4 4-4z"]
-      : ["M4 6l4-3 4 3z", "M4 10l4 3 4-3z"];
+  const paths = (custom?.paths ?? DEFAULT_SORT_PATHS)[direction ?? "none"];
   for (const pathData of paths) {
     const path = document.createElementNS(namespace, "path");
     path.setAttribute("d", pathData);
