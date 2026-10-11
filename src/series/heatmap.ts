@@ -61,8 +61,13 @@ export class HeatmapSeries extends BaseSeries {
       }, g);
       // Value label if the cell is roomy enough and the chart itself isn't
       // too small for data-style labels (see `Chart.suppressDataLabels`).
-      if (!ctx.suppressDataLabels && cw > 26 && ch > 16) {
-        renderer.text(String(value), x + cw / 2, y + ch / 2, {
+      // `dataLabels.enabled: false` hides them; a `formatter` writes them.
+      const dl = this.options.dataLabels;
+      if (dl?.enabled !== false && !ctx.suppressDataLabels && cw > 26 && ch > 16) {
+        const text = dl?.formatter
+          ? dl.formatter({ x: p.x ?? '', y: value, point: p.options, series: this.name, name: p.name, index: p.index, color: p.color ?? colorFor(value) })
+          : String(value);
+        renderer.text(text, x + cw / 2, y + ch / 2, {
           'text-anchor': 'middle', 'dominant-baseline': 'middle', ...FONTS.dataLabel,
           fill: (value - min) / (max - min || 1) > 0.6 ? '#fff' : shade(hi, -0.4), 'font-size': scaledFontPx(10),
         }, g);

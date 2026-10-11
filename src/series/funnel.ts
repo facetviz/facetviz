@@ -35,9 +35,17 @@ export class FunnelSeries extends BaseSeries {
       const poly = `${cx - topW / 2},${yTop} ${cx + topW / 2},${yTop} ${cx + botW / 2},${yBot} ${cx - botW / 2},${yBot}`;
 
       const el = renderer.create('polygon', { points: poly, fill: color, stroke: '#ffffff', 'stroke-width': 1, class: 'facet-point' }, g);
-      renderer.text(`${p.name ?? p.x}: ${p.y}`, cx, (yTop + yBot) / 2, {
-        'text-anchor': 'middle', 'dominant-baseline': 'middle', ...FONTS.dataLabel, fill: '#ffffff', 'font-weight': '600',
-      }, g);
+      // `dataLabels.enabled: false` hides the stage labels; a `formatter`
+      // writes the whole label (default "name: value").
+      const dl = this.options.dataLabels;
+      if (dl?.enabled !== false) {
+        const text = dl?.formatter
+          ? dl.formatter({ x: p.x ?? i, y: p.y ?? undefined, point: p.options, series: this.name, name: p.name, index: p.index, color })
+          : `${p.name ?? p.x}: ${p.y}`;
+        renderer.text(text, cx, (yTop + yBot) / 2, {
+          'text-anchor': 'middle', 'dominant-baseline': 'middle', ...FONTS.dataLabel, fill: '#ffffff', 'font-weight': '600',
+        }, g);
+      }
 
       ctx.registerHover(el, p);
       el.addEventListener('click', (e: Event) => ctx.onPointEvent('click', p, e));

@@ -26,6 +26,37 @@ describe('configuration option wiring', () => {
     vi.restoreAllMocks();
   });
 
+  it('formats or hides heatmap cell and funnel stage labels through dataLabels', () => {
+    const texts = (el: HTMLElement, cls: string) => [...el.querySelectorAll(`.${cls} text`)].map((t) => t.textContent);
+    const cells = [{ x: 'a', y: 'r', value: 1500 }, { x: 'b', y: 'r', value: 2500 }];
+    const heat = container();
+    new FacetViz(heat, { chart: { ...baseChart, type: 'heatmap' }, series: [{ type: 'heatmap', data: cells }] });
+    expect(texts(heat, 'facet-heatmap')).toContain('1500');
+    const formatted = container();
+    new FacetViz(formatted, {
+      chart: { ...baseChart, type: 'heatmap' },
+      series: [{ type: 'heatmap', data: cells, dataLabels: { formatter: (c) => `${Number(c.y) / 1000}K` } }],
+    });
+    expect(texts(formatted, 'facet-heatmap')).toEqual(expect.arrayContaining(['1.5K', '2.5K']));
+    const hidden = container();
+    new FacetViz(hidden, { chart: { ...baseChart, type: 'heatmap' }, series: [{ type: 'heatmap', data: cells, dataLabels: { enabled: false } }] });
+    expect(texts(hidden, 'facet-heatmap')).not.toContain('1500');
+
+    const stages = [{ name: 'Visits', y: 1200 }, { name: 'Orders', y: 300 }];
+    const funnel = container();
+    new FacetViz(funnel, { chart: { ...baseChart, type: 'funnel' }, series: [{ type: 'funnel', data: stages }] });
+    expect(texts(funnel, 'facet-funnel')).toEqual(['Visits: 1200', 'Orders: 300']);
+    const named = container();
+    new FacetViz(named, {
+      chart: { ...baseChart, type: 'funnel' },
+      series: [{ type: 'funnel', data: stages, dataLabels: { formatter: (c) => `${c.name} (${c.index})` } }],
+    });
+    expect(texts(named, 'facet-funnel')).toEqual(['Visits (0)', 'Orders (1)']);
+    const none = container();
+    new FacetViz(none, { chart: { ...baseChart, type: 'funnel' }, series: [{ type: 'funnel', data: stages, dataLabels: { enabled: false } }] });
+    expect(texts(none, 'facet-funnel')).toEqual([]);
+  });
+
   it('fires load once after the initial render and render on every render', () => {
     const load = vi.fn();
     const render = vi.fn();
