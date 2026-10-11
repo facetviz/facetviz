@@ -183,6 +183,7 @@ export class ColumnSeries extends BaseSeries {
           {
             d: roundedBarPath(rect, borderRadius, side),
             fill,
+            ...this.fillOpacityAttr(),
             class: "facet-point",
           },
           g,
@@ -190,7 +191,7 @@ export class ColumnSeries extends BaseSeries {
       } else {
         el = renderer.create(
           "rect",
-          { ...rect, rx: 1, fill, class: "facet-point" },
+          { ...rect, rx: 1, fill, ...this.fillOpacityAttr(), class: "facet-point" },
           g,
         );
       }
@@ -199,6 +200,15 @@ export class ColumnSeries extends BaseSeries {
 
       this.drawDataLabel(ctx, p, rect, g);
     }
+  }
+
+  /** The series' `opacity`, clamped to 0..1, for each bar's fill only,
+   *  so data labels stay fully opaque. */
+  private fillOpacityAttr(): { "fill-opacity"?: number } {
+    const opacity = this.options.opacity;
+    return typeof opacity === "number" && Number.isFinite(opacity)
+      ? { "fill-opacity": Math.min(1, Math.max(0, opacity)) }
+      : {};
   }
 
   private renderPolar(ctx: SeriesRenderContext): void {
@@ -235,6 +245,7 @@ export class ColumnSeries extends BaseSeries {
               end,
             ),
             fill: p.color ?? this.color,
+            ...this.fillOpacityAttr(),
             class:
               "facet-point facet-polar-sector facet-polar-inverted-sector",
           },
@@ -298,6 +309,7 @@ export class ColumnSeries extends BaseSeries {
         {
           d: annularSectorPath(center.x, center.y, inner, outer, start, end),
           fill: p.color ?? this.color,
+          ...this.fillOpacityAttr(),
           class: "facet-point facet-polar-sector",
         },
         group,

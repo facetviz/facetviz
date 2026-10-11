@@ -174,7 +174,8 @@ export interface SeriesOptions
    * (dashed) or '1 4' (dotted). Unset draws a solid line. */
   dashStyle?: string;
   /** Line-family series: opacity (0..1) of the whole series -- line,
-   * markers and data labels. */
+   * markers and data labels. Column/bar series: opacity of the bars' fill;
+   * their data labels stay fully opaque. */
   opacity?: number;
   /**
    * Line series: draw each straight segment shading from its start point's
