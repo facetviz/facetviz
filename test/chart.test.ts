@@ -287,6 +287,7 @@ describe('FacetViz rendering', () => {
       ['heatmap', [{ x: 'a', y: 'x', value: 1 }, { x: 'b', y: 'y', value: 2 }]],
       ['treegraph', [{ id: 'a', name: 'A' }, { id: 'b', parent: 'a', name: 'B' }]],
       ['sunburst', [{ id: 'a', name: 'A' }, { id: 'b', parent: 'a', name: 'B', value: 3 }]],
+      ['treemap', [{ id: 'a', name: 'A' }, { id: 'b', parent: 'a', name: 'B', value: 3 }]],
       ['sankey', [{ from: 'A', to: 'B', weight: 5 }]],
     ];
     for (const [type, data] of types) {

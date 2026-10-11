@@ -83,6 +83,7 @@ export type ChartType =
   | "bubble" // scatter with a third value (z) driving marker size
   | "radar" // line/area over categories arranged around a polar centre
   | "sunburst" // multi-level radial hierarchy
+  | "treemap" // hierarchy as nested rectangles sized by value
   | "sankey" // weighted flows between nodes
   | "calendar" // day-grid heatmap by date
   | "gantt" // duration bars per row
@@ -125,9 +126,9 @@ export interface PointOptions
   /** Third value: variable-radius pie slice weight, or bubble marker size —
    *  shared between the two, so it stays here. */
   z?: number;
-  /** Heatmap / sunburst cell or node measure — shared between the two. */
+  /** Heatmap / sunburst / treemap cell or node measure — shared between them. */
   value?: number;
-  /** Treegraph / sunburst node identity / parent link — shared between the two. */
+  /** Treegraph / sunburst / treemap node identity / parent link — shared between them. */
   id?: string;
   parent?: string;
   /** Drill-down: id of a `drilldown.series` entry to expand into on click. */

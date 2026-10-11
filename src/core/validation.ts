@@ -303,7 +303,7 @@ export function validateChartOptions(options: unknown): ChartValidationResult {
       }
     }
 
-    if (["pie", "donut", "funnel", "radialbar", "sunburst"].includes(type)) {
+    if (["pie", "donut", "funnel", "radialbar", "sunburst", "treemap"].includes(type)) {
       if (data.some((point) => (pointValue(point) ?? 1) < 0))
         add("series.value.non_negative", "error", `${base}.data`, `${type} values cannot be negative.`);
     }
@@ -314,7 +314,7 @@ export function validateChartOptions(options: unknown): ChartValidationResult {
     if (type === "candlestick") validateCandlesticks(data, base, add);
     if (type === "gantt") validateGantt(data, base, add);
     if (type === "sankey") validateSankey(data, base, add);
-    if (type === "treegraph" || type === "sunburst") validateHierarchy(data, base, add);
+    if (type === "treegraph" || type === "sunburst" || type === "treemap") validateHierarchy(data, base, add);
 
     if (type === "gauge") {
       const min = numberAt(entry, "min") ?? 0;

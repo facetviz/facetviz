@@ -1645,6 +1645,7 @@ raw array for boxplots.
 | `bubble`                        | Scatter with `z` → marker size (by area); tune with `sizeRange`.                               |
 | `radar`                         | Line/area over categories on a polar grid; multiple series overlaid.                           |
 | `sunburst`                      | Multi-level radial hierarchy from `{ id, parent, name, value }`.                               |
+| `treemap`                       | Nested rectangles sized by value from `{ id, parent, name, value }` (squarified layout).       |
 | `sankey`                        | Weighted flows from `{ from, to, weight }` links.                                              |
 | `calendar`                      | Day-grid heatmap from `{ date, value }`.                                                       |
 | `gantt`                         | Duration bar per row from `{ name, start, end }` (ms timestamps).                              |
@@ -1655,8 +1656,8 @@ raw array for boxplots.
 candlestick `{ x, open, high, low, close }`; bullet `{ name, y, target, ranges }`;
 gauge series `{ min, max, color, markers }` + one or more points
 `{ name, y, color }`; waterfall `{ x, y }` or
-`{ x, isSum: true }`; histogram raw `number[]`; treegraph / sunburst
-`{ id, parent, name, value }`; bubble `{ x, y, z }`; sankey `{ from, to, weight }`;
+`{ x, isSum: true }`; histogram raw `number[]`; treegraph / sunburst / treemap
+`{ id, parent, name, value }` (a treemap without `parent`s is one level); bubble `{ x, y, z }`; sankey `{ from, to, weight }`;
 calendar `{ date, value }`; gantt `{ name, start, end }`; variable-radius pie adds
 `z` per slice.
 
