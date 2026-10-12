@@ -31,8 +31,9 @@ export interface LabelPlacement {
   x: number;
   y: number;
   anchor: 'start' | 'middle' | 'end';
-  /** Use SVG's true vertical centering when the coordinate is a box centre. */
-  verticalAlign?: 'middle';
+  /** Use SVG's true vertical centering when the coordinate is a box centre,
+   * or hang the text below the coordinate when it is a box's top edge. */
+  verticalAlign?: 'middle' | 'hanging';
 }
 
 /**
@@ -81,7 +82,7 @@ export function drawDataLabel(
     // Approximate chip sized from the text length.
     const w = text.length * 6.5 + 8;
     const anchorX = anchor === 'start' ? place.x - 4 : anchor === 'end' ? place.x - w + 4 : place.x - w / 2;
-    const chipY = place.verticalAlign === 'middle' ? place.y - 7.5 : place.y - 11;
+    const chipY = place.verticalAlign === 'middle' ? place.y - 7.5 : place.verticalAlign === 'hanging' ? place.y - 2 : place.y - 11;
     renderer.create('rect', {
       x: anchorX, y: chipY, width: w, height: 15, rx: 3, fill: dl.backgroundColor,
     }, parent);

@@ -405,6 +405,11 @@ export class ColumnSeries extends BaseSeries {
         place = { x: rect.x + 4 + d, y: cy, anchor: "start", verticalAlign: "middle" };
       else
         place = { x: end + 4 + d, y: cy, anchor: "start", verticalAlign: "middle" }; // outside
+      // Across the bar: hang from its top edge or sit on its bottom edge.
+      if (dl.crossAlign === "start")
+        place = { ...place, y: rect.y + 1, verticalAlign: "hanging" };
+      else if (dl.crossAlign === "end")
+        place = { ...place, y: rect.y + rect.height - 2, verticalAlign: undefined };
     } else {
       const cx = rect.x + rect.width / 2;
       if (pos === "inside")
@@ -419,6 +424,11 @@ export class ColumnSeries extends BaseSeries {
       else if (pos === "base")
         place = { x: cx, y: rect.y + rect.height - 5 - d, anchor: "middle" };
       else place = { x: cx, y: rect.y - 4 - d, anchor: "middle" }; // outside
+      // Across the column: line up with its left or right edge.
+      if (dl.crossAlign === "start")
+        place = { ...place, x: rect.x + 2, anchor: "start" };
+      else if (dl.crossAlign === "end")
+        place = { ...place, x: rect.x + rect.width - 2, anchor: "end" };
     }
     drawDataLabel(ctx.renderer, parent, text, place, dl);
   }

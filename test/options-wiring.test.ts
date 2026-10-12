@@ -57,6 +57,36 @@ describe('configuration option wiring', () => {
     expect(texts(none, 'facet-funnel')).toEqual([]);
   });
 
+  it('aligns column and bar labels across the bar with crossAlign', () => {
+    const draw = (type: 'column' | 'bar', crossAlign?: 'start' | 'center' | 'end') => {
+      const el = container();
+      new FacetViz(el, {
+        chart: { ...baseChart, type },
+        xAxis: { categories: ['a'] },
+        series: [{ type, data: [5], dataLabels: { enabled: true, crossAlign } }],
+      });
+      const rect = el.querySelector<SVGRectElement>(".facet-column rect")!;
+      const label = [...el.querySelectorAll<SVGTextElement>(".facet-column text")].find((t) => t.textContent === '5')!;
+      const r = (k: string) => Number(rect.getAttribute(k));
+      return { x: r('x'), y: r('y'), w: r('width'), h: r('height'), lx: Number(label.getAttribute('x')), ly: Number(label.getAttribute('y')), anchor: label.getAttribute('text-anchor'), baseline: label.getAttribute('dominant-baseline') };
+    };
+    const left = draw('column', 'start');
+    expect(left.anchor).toBe('start');
+    expect(left.lx).toBeCloseTo(left.x + 2);
+    const right = draw('column', 'end');
+    expect(right.anchor).toBe('end');
+    expect(right.lx).toBeCloseTo(right.x + right.w - 2);
+    expect(draw('column').anchor).toBe('middle');
+
+    const top = draw('bar', 'start');
+    expect(top.baseline).toBe('hanging');
+    expect(top.ly).toBeCloseTo(top.y + 1);
+    const bottom = draw('bar', 'end');
+    expect(bottom.baseline).toBeNull();
+    expect(bottom.ly).toBeCloseTo(bottom.y + bottom.h - 2);
+    expect(draw('bar').baseline).toBe('middle');
+  });
+
   it('fires load once after the initial render and render on every render', () => {
     const load = vi.fn();
     const render = vi.fn();

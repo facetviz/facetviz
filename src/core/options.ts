@@ -263,6 +263,12 @@ export interface DataLabelOptions {
     | "bottom"
     | "left"
     | "right";
+  /**
+   * Bar & column: where the label sits across the bar — for columns
+   * `start` is the left edge and `end` the right; for bars `start` is the
+   * top edge and `end` the bottom. Default `center`.
+   */
+  crossAlign?: "start" | "center" | "end";
   /** Extra pixel offset applied in the label's natural direction. */
   distance?: number;
   /** Rotate the label text (degrees). */
