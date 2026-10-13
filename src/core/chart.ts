@@ -72,7 +72,11 @@ import {
 } from "./theme.js";
 import { BaseSeries, SeriesRenderContext } from "../series/base.js";
 import { createSeries } from "../series/registry.js";
-import { drawDataLabel, labelString } from "../series/data-label.js";
+import {
+  dataLabelFontSize,
+  drawDataLabel,
+  labelString,
+} from "../series/data-label.js";
 import { drawMarker } from "../series/marker.js";
 import { renderAnnotations } from "./annotations.js";
 import { renderChartTexts, resolveChartTextStyle } from "./chart-text.js";
@@ -4192,22 +4196,15 @@ export class FacetViz {
     // that lands on the domain max renders its label flush against (or past)
     // the plot edge, overlapping the title/chrome above it. Skipped when the
     // user set an explicit max (they're opting out of auto-headroom).
-    const hasOutsideLabel = primaryVisible.some((s) => {
-      const dl = s.options.dataLabels;
-      if (!dl?.enabled) return false;
-      return (
-        dl.position === undefined ||
-        dl.position === "outside" ||
-        dl.position === "top"
-      );
-    });
-    if (hasOutsideLabel) {
+    const labelRoom = this.labelHeadroom(primaryVisible, inverted);
+    const dataMax = vMax;
+    if (labelRoom) {
       const valueAxisOpts = yAxisOpts;
       const valuePx = inverted ? plot.width : plot.height;
       if (valueAxisOpts.max === undefined) {
         if (valueAxisOpts.type === "log")
-          vMax *= logPadFactor(18, valuePx, vMin, vMax);
-        else vMax += (18 / Math.max(1, valuePx)) * (vMax - vMin || 1);
+          vMax *= logPadFactor(labelRoom, valuePx, vMin, vMax);
+        else vMax += (labelRoom / Math.max(1, valuePx)) * (vMax - vMin || 1);
       }
     }
 
@@ -4275,12 +4272,13 @@ export class FacetViz {
 
     if (inverted) {
       // Horizontal bars: value on x (bottom), categories on y (left).
-      const xScale = this.valueScale(
+      const xScale = this.fitLabelHeadroom(
         yAxisOpts,
         [vMin, vMax],
         [plot.x, plot.x + plot.width],
-        true,
         preservePrimaryZeroMin,
+        dataMax,
+        labelRoom,
       );
       const yScale = categories
         ? new CategoryScale({
@@ -4308,12 +4306,13 @@ export class FacetViz {
           xRange,
         )
       : undefined;
-    const yScale = this.valueScale(
+    const yScale = this.fitLabelHeadroom(
       yAxisOpts,
       [vMin, vMax],
       [plot.y + plot.height, plot.y],
-      true,
       preservePrimaryZeroMin,
+      dataMax,
+      labelRoom,
     );
 
     let yScale2: Scale | undefined;
@@ -4342,15 +4341,75 @@ export class FacetViz {
         vMin2 = Math.min(vMin2, 0);
         vMax2 = Math.max(vMax2, 0);
       }
-      yScale2 = this.valueScale(
-        axisAt(this.options.yAxis, 1),
+      const labelRoom2 = this.labelHeadroom(secondaryVisible, false);
+      yScale2 = this.fitLabelHeadroom(
+        secondaryOpts,
         [vMin2, vMax2],
         [plot.y + plot.height, plot.y],
-        true,
         preserveSecondaryZeroMin,
+        vMax2,
+        labelRoom2,
       );
     }
     return { xScale, xScale2, yScale, yScale2 };
+  }
+
+  /**
+   * Pixels an 'outside'/'top' data label needs beyond its point/bar along
+   * the value axis: the gap the series leaves, the label's own height, plus
+   * any `distance` and offset that pushes it further out. 0 when no
+   * series draws such a label.
+   */
+  private labelHeadroom(series: BaseSeries[], inverted: boolean): number {
+    let room = 0;
+    for (const s of series) {
+      const dl = s.options.dataLabels;
+      if (!dl?.enabled) continue;
+      if (
+        dl.position !== undefined &&
+        dl.position !== "outside" &&
+        dl.position !== "top"
+      )
+        continue;
+      const fontPx = parseFloat(dataLabelFontSize(dl)) || 11;
+      const outward = inverted ? (dl.offsetX ?? 0) : -(dl.offsetY ?? 0);
+      const need =
+        (inverted ? 18 : 7 + fontPx) +
+        (dl.distance ?? 0) +
+        Math.max(0, outward);
+      room = Math.max(room, need, 18);
+    }
+    return room;
+  }
+
+  /**
+   * Build a value scale, then grow its auto max until the top data value
+   * leaves `room` pixels for its label. The up-front padding estimates this
+   * from the raw domain, but nice-rounding the min (notably on a log axis,
+   * where it can add most of a decade) shrinks that padding afterwards.
+   */
+  private fitLabelHeadroom(
+    opts: AxisOptions,
+    domain: [number, number],
+    range: [number, number],
+    preserveZeroMin: boolean,
+    dataMax: number,
+    room: number,
+  ): Scale {
+    let scale = this.valueScale(opts, domain, range, true, preserveZeroMin);
+    if (!room || opts.max !== undefined || opts.reversed) return scale;
+    const axisPx = Math.abs(range[1] - range[0]);
+    let max = domain[1];
+    for (let i = 0; i < 4; i++) {
+      const free = Math.abs(range[1] - scale.scale(dataMax));
+      if (free >= room) break;
+      const [lo, hi] = (scale as LinearScale | LogScale).domain;
+      const short = room - free + 1;
+      if (opts.type === "log") max = hi * logPadFactor(short, axisPx, lo, hi);
+      else max = hi + (short / Math.max(1, axisPx)) * (hi - lo || 1);
+      scale = this.valueScale(opts, [lo, max], range, false, preserveZeroMin);
+    }
+    return scale;
   }
 
   private valueScale(
