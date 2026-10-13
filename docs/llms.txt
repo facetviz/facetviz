@@ -674,7 +674,7 @@ interface ChartOptions {
     animation?: boolean | { enabled?: boolean; duration?: number; easing?: string };
     zoom?: 'x' | 'y' | 'xy' | false | { type?: 'x'|'y'|'xy'|false };
     reflow?: boolean;                         // default true
-    responsive?: boolean;                     // default true; hides data labels when short side <180px
+    responsive?: boolean;                     // default true; hides data labels when the plot area's short side <100px
     scaleFonts?: boolean;                     // default true; false keeps explicit fontSize values literal
     boost?: boolean | { enabled?: boolean; threshold?: number };
     events?: { render?; click? };

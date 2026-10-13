@@ -698,7 +698,7 @@ The root object passed to `new FacetViz(container, options)`.
 | `polarGridLineMode`         | `'spoke' \| 'sector'`              | `'spoke'`        | Draw angular grid lines through category centres or along sector boundaries.                                      |
 | `colors`                    | `string[]`                         | –                | Alias of top-level `colors`.                                                                                      |
 | `events`                    | [`ChartEvents`](#events)           | –                | Chart-level `load` / `render` / `click` callbacks.                                                                |
-| `responsive`                | `boolean`                          | `true`           | Compact default axis-title/legend gaps on constrained charts, hide data labels below a 180 px short side, and hide axis lines below 110 px; explicit margins stay fixed and `false` disables automatic simplification. |
+| `responsive`                | `boolean`                          | `true`           | Compact default axis-title/legend gaps on constrained charts, hide data labels when the plot area (inside axes, title and legend) is under 100 px on its short side, and hide axis lines below 110 px; explicit margins stay fixed and `false` disables automatic simplification. |
 | `scaleFonts`                | `boolean`                          | `true`           | Scale default and explicitly configured chart font sizes with chart dimensions. Set `false` when a supplied `fontSize` must remain an exact CSS pixel value. |
 
 > The chart is **responsive**: the SVG scales down (`max-width: 100%`) to never

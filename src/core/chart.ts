@@ -86,7 +86,10 @@ import type { Point } from "./point.js";
 // IDs unique across chart instances so browsers do not resolve a series or
 // text path against an element belonging to a different chart.
 let svgResourceId = 0;
-const SMALL_CHART_DATA_LABEL_THRESHOLD = 180;
+// Data labels are hidden when the plot area's shorter side is under this
+// many pixels -- measured inside the axes, title and legend, so a wide but
+// short chart is judged by the room its marks actually get.
+const SMALL_PLOT_DATA_LABEL_THRESHOLD = 100;
 
 // Space below the title/subtitle baseline reserved when the caller doesn't
 // set an explicit `margin`, chosen so the reserved height matches
@@ -156,6 +159,10 @@ export class FacetViz {
   readonly events = new EventEmitter();
   series: BaseSeries[] = [];
   private colors: string[];
+  /** Set per panel by `gateDataLabels`; read by `seriesContext`. */
+  private labelsSuppressed = false;
+  /** Series options whose data labels `gateDataLabels` turned off. */
+  private suppressedLabels = new Map<SeriesOptions, SeriesOptions["dataLabels"]>();
   private theme: Theme;
   private width: number;
   private height: number;
@@ -387,30 +394,46 @@ export class FacetViz {
   // -- Rendering ---------------------------------------------------------
 
   /**
-   * True when `chart.responsive` (default on) and this render's pixel size
-   * together call for hiding data-style labels. Drives two things from the
-   * one computation so they can't drift apart: `applyResponsiveOverrides`
-   * clearing a cartesian/pie series' own `dataLabels.enabled`, and the
-   * `suppressDataLabels` flag handed to every series via `seriesContext` for
-   * value labels (heatmap, sunburst, radialbar) that aren't gated by a
+   * Hide or restore data labels for one panel, once its plot area is known.
+   * Panel renderers call this before building scales, since label headroom
+   * feeds into the value domain. With `chart.responsive` (default on) and a
+   * plot whose shorter side is under SMALL_PLOT_DATA_LABEL_THRESHOLD, it
+   * clears each series' own `dataLabels.enabled` for this render (restored
+   * by `applyResponsiveOverrides`' restore) and sets the
+   * `suppressDataLabels` flag handed to every series via `seriesContext`,
+   * for value labels (heatmap, sunburst, radialbar) that aren't gated by a
    * `dataLabels` option of their own.
    */
-  private suppressDataLabels(): boolean {
-    return (
+  private gateDataLabels(plot: Rect, series: BaseSeries[]): void {
+    const suppress =
       this.options.chart?.responsive !== false &&
-      Math.min(this.width, this.height) < SMALL_CHART_DATA_LABEL_THRESHOLD
-    );
+      Math.min(plot.width, plot.height) < SMALL_PLOT_DATA_LABEL_THRESHOLD;
+    this.labelsSuppressed = suppress;
+    for (const item of series) {
+      // Clones made for a panel (filterByDimensions, withPoints) share their
+      // source's options object, so key the stash on it.
+      const options = item.options;
+      if (suppress) {
+        if (!options.dataLabels?.enabled) continue;
+        if (!this.suppressedLabels.has(options))
+          this.suppressedLabels.set(options, options.dataLabels);
+        options.dataLabels = { ...options.dataLabels, enabled: false };
+      } else if (this.suppressedLabels.has(options)) {
+        options.dataLabels = this.suppressedLabels.get(options);
+        this.suppressedLabels.delete(options);
+      }
+    }
   }
 
   /**
-   * Hide data labels on very small charts and drop axis lines at the smallest
-   * sizes, leaving more room for the series geometry. Overrides resolved
+   * Apply `responsive` rules and drop axis lines at the smallest sizes,
+   * leaving more room for the series geometry (data labels are gated per
+   * panel by `gateDataLabels`). Overrides resolved
    * per-instance state for the duration of this render only and returns a
    * function that restores the originals.
    */
   private applyResponsiveOverrides(): () => void {
     const originals = new Map<string, unknown>();
-    const originalDataLabels = new Map<BaseSeries, SeriesOptions["dataLabels"]>();
     const target = this.options as unknown as Record<string, unknown>;
     const remember = (key: string) => {
       if (!originals.has(key)) originals.set(key, target[key]);
@@ -434,18 +457,12 @@ export class FacetViz {
 
     const restore = () => {
       for (const [key, value] of originals) target[key] = value;
-      for (const [series, dataLabels] of originalDataLabels)
-        series.options.dataLabels = dataLabels;
+      for (const [options, dataLabels] of this.suppressedLabels)
+        options.dataLabels = dataLabels;
+      this.suppressedLabels.clear();
+      this.labelsSuppressed = false;
     };
     if (this.options.chart?.responsive === false) return restore;
-    if (this.suppressDataLabels()) {
-      for (const series of this.series) {
-        const dataLabels = series.options.dataLabels;
-        if (!dataLabels?.enabled) continue;
-        originalDataLabels.set(series, dataLabels);
-        series.options.dataLabels = { ...dataLabels, enabled: false };
-      }
-    }
     const hideAxisLines = Math.min(this.width, this.height) < 110;
     if (!hideAxisLines) return restore;
 
@@ -1462,6 +1479,7 @@ export class FacetViz {
       height: plot.height - pad.top - pad.bottom,
     };
 
+    this.gateDataLabels(axisPlot, visible);
     computeStacks(visible);
     const { xScale, xScale2, yScale, yScale2 } = this.buildScales(
       visible,
@@ -2140,6 +2158,10 @@ export class FacetViz {
     const gridH = outer.height - colHeaderH - bottomReserve;
     const cellW = (gridW - gap * (colVals.length - 1)) / colVals.length;
     const cellH = (gridH - gap * (rowVals.length - 1)) / rowVals.length;
+    this.gateDataLabels(
+      { x: gridX, y: gridY, width: cellW, height: cellH },
+      this.series,
+    );
     const lineColor = THEME.axis.lineColor;
 
     const headerLayer = this.renderer.group(
@@ -2500,6 +2522,7 @@ export class FacetViz {
     // Pie/radial: no shared scales; dummy scales satisfy the interface.
     const dummy = new LinearScale({ domain: [0, 1], range: [0, 1] });
     const inverted = this.isInverted(visible);
+    this.gateDataLabels(plot, visible);
     computeStacks(visible);
 
     const stackedRadialBars = visible.filter(
@@ -2565,6 +2588,7 @@ export class FacetViz {
     const series = visible.filter((item) => supported.has(item.type));
     if (!series.length) return;
     const inverted = this.options.chart?.inverted === true;
+    this.gateDataLabels(plot, series);
     computeStacks(series);
 
     const xOptions = axisAt(this.options.xAxis, 0);
@@ -3292,6 +3316,7 @@ export class FacetViz {
         width: outer.width - leftReserve - rightReserve,
         height: outer.height - topReserve - bottomReserve,
       };
+      this.gateDataLabels(plot, visible);
 
       catScale = new CategoryScale({
         categories: keys,
@@ -3402,6 +3427,7 @@ export class FacetViz {
         width: outer.width - leftReserve - rightReserve,
         height: outer.height - topReserve - bottomReserve,
       };
+      this.gateDataLabels(plot, visible);
 
       catScale = new CategoryScale({
         categories: keys,
@@ -3545,6 +3571,8 @@ export class FacetViz {
       height: outer.height - bottomReserve - 6,
     };
     const halfW = (plot.width - gutter) / 2;
+    // Each series gets one half of the plot.
+    this.gateDataLabels({ ...plot, width: halfW }, pair);
     const leftZeroX = plot.x + halfW; // value 0 for the left series (inner edge)
     const rightZeroX = plot.x + halfW + gutter; // value 0 for the right series
     const centerX = (leftZeroX + rightZeroX) / 2;
@@ -3724,6 +3752,10 @@ export class FacetViz {
     const cx = outer.x + outer.width / 2;
     const cy = outer.y + outer.height / 2 + 4;
     const R = Math.min(outer.width, outer.height) / 2 - 34;
+    this.gateDataLabels(
+      { x: cx - R, y: cy - R, width: 2 * R, height: 2 * R },
+      visible,
+    );
     const [, vMaxRaw] = this.valueDomain(visible);
     const vMax = Math.max(vMaxRaw, 0) || 1;
     const angle = (i: number) => -Math.PI / 2 + (i / n) * Math.PI * 2;
@@ -3888,6 +3920,7 @@ export class FacetViz {
         width: outer.width - 16,
         height: outer.height - bottomReserve - 6,
       };
+    this.gateDataLabels(plot, visible);
 
     // Column total across series drives column width; grand total normalises x.
     const colTotal = cats.map((c) =>
@@ -4602,7 +4635,7 @@ export class FacetViz {
       groupIndex: overlapped ? 0 : rawIndex,
       onPointEvent: (kind, p, dom) => this.handlePointEvent(kind, s, p, dom),
       registerHover: (el, p) => this.bindPointInteraction(el, s, p),
-      suppressDataLabels: this.suppressDataLabels(),
+      suppressDataLabels: this.labelsSuppressed,
     };
   }
 

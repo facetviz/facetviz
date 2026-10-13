@@ -660,6 +660,33 @@ describe('configuration option wiring', () => {
       .some((node) => node.textContent === 'value:5')).toBe(true);
   });
 
+  it('judges data-label room by the plot area, not the whole chart', () => {
+    const hasLabel = (el: HTMLElement) => [...el.querySelectorAll('.facet-series text')]
+      .some((node) => node.textContent === 'value:5');
+    const series = [{ dataLabels: { enabled: true, format: 'value:{y}' }, data: [5] }];
+
+    // Wide and short: the chart's short side is small, but its plot still
+    // has room for a label.
+    const wide = container();
+    new FacetViz(wide, {
+      chart: { ...baseChart, width: 600, height: 170 },
+      xAxis: { categories: ['A'] },
+      series,
+    });
+    expect(hasLabel(wide)).toBe(true);
+
+    // A roomy chart whose title, subtitle and axes leave a cramped plot.
+    const cramped = container();
+    new FacetViz(cramped, {
+      chart: { ...baseChart, width: 600, height: 190 },
+      title: { text: 'Title' },
+      subtitle: { text: 'Subtitle' },
+      xAxis: { categories: ['A'], title: { text: 'Category' } },
+      series,
+    });
+    expect(hasLabel(cramped)).toBe(false);
+  });
+
   it('keeps data labels on small charts when responsive rendering is disabled', () => {
     const el = container();
     new FacetViz(el, {
