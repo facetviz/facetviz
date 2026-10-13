@@ -87,6 +87,60 @@ describe('configuration option wiring', () => {
     expect(draw('bar').baseline).toBe('middle');
   });
 
+  it('nudges data labels by offsetX and offsetY', () => {
+    const draw = (type: 'column' | 'line', offsets: { offsetX?: number; offsetY?: number } = {}) => {
+      const el = container();
+      new FacetViz(el, {
+        chart: { ...baseChart, type },
+        xAxis: { categories: ['a', 'b'] },
+        series: [{ type, data: [5, 7], dataLabels: { enabled: true, ...offsets } }],
+      });
+      const label = [...el.querySelectorAll<SVGTextElement>(`.facet-${type} text`)].find((t) => t.textContent === '5')!;
+      return { x: Number(label.getAttribute('x')), y: Number(label.getAttribute('y')) };
+    };
+    for (const type of ['column', 'line'] as const) {
+      const base = draw(type);
+      const moved = draw(type, { offsetX: -3, offsetY: 6 });
+      expect(moved.x).toBeCloseTo(base.x - 3);
+      expect(moved.y).toBeCloseTo(base.y + 6);
+    }
+  });
+
+  it('nudges heatmap, funnel and treemap labels by offsetX and offsetY', () => {
+    const at = (type: 'heatmap' | 'funnel' | 'treemap', offsets: { offsetX?: number; offsetY?: number } = {}) => {
+      const el = container();
+      const data = type === 'heatmap' ? [{ x: 'a', y: 'r', value: 5 }] : [{ name: 'a', y: 5 }, { name: 'b', y: 3 }];
+      new FacetViz(el, { chart: { ...baseChart, type }, series: [{ type, data, dataLabels: { enabled: true, ...offsets } }] } as never);
+      const t = el.querySelector<SVGTextElement>(`.facet-${type} text`)!;
+      return { x: Number(t.getAttribute('x')), y: Number(t.getAttribute('y')) };
+    };
+    for (const type of ['heatmap', 'funnel', 'treemap'] as const) {
+      const base = at(type);
+      const moved = at(type, { offsetX: 4, offsetY: -5 });
+      expect(moved.x, type).toBeCloseTo(base.x + 4);
+      expect(moved.y, type).toBeCloseTo(base.y - 5);
+    }
+  });
+
+  it('labels waterfall steps with their change, and sums with the total', () => {
+    const draw = (offsets: { offsetX?: number; offsetY?: number } = {}) => {
+      const el = container();
+      new FacetViz(el, {
+        chart: { ...baseChart, type: 'waterfall' },
+        xAxis: { categories: ['a', 'b', 'c'] },
+        series: [{ type: 'waterfall', data: [10, -4, { y: 0, isSum: true }], dataLabels: { enabled: true, ...offsets } }],
+      } as never);
+      return [...el.querySelectorAll<SVGTextElement>('.facet-waterfall text')].map((t) => ({ text: t.textContent, x: Number(t.getAttribute('x')), y: Number(t.getAttribute('y')) }));
+    };
+    const base = draw();
+    expect(base.map((l) => l.text)).toEqual(['10', '-4', '6']);
+    const moved = draw({ offsetX: 2, offsetY: -3 });
+    moved.forEach((l, i) => {
+      expect(l.x).toBeCloseTo(base[i].x + 2);
+      expect(l.y).toBeCloseTo(base[i].y - 3);
+    });
+  });
+
   it('fires load once after the initial render and render on every render', () => {
     const load = vi.fn();
     const render = vi.fn();

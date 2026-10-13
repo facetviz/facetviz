@@ -67,7 +67,7 @@ export class HeatmapSeries extends BaseSeries {
         const text = dl?.formatter
           ? dl.formatter({ x: p.x ?? '', y: value, point: p.options, series: this.name, name: p.name, index: p.index, color: p.color ?? colorFor(value) })
           : String(value);
-        renderer.text(text, x + cw / 2, y + ch / 2, {
+        renderer.text(text, x + cw / 2 + (dl?.offsetX || 0), y + ch / 2 + (dl?.offsetY || 0), {
           'text-anchor': 'middle', 'dominant-baseline': 'middle', ...FONTS.dataLabel,
           fill: (value - min) / (max - min || 1) > 0.6 ? '#fff' : shade(hi, -0.4), 'font-size': scaledFontPx(10),
         }, g);

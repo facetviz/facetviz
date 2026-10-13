@@ -182,10 +182,12 @@ export class TreemapSeries extends BaseSeries {
         if (labels && r.width > 36 && r.height > 18) {
           const color = textOn(fill);
           const name = fit(n.name, r.width - 8);
-          if (name) renderer.text(name, r.x + 4, r.y + 12, { ...FONTS.dataLabel, fill: color, 'font-size': scaledFontPx(10) }, g);
+          const ox = r.x + 4 + (dl?.offsetX || 0);
+          const oy = r.y + (dl?.offsetY || 0);
+          if (name) renderer.text(name, ox, oy + 12, { ...FONTS.dataLabel, fill: color, 'font-size': scaledFontPx(10) }, g);
           if (r.height > 34) {
             const v = fit(valueText(n, fill), r.width - 8);
-            if (v) renderer.text(v, r.x + 4, r.y + 26, { ...FONTS.dataLabel, fill: color, 'font-size': scaledFontPx(10), opacity: 0.85 }, g);
+            if (v) renderer.text(v, ox, oy + 26, { ...FONTS.dataLabel, fill: color, 'font-size': scaledFontPx(10), opacity: 0.85 }, g);
           }
         }
       });

@@ -42,7 +42,7 @@ export class FunnelSeries extends BaseSeries {
         const text = dl?.formatter
           ? dl.formatter({ x: p.x ?? i, y: p.y ?? undefined, point: p.options, series: this.name, name: p.name, index: p.index, color })
           : `${p.name ?? p.x}: ${p.y}`;
-        renderer.text(text, cx, (yTop + yBot) / 2, {
+        renderer.text(text, cx + (dl?.offsetX || 0), (yTop + yBot) / 2 + (dl?.offsetY || 0), {
           'text-anchor': 'middle', 'dominant-baseline': 'middle', ...FONTS.dataLabel, fill: '#ffffff', 'font-weight': '600',
         }, g);
       }

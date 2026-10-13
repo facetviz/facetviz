@@ -3,10 +3,13 @@
  * floating bar from the previous cumulative to the new one. Points flagged
  * `isSum` / `isIntermediateSum` draw an absolute bar from zero to the running
  * total. Rises, falls and sums are coloured distinctly, with connector lines.
+ * Data labels show each step's change (a sum's running total): `outside`
+ * (default) beyond the bar's moving end, `inside`, `center` or `base`.
  */
 
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
 import { CategoryScale } from '../core/scale.js';
+import { drawDataLabel, labelString, type LabelPlacement } from './data-label.js';
 
 /** Waterfall's point-level fields. */
 export interface WaterfallPointOptions {
@@ -44,6 +47,8 @@ export class WaterfallSeries extends BaseSeries {
     const band = catScale.bandwidth();
     const barW = band * 0.6;
     const zeroY = yScale.scale(0);
+    const dl = this.options.dataLabels;
+    const labels = !!dl?.enabled && !ctx.suppressDataLabels;
 
     let cum = 0;
     let prevEndX: number | null = null;
@@ -74,6 +79,24 @@ export class WaterfallSeries extends BaseSeries {
       el.addEventListener('click', (e: Event) => ctx.onPointEvent('click', p, e));
       el.addEventListener('mouseover', (e: Event) => ctx.onPointEvent('mouseOver', p, e));
       el.addEventListener('mouseout', (e: Event) => ctx.onPointEvent('mouseOut', p, e));
+
+      if (labels) {
+        const value = isSum ? cum : (p.y ?? 0);
+        const text = labelString(dl!, {
+          x: p.x, y: value, point: p.options, series: this.name,
+          name: p.name ?? p.x, index: p.index, color,
+        });
+        // Falls hang below their bar; rises and sums sit on top.
+        const down = to < from;
+        const d = dl!.distance ?? 0;
+        const pos = dl!.position ?? 'outside';
+        let place: LabelPlacement;
+        if (pos === 'center') place = { x: cx, y: (yTop + yBot) / 2, anchor: 'middle', verticalAlign: 'middle' };
+        else if (pos === 'inside') place = down ? { x: cx, y: yBot - 5 - d, anchor: 'middle' } : { x: cx, y: yTop + 12 + d, anchor: 'middle' };
+        else if (pos === 'base') place = down ? { x: cx, y: yTop + 12 + d, anchor: 'middle' } : { x: cx, y: yBot - 5 - d, anchor: 'middle' };
+        else place = down ? { x: cx, y: yBot + 4 + d, anchor: 'middle', verticalAlign: 'hanging' } : { x: cx, y: yTop - 4 - d, anchor: 'middle' };
+        drawDataLabel(renderer, g, text, place, dl!);
+      }
 
       prevEndX = x0 + barW;
       prevY = yScale.scale(to);

@@ -271,6 +271,10 @@ export interface DataLabelOptions {
   crossAlign?: "start" | "center" | "end";
   /** Extra pixel offset applied in the label's natural direction. */
   distance?: number;
+  /** Pixels to move the label right (negative: left), after placing it. */
+  offsetX?: number;
+  /** Pixels to move the label down (negative: up), after placing it. */
+  offsetY?: number;
   /** Rotate the label text (degrees). */
   rotation?: number;
   backgroundColor?: string;

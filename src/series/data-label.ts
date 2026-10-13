@@ -61,6 +61,8 @@ export function drawDataLabel(
   dl: DataLabelOptions,
 ): void {
   if (!text) return;
+  if (dl.offsetX || dl.offsetY)
+    place = { ...place, x: place.x + (dl.offsetX || 0), y: place.y + (dl.offsetY || 0) };
   const anchor = dl.align === 'left'
     ? 'start'
     : dl.align === 'right'
