@@ -19,6 +19,8 @@ export interface LegendItem {
   visible: boolean;
   /** Draw a gradient bar from `min` to `max` instead of a swatch. */
   scale?: { min: string; max: string; colors: string[] };
+  /** A group's heading: its label alone, in bold, before the group's items. */
+  heading?: boolean;
 }
 
 export interface LegendConfig {
@@ -138,6 +140,7 @@ export class Legend {
     fontFamily: string | undefined,
   ): number {
     const text = (t: string) => measureLabelWidth(t, fontSize, fontFamily);
+    if (it.heading) return text(it.label);
     if (!it.scale) return SWATCH + symbolPadding + text(it.label);
     return (it.label ? text(it.label) + symbolPadding * 2 : 0) +
       text(it.scale.min) + symbolPadding + SCALE_BAR_WIDTH + symbolPadding + text(it.scale.max);
@@ -218,6 +221,17 @@ export class Legend {
     const visibleFill = itemStyle.fill ?? FONTS.legend.fill;
     const visibleTextDecoration = itemStyle['text-decoration'] ?? 'none';
     const centerY = y + lineHeight / 2;
+    if (it.heading) {
+      const heading = renderer.text(it.label, x, centerY, {
+        ...FONTS.legend,
+        ...itemStyle,
+        fill: visibleFill,
+        'font-weight': 'bold',
+        'dominant-baseline': itemStyle['dominant-baseline'] ?? 'middle',
+      }, renderer.group({ class: 'facet-legend-heading' }, g));
+      heading.style.userSelect = 'none';
+      return;
+    }
     const item = renderer.group({ class: 'facet-legend-item', style: 'cursor:pointer' }, g);
     item.addEventListener('click', () => onToggle(index));
     const textAttrs = {

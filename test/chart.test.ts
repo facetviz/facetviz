@@ -597,6 +597,49 @@ describe('FacetViz rendering', () => {
     expect(chart.series[2].visible).toBe(false);
   });
 
+  it('lists series under their legend group headings', () => {
+    const el = container();
+    const chart = new FacetViz(el, {
+      chart: { type: 'column', animation: false },
+      xAxis: { categories: ['A'] },
+      series: [
+        { name: 'East', data: [3], legendGroup: 'Revenue' },
+        { name: 'West', data: [4], legendGroup: 'Revenue' },
+        { name: 'East', data: [5], legendGroup: 'Profit' },
+        { name: 'Total', data: [6] },
+      ],
+    });
+
+    expect(chart.legendItems.map((item) => item.label)).toEqual(['Revenue', 'East', 'West', 'Profit', 'East', 'Total']);
+    const headings = [...el.querySelectorAll('.facet-legend-heading text')].map((t) => t.textContent);
+    expect(headings).toEqual(['Revenue', 'Profit']);
+    // Items keep toggling their own series; headings toggle nothing.
+    el.querySelectorAll('.facet-legend-item')[2].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(chart.series.map((s) => s.visible)).toEqual([true, true, false, true]);
+  });
+
+  it('gives tooltip formatters the series index and options', () => {
+    const el = container();
+    const seen: unknown[] = [];
+    new FacetViz(el, {
+      chart: { type: 'column', animation: false },
+      xAxis: { categories: ['A'] },
+      tooltip: {
+        shared: true,
+        formatter: (ctx) => {
+          seen.push([ctx.seriesIndex, ctx.seriesOptions?.name, ...(ctx.points ?? []).map((p) => p.seriesIndex)]);
+          return '';
+        },
+      },
+      series: [
+        { name: 'East', data: [3] },
+        { name: 'East', data: [4] },
+      ],
+    });
+    el.querySelectorAll('.facet-point')[1].dispatchEvent(new MouseEvent('mouseenter'));
+    expect(seen).toEqual([[1, 'East', 0, 1]]);
+  });
+
   it('draws a colour scale for a run of series and toggles them together', () => {
     const el = container();
     const chart = new FacetViz(el, {

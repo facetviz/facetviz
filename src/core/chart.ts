@@ -4649,6 +4649,8 @@ export class FacetViz {
     const build = (): TooltipContext => {
       const ctx: TooltipContext = {
         series: s.name,
+        seriesIndex: this.series.indexOf(s),
+        seriesOptions: s.options,
         x: p.name ?? p.x,
         y: p.y ?? p.high,
         name: p.name ?? p.x,
@@ -4826,12 +4828,14 @@ export class FacetViz {
   /** All visible series' points sharing an x value (for the shared tooltip). */
   private pointsAtX(x: number | string): TooltipContext[] {
     const rows: TooltipContext[] = [];
-    for (const s of this.series) {
-      if (!s.visible || !s.capabilities().cartesian) continue;
+    this.series.forEach((s, seriesIndex) => {
+      if (!s.visible || !s.capabilities().cartesian) return;
       const match = s.points.find((pp) => String(pp.x) === String(x));
-      if (!match) continue;
+      if (!match) return;
       rows.push({
         series: s.name,
+        seriesIndex,
+        seriesOptions: s.options,
         x: match.name ?? match.x,
         y: match.y ?? match.high,
         low: match.low,
@@ -4839,7 +4843,7 @@ export class FacetViz {
         point: match.options,
         color: match.color ?? s.color,
       });
-    }
+    });
     return rows;
   }
 
@@ -5007,20 +5011,17 @@ export class FacetViz {
         visible: !first.hiddenPoints.has(p.index),
       }));
     }
-    return [
-      ...scales,
-      ...this.series
-        .map((s, seriesIndex) => ({
-          label: s.name,
-          color: s.color,
-          visible: s.visible,
-          seriesIndex,
-        }))
-        .filter(
-          (_, seriesIndex) =>
-            this.series[seriesIndex].options.showInLegend !== false,
-        ),
-    ];
+    const items: Array<LegendItem & { seriesIndex?: number }> = [];
+    let group: string | undefined;
+    this.series.forEach((s, seriesIndex) => {
+      if (s.options.showInLegend === false) return;
+      // A heading before each run of series in a legend group.
+      const g = s.options.legendGroup || undefined;
+      if (g && g !== group) items.push({ label: g, color: "", visible: true, heading: true });
+      group = g;
+      items.push({ label: s.name, color: s.color, visible: s.visible, seriesIndex });
+    });
+    return [...scales, ...items];
   }
 
   /** `legend.colorScales` as legend items; visible while any of their series is. */
@@ -5083,6 +5084,8 @@ export class FacetViz {
       this.render();
       return;
     }
+    // A group's heading stands for nothing to toggle.
+    if (item?.heading) return;
     // Filtered series legends need to retain their original series index.
     const seriesIndex = item?.seriesIndex ?? index;
     const s = this.series[seriesIndex];

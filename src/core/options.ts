@@ -169,6 +169,11 @@ export interface SeriesOptions
   visible?: boolean;
   /** Whether this series contributes an item to the chart legend. */
   showInLegend?: boolean;
+  /**
+   * A heading its legend item is listed under. Neighbouring series with the
+   * same group share one heading; series without one stay as plain items.
+   */
+  legendGroup?: string;
   lineWidth?: number;
   /** Line-family and area series: SVG dash pattern for the line, e.g. '6 4'
    * (dashed) or '1 4' (dotted). Unset draws a solid line. */
@@ -494,6 +499,9 @@ export type SeriesTooltipOptions = Pick<
 
 export interface TooltipContext {
   series: string;
+  /** Index of the series in `options.series`, and its options as given. */
+  seriesIndex?: number;
+  seriesOptions?: SeriesOptions;
   x: number | string;
   y: number | undefined;
   point: PointOptions;
