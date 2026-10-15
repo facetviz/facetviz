@@ -687,6 +687,44 @@ describe('configuration option wiring', () => {
     expect(hasLabel(cramped)).toBe(false);
   });
 
+  it('keeps stacked segment labels on a small plot when each one fits its segment', () => {
+    const labels = (el: HTMLElement) => [...el.querySelectorAll('.facet-series text')]
+      .map((node) => node.textContent);
+    const options = (stacking?: 'normal') => ({
+      chart: { ...baseChart, type: 'column' as const, width: 400, height: 140 },
+      xAxis: { categories: ['A'] },
+      plotOptions: { series: { stacking } },
+      series: [
+        { dataLabels: { enabled: true, format: 'big:{y}' }, data: [50] },
+        { dataLabels: { enabled: true, format: 'tiny:{y}' }, data: [1] },
+      ],
+    });
+
+    // The plot is under the small-plot threshold, yet the tall segment
+    // keeps its label; the sliver of a segment drops its own.
+    const stacked = container();
+    new FacetViz(stacked, options('normal'));
+    expect(labels(stacked)).toContain('big:50');
+    expect(labels(stacked)).not.toContain('tiny:1');
+
+    // Side-by-side columns still follow the plot-size gate.
+    const grouped = container();
+    new FacetViz(grouped, options());
+    expect(labels(grouped)).not.toContain('big:50');
+  });
+
+  it('drops a stacked segment label wider than its column', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { ...baseChart, type: 'column', width: 400, height: 300 },
+      xAxis: { categories: Array.from({ length: 30 }, (_, i) => `c${i}`) },
+      plotOptions: { series: { stacking: 'normal' } },
+      series: [{ dataLabels: { enabled: true, format: 'a long label {y}' }, data: Array(30).fill(10) }],
+    });
+    expect([...el.querySelectorAll('.facet-series text')]
+      .some((node) => node.textContent?.startsWith('a long label'))).toBe(false);
+  });
+
   it('keeps data labels on small charts when responsive rendering is disabled', () => {
     const el = container();
     new FacetViz(el, {

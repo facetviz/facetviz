@@ -403,8 +403,17 @@ export class FacetViz {
    * `suppressDataLabels` flag handed to every series via `seriesContext`,
    * for value labels (heatmap, sunburst, radialbar) that aren't gated by a
    * `dataLabels` option of their own.
+   *
+   * With `cartesian`, stacked columns and bars whose labels sit inside
+   * their segments are left alone: they drop each label that doesn't fit
+   * its own segment, so a small plot keeps the labels its big segments
+   * have room for.
    */
-  private gateDataLabels(plot: Rect, series: BaseSeries[]): void {
+  private gateDataLabels(
+    plot: Rect,
+    series: BaseSeries[],
+    cartesian = false,
+  ): void {
     const suppress =
       this.options.chart?.responsive !== false &&
       Math.min(plot.width, plot.height) < SMALL_PLOT_DATA_LABEL_THRESHOLD;
@@ -413,7 +422,7 @@ export class FacetViz {
       // Clones made for a panel (filterByDimensions, withPoints) share their
       // source's options object, so key the stash on it.
       const options = item.options;
-      if (suppress) {
+      if (suppress && !(cartesian && item.fitsLabelsPerSegment())) {
         if (!options.dataLabels?.enabled) continue;
         if (!this.suppressedLabels.has(options))
           this.suppressedLabels.set(options, options.dataLabels);
@@ -1479,7 +1488,7 @@ export class FacetViz {
       height: plot.height - pad.top - pad.bottom,
     };
 
-    this.gateDataLabels(axisPlot, visible);
+    this.gateDataLabels(axisPlot, visible, true);
     computeStacks(visible);
     const { xScale, xScale2, yScale, yScale2 } = this.buildScales(
       visible,

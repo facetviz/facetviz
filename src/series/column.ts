@@ -7,7 +7,13 @@
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from "./base.js";
 import { CategoryScale, Scale } from "../core/scale.js";
 import type { Point } from "../core/point.js";
-import { drawDataLabel, labelString, LabelPlacement } from "./data-label.js";
+import {
+  dataLabelFontSize,
+  drawDataLabel,
+  labelString,
+  LabelPlacement,
+} from "./data-label.js";
+import { FONTS } from "../core/defaults.js";
 import { annularSectorPath, polarCenter, projectPolar } from "./polar.js";
 import { FONT_SCALE_STATE } from "../core/theme.js";
 
@@ -85,6 +91,15 @@ function roundedBarPath(
 export class ColumnSeries extends BaseSeries {
   override capabilities(): SeriesCapabilities {
     return { grouped: true, cartesian: true, stackable: true };
+  }
+
+  /** Stacked segments with labels inside them (the default `center`, or
+   *  `inside`/`base`) drop each label that doesn't fit the segment. */
+  override fitsLabelsPerSegment(): boolean {
+    return (
+      !!this.options.stacking &&
+      (this.options.dataLabels?.position ?? "center") !== "outside"
+    );
   }
 
   protected override pointValues(p: Point): Array<number | undefined> {
@@ -430,6 +445,34 @@ export class ColumnSeries extends BaseSeries {
       else if (dl.crossAlign === "end")
         place = { ...place, x: rect.x + rect.width - 2, anchor: "end" };
     }
+    // A stacked segment's label sits inside the segment: drop it when it
+    // would spill over the segment's edges onto its neighbours.
+    if (p.stackHigh !== undefined && pos !== "outside" && !labelFits(ctx, text, dl, rect))
+      return;
     drawDataLabel(ctx.renderer, parent, text, place, dl);
   }
+}
+
+/** Whether `text`, rotated as `dl` asks, fits inside `rect` with a little
+ *  breathing room on each side. */
+function labelFits(
+  ctx: SeriesRenderContext,
+  text: string,
+  dl: NonNullable<ColumnSeries["options"]["dataLabels"]>,
+  rect: { width: number; height: number },
+): boolean {
+  if (!text) return true;
+  const size = ctx.renderer.measureText(text, {
+    ...FONTS.dataLabel,
+    "font-size": dataLabelFontSize(dl),
+    "font-weight": dl.fontWeight,
+  });
+  const w = Math.max(size.width, dl.backgroundColor ? text.length * 6.5 + 8 : 0);
+  const h = Math.max(size.height, dl.backgroundColor ? 15 : 0);
+  const turn = ((dl.rotation ?? 0) * Math.PI) / 180;
+  const cos = Math.abs(Math.cos(turn));
+  const sin = Math.abs(Math.sin(turn));
+  return (
+    w * cos + h * sin + 4 <= rect.width && w * sin + h * cos + 2 <= rect.height
+  );
 }
