@@ -935,13 +935,13 @@ describe('configuration option wiring', () => {
     ).toBe(28);
   });
 
-  it("extends every nested category separator through the plot with groupLines: 'plot'", () => {
+  it("divides every nested leaf through the plot with groupLines: 'all'", () => {
     const el = container();
     new FacetViz(el, {
       chart: { ...baseChart, type: 'column', responsive: false },
       xAxis: {
         dimensions: ['product', 'category', 'city'],
-        groupLines: 'plot',
+        groupLines: 'all',
         lineColor: '#123456',
         title: { text: 'Product / Category / City' },
       },
@@ -990,7 +990,7 @@ describe('configuration option wiring', () => {
     expect(Number(title.getAttribute('y')) - farthestSeparator).toBe(22);
   });
 
-  it('keeps nested group lines out of the plot unless asked', () => {
+  it('divides nested groups through the plot, but not the leaves of one group', () => {
     const data = [
       { y: 2, product: 'Bread', category: 'Beverages', city: 'Chennai' },
       { y: 3, product: 'Bread', category: 'Beverages', city: 'Bengaluru' },
@@ -1012,23 +1012,26 @@ describe('configuration option wiring', () => {
         .map((l) => Number(l.getAttribute('y1'))));
       return { lines, baselineY };
     };
-    // Default: only the category and product boundaries, from the baseline
-    // down into their label rows; nothing above the baseline.
+    // Default: the category and product boundaries only (no line between
+    // the two Bread / Beverages cities), each from the top of the plot
+    // through the baseline into its label row.
     const below = separatorsOf({});
     expect(below.lines).toHaveLength(2);
-    expect(below.lines.every(([, y1, , y2]) => y1 === below.baselineY && y2 > below.baselineY)).toBe(true);
-    // Split: stubs above the plot and below the baseline, none across it.
+    expect(below.lines.every(([, y1, , y2]) => y1 < below.baselineY - 50 && y2 > below.baselineY)).toBe(true);
+    // Split: the same two, full height from the group rows on top.
     const split = separatorsOf({ opposite: true });
-    expect(split.lines.length).toBeGreaterThan(0);
-    expect(split.lines.every(([, y1, , y2]) => Math.min(y1, y2) >= split.baselineY || Math.max(y1, y2) < split.baselineY - 50)).toBe(true);
+    expect(split.lines).toHaveLength(2);
+    expect(split.lines.every(([, y1, , y2]) => y1 < split.baselineY - 50 && y2 > split.baselineY)).toBe(true);
+    // 'all': the city boundary too.
+    expect(separatorsOf({ groupLines: 'all' }).lines).toHaveLength(3);
     // 'none': no dividers, baseline kept.
     const none = separatorsOf({ groupLines: 'none' });
     expect(none.lines).toHaveLength(0);
     expect(Number.isFinite(none.baselineY)).toBe(true);
   });
 
-  it('keeps vertical nested group lines in the gutter unless asked', () => {
-    const linesOf = (groupLines?: 'plot') => {
+  it('divides vertical nested groups across the plot', () => {
+    const linesOf = (groupLines?: 'all') => {
       const el = container();
       new FacetViz(el, {
         chart: { ...baseChart, type: 'bar', responsive: false },
@@ -1043,11 +1046,12 @@ describe('configuration option wiring', () => {
       return [...nested.querySelectorAll<SVGLineElement>('.facet-nested-group-separator')]
         .map((l) => Math.abs(Number(l.getAttribute('x2')) - Number(l.getAttribute('x1'))));
     };
-    const gutter = linesOf();
-    const plot = linesOf('plot');
-    expect(gutter.length).toBeGreaterThan(0);
-    expect(plot.length).toBeGreaterThan(gutter.length);
-    expect(Math.max(...plot)).toBeGreaterThan(Math.max(...gutter) * 2);
+    // East | West crosses the plot; Q1 | Q2 within East doesn't, unless 'all'.
+    const groups = linesOf();
+    const all = linesOf('all');
+    expect(Math.max(...groups)).toBeGreaterThan(200);
+    expect(groups.filter((w) => w > 200)).toHaveLength(1);
+    expect(all.filter((w) => w > 200)).toHaveLength(2);
   });
 
   it('keeps the nested-axis title clear of separators when opposite is true', () => {
@@ -1057,7 +1061,7 @@ describe('configuration option wiring', () => {
       xAxis: {
         dimensions: ['product', 'category', 'city'],
         opposite: true,
-        groupLines: 'plot',
+        groupLines: 'all',
         title: { text: 'Split nested title' },
       },
       series: [{

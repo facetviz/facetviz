@@ -434,13 +434,14 @@ export interface AxisOptions {
    */
   dimensions?: string[];
   /**
-   * Nested axis: where the lines between its groups go. `'axis'` (default)
-   * draws them only among the label tiers, as a plain category axis keeps
-   * the plot clear; `'plot'` also carries them through the plot (the
-   * classic nested-columns look); `'none'` draws none. The baseline stays
-   * either way (`lineWidth: 0` hides it).
+   * Nested axis: which lines divide it. `'groups'` (default) draws one
+   * where a group changes, through the plot and its labels, and none
+   * between the innermost values within a group (no line between columns,
+   * as on a plain category axis); `'all'` draws one between every leaf as
+   * well; `'none'` draws none. The baseline stays either way (`lineWidth: 0`
+   * hides it).
    */
-  groupLines?: "axis" | "plot" | "none";
+  groupLines?: "groups" | "all" | "none";
   /** Aggregation used when collapsing points into nested-axis leaves. */
   aggregate?: "sum" | "avg" | "count" | "min" | "max";
 }

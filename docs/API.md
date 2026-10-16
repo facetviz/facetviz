@@ -755,7 +755,7 @@ Applies to both `xAxis` and `yAxis`. A **category axis** is used when
 | `dimension`              | `string`                                        | –            | Bind this axis to a data field for [trellis](#trellisoptions) splitting.                                                                           |
 | `dimensions`             | `string[]`                                      | –            | Two or more fields → [nested hierarchical x-axis](#nested-hierarchical-x-axis).                                                                    |
 | `aggregate`              | `'sum' \| 'avg' \| 'count' \| 'min' \| 'max'`   | `'sum'`      | Aggregation used to collapse points into nested-axis leaves.                                                                                       |
-| `groupLines`             | `'axis' \| 'plot' \| 'none'`                     | `'axis'`     | Nested axis: lines between groups among the label tiers only, also [through the plot](#nested-hierarchical-x-axis), or none. The baseline stays.  |
+| `groupLines`             | `'groups' \| 'all' \| 'none'`                   | `'groups'`   | Nested axis: a line where a group changes, through the plot and labels; also between every leaf (`'all'`); or none. The baseline stays.             |
 
 ### Axis labels
 
@@ -1393,11 +1393,12 @@ xAxis: { dimensions: ['Region', 'Category'], aggregate: 'sum', opposite: true },
 - Default: all dimension tiers stack below the plot.
 - `opposite: true` → **split** layout: the innermost dimension is labelled at the
   bottom and outer grouping dimensions move to the top.
-- `groupLines` sets where the lines between groups go. `'axis'` (default) keeps
-  them among the label tiers, so the plot stays as clear as a plain category
-  axis leaves it; `'plot'` also carries every boundary through the plot (the
-  classic nested-columns look, full height in the split layout); `'none'`
-  draws none. Before 0.1.16 the lines always crossed the plot.
+- `groupLines` sets which lines divide the axis. `'groups'` (default) draws one
+  where a group changes, through the plot and on through the labels (full
+  height in the split layout), and none between the innermost values within a
+  group, so a group's columns stand without lines between them as on a plain
+  category axis; `'all'` also divides every leaf through the plot (the look
+  before 0.1.16); `'none'` draws none.
 - A `line`/`area`-type series on a nested axis is drawn as one segment **per
   first-dimension group** (it does not run continuously across group boundaries),
   so a column+line combo reads correctly.
