@@ -829,6 +829,49 @@ describe('configuration option wiring', () => {
     });
   });
 
+  it('keeps a nested leaf point\'s own options, and draws no mark for a missing value', () => {
+    const click = vi.fn();
+    const el = container();
+    new FacetViz(el, {
+      chart: { ...baseChart, type: 'column' },
+      xAxis: { dimensions: ['region', 'quarter'] },
+      seriesEvents: { click },
+      series: [{
+        data: [
+          { y: 2, region: 'East', quarter: 'Q1', key: 'e1' },
+          { y: null, region: 'East', quarter: 'Q2', key: 'e2' },
+          { y: 4, region: 'West', quarter: 'Q1', key: 'w1' },
+        ],
+      }],
+    });
+    const bars = el.querySelectorAll<SVGRectElement>('rect.facet-point');
+    expect(bars).toHaveLength(2);
+    bars[1].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(click).toHaveBeenCalledWith(expect.objectContaining({ pointIndex: 2, point: expect.objectContaining({ key: 'w1', y: 4 }) }));
+    // The empty leaf still has its place on the axis.
+    const labels = [...el.querySelectorAll('.facet-axis-nested text')].map((n) => n.textContent);
+    expect(labels).toContain('Q2');
+  });
+
+  it('stacks series on a nested axis', () => {
+    const el = container();
+    const chart = new FacetViz(el, {
+      chart: { ...baseChart, type: 'column' },
+      xAxis: { dimensions: ['region', 'quarter'] },
+      plotOptions: { series: { stacking: 'normal' } },
+      series: [
+        { data: [{ y: 2, region: 'East', quarter: 'Q1' }, { y: 3, region: 'West', quarter: 'Q1' }] },
+        { data: [{ y: 5, region: 'East', quarter: 'Q1' }, { y: 1, region: 'West', quarter: 'Q1' }] },
+      ],
+    });
+    const heights = [...el.querySelectorAll<SVGRectElement>('rect.facet-point')].map((r) => Number(r.getAttribute('height')));
+    const tops = [...el.querySelectorAll<SVGRectElement>('rect.facet-point')].map((r) => Number(r.getAttribute('y')));
+    expect(heights).toHaveLength(4);
+    // East's second bar sits on top of its first, not over it.
+    expect(tops[2] + heights[2]).toBeCloseTo(tops[0], 0);
+    chart.destroy();
+  });
+
   it('wires nested-axis labels, title, and line/grid colors', () => {
     const el = container();
     new FacetViz(el, {

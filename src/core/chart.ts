@@ -3226,6 +3226,8 @@ export class FacetViz {
     const aggSeries = visible.map((s) =>
       s.withPoints(seriesPoints.get(s.index) ?? []),
     );
+    // Stacks are of the leaf points, built after the series' own were.
+    computeStacks(aggSeries);
 
     // Horizontal bars: category axis becomes vertical (left, or left+right
     // when split), value axis horizontal (bottom) — the same role-swap
@@ -4087,20 +4089,27 @@ export class FacetViz {
 
     const seriesPoints = new Map<number, Point[]>();
     for (const s of visible) {
-      const buckets = new Map<string, number[]>();
+      // A point with no value draws no mark, though its leaf keeps its
+      // place on the axis.
+      const buckets = new Map<string, Point[]>();
       for (const p of s.points) {
+        if (p.y == null) continue;
         const key = dims.map((d) => String(p.options[d] ?? "")).join("\u0000");
-        (buckets.get(key) ?? buckets.set(key, []).get(key)!).push(p.y ?? 0);
+        (buckets.get(key) ?? buckets.set(key, []).get(key)!).push(p);
       }
       const pts: Point[] = [];
-      for (const [key, vals] of buckets) {
+      for (const [key, group] of buckets) {
         const i = keyIndex.get(key)!;
+        const y = this.aggregate(group.map((p) => p.y ?? 0), agg);
+        // A leaf of one point keeps that point's own options, so tooltips
+        // and events still see them.
+        const own = group.length === 1 ? group[0].options : {};
         pts.push({
           x: key,
           index: i,
-          y: this.aggregate(vals, agg),
+          y,
           name: leaves[i].join(" / "),
-          options: { y: this.aggregate(vals, agg) },
+          options: { ...own, y },
         });
       }
       pts.sort((a, b) => a.index - b.index);
