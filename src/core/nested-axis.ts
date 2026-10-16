@@ -4,7 +4,8 @@
  *
  * Given the ordered leaf combinations (each an array of dimension values) and a
  * {@link CategoryScale} placing those leaves, this renders one label row per
- * dimension level with divider lines separating every nested group:
+ * dimension level with divider lines separating every nested group (among
+ * the label tiers by default; through the plot too with `groupLines: 'plot'`):
  *
  *      Tech   Furniture  │  Tech   Furniture     ← inner dimension (row 0)
  *   ────────────────────────────────────────
@@ -44,6 +45,11 @@ export interface NestedAxisConfig {
   /** `0` hides the baseline and group-divider lines (gridlines are separate, see `gridLineWidth`). */
   lineWidth?: number;
   /**
+   * Where the group dividers go: among the label tiers only (`'axis'`,
+   * default), through the plot too (`'plot'`), or nowhere (`'none'`).
+   */
+  groupLines?: "axis" | "plot" | "none";
+  /**
    * Draw a gridline through the plot at each leaf position — same opt-in
    * convention as the plain axis's category-axis gridlines (off by default;
    * a category scale has no "nice" ticks to derive a default width from).
@@ -57,7 +63,8 @@ export interface NestedAxisConfig {
    *  - `bottom` (default): all tiers stacked below the plot.
    *  - `top`: all tiers stacked above the plot.
    *  - `split`: innermost dimension labelled at the bottom, outer grouping
-   *    dimensions on top, with full-height lines separating the top-level groups.
+   *    dimensions on top, with lines separating the groups (full height with
+   *    `groupLines: 'plot'`).
    */
   position?: "bottom" | "top" | "split";
   /**
@@ -122,6 +129,20 @@ export class NestedAxis {
 
   private get linesOn(): boolean {
     return this.cfg.lineWidth !== 0;
+  }
+
+  private get groupLines(): "axis" | "plot" | "none" {
+    return this.cfg.groupLines ?? "axis";
+  }
+
+  /** A group divider from `a` to `b` along x (vertical) or y; none when empty. */
+  private divider(attrs: { x1: number; y1: number; x2: number; y2: number }, color: string, g: SVGGElement): void {
+    if (this.groupLines === "none") return;
+    if (attrs.x1 === attrs.x2 && attrs.y1 === attrs.y2) return;
+    this.line(
+      { ...attrs, stroke: color, "stroke-width": 1, class: "facet-nested-group-separator" },
+      g,
+    );
   }
 
   /** Positive values move every label tier away from the axis baseline. */
@@ -367,9 +388,10 @@ export class NestedAxis {
 
     }
 
-    // Continue every boundary through the plot. An innermost-label boundary
-    // stops at the axis baseline; only a parent-category change continues
-    // into the row belonging to the outermost dimension that changed.
+    // A parent-category change continues from the baseline into the row of
+    // the outermost dimension that changed; an innermost-label boundary has
+    // no row of its own. With `groupLines: 'plot'` every boundary also
+    // crosses the plot.
     const plotExtent = top ? plot.y + plot.height : plot.y;
     for (const boundary of this.categoryBoundaries()) {
       const row = levels - 1 - boundary.level;
@@ -380,18 +402,8 @@ export class NestedAxis {
       const axisExtent = boundary.level === levels - 1
         ? baseY
         : rowStart + dir * rowHeight(row);
-      this.line(
-        {
-          x1: bx,
-          y1: plotExtent,
-          x2: bx,
-          y2: axisExtent,
-          stroke: color,
-          "stroke-width": 1,
-          class: "facet-nested-group-separator",
-        },
-        g,
-      );
+      const from = this.groupLines === "plot" ? plotExtent : baseY;
+      this.divider({ x1: bx, y1: from, x2: bx, y2: axisExtent }, color, g);
     }
   }
 
@@ -463,9 +475,10 @@ export class NestedAxis {
       }
     }
 
-    // Every boundary crosses the plot. Innermost-label boundaries stop at the
-    // bottom baseline; parent-category boundaries continue into the nested
-    // label area and upward through the grouping row rendered on top.
+    // Parent-category boundaries run through the grouping rows on top and
+    // into the label area below; innermost-label boundaries have no rows of
+    // their own. With `groupLines: 'plot'` every boundary also crosses the
+    // plot, joining the two.
     for (const boundary of this.categoryBoundaries()) {
       const topExtent = boundary.level === levels - 1
         ? plot.y
@@ -481,18 +494,12 @@ export class NestedAxis {
           20 +
           (levels - 2 - boundary.level) * NESTED_SPLIT_TIER_GAP;
       const bx = leafCenter(boundary.startLeaf) - bandHalf;
-      this.line(
-        {
-          x1: bx,
-          y1: topExtent,
-          x2: bx,
-          y2: bottomExtent,
-          stroke: color,
-          "stroke-width": 1,
-          class: "facet-nested-group-separator",
-        },
-        g,
-      );
+      if (this.groupLines === "plot") {
+        this.divider({ x1: bx, y1: topExtent, x2: bx, y2: bottomExtent }, color, g);
+      } else {
+        this.divider({ x1: bx, y1: topExtent, x2: bx, y2: plot.y }, color, g);
+        this.divider({ x1: bx, y1: bottomY, x2: bx, y2: bottomExtent }, color, g);
+      }
     }
   }
 
@@ -544,35 +551,28 @@ export class NestedAxis {
       if (level < levels - 1) {
         for (let s = 1; s < segments.length; s++) {
           const by = leafCenter(segments[s].startLeaf) - bandHalf;
-          this.line(
-            {
-              x1: baseX,
-              y1: by,
-              x2: colStart + dir * w,
-              y2: by,
-              stroke: color,
-              "stroke-width": 1,
-            },
-            g,
-          );
+          this.divider({ x1: baseX, y1: by, x2: colStart + dir * w, y2: by }, color, g);
         }
       }
       offset += w;
     }
 
-    // Separators between the outermost groups — confined to the label
-    // gutter (axis boundary to the far edge of the label columns), not
-    // spanning across the plot itself; a full-width line there reads as an
-    // oversized underline slicing through the bars rather than a label divider.
+    // Separators between the outermost groups, in the label gutter (axis
+    // boundary to the far edge of the label columns).
     const farEdge =
       baseX + dir * (LAYOUT.tickLength + this.labelOffset + offset);
     const outer = this.segmentsForLevel(leaves, 0);
     for (let s = 1; s < outer.length; s++) {
       const by = leafCenter(outer[s].startLeaf) - bandHalf;
-      this.line(
-        { x1: baseX, y1: by, x2: farEdge, y2: by, stroke: color, "stroke-width": 1 },
-        g,
-      );
+      this.divider({ x1: baseX, y1: by, x2: farEdge, y2: by }, color, g);
+    }
+    // With `groupLines: 'plot'`, every boundary also crosses the plot.
+    if (this.groupLines === "plot") {
+      const plotFar = right ? plot.x : plot.x + plot.width;
+      for (const boundary of this.categoryBoundaries()) {
+        const by = leafCenter(boundary.startLeaf) - bandHalf;
+        this.divider({ x1: plotFar, y1: by, x2: baseX, y2: by }, color, g);
+      }
     }
   }
 
@@ -631,7 +631,8 @@ export class NestedAxis {
       offset += w;
     }
 
-    // Full-width separators between the outermost (rightmost) groups.
+    // Separators between the outermost (rightmost) groups, in both label
+    // gutters; with `groupLines: 'plot'`, across the plot as well.
     const leftExtent =
       plot.x - LAYOUT.tickLength - this.labelOffset - innerW;
     const rightExtent =
@@ -639,10 +640,12 @@ export class NestedAxis {
     const outer = this.segmentsForLevel(leaves, 0);
     for (let s = 1; s < outer.length; s++) {
       const by = leafCenter(outer[s].startLeaf) - bandHalf;
-      this.line(
-        { x1: leftExtent, y1: by, x2: rightExtent, y2: by, stroke: color, "stroke-width": 1 },
-        g,
-      );
+      if (this.groupLines === "plot") {
+        this.divider({ x1: leftExtent, y1: by, x2: rightExtent, y2: by }, color, g);
+      } else {
+        this.divider({ x1: leftExtent, y1: by, x2: plot.x, y2: by }, color, g);
+        this.divider({ x1: rightX, y1: by, x2: rightExtent, y2: by }, color, g);
+      }
     }
   }
 

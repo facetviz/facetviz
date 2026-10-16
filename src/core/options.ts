@@ -433,6 +433,14 @@ export interface AxisOptions {
    * the look produced when several dimensions are placed on one axis.
    */
   dimensions?: string[];
+  /**
+   * Nested axis: where the lines between its groups go. `'axis'` (default)
+   * draws them only among the label tiers, as a plain category axis keeps
+   * the plot clear; `'plot'` also carries them through the plot (the
+   * classic nested-columns look); `'none'` draws none. The baseline stays
+   * either way (`lineWidth: 0` hides it).
+   */
+  groupLines?: "axis" | "plot" | "none";
   /** Aggregation used when collapsing points into nested-axis leaves. */
   aggregate?: "sum" | "avg" | "count" | "min" | "max";
 }

@@ -935,12 +935,13 @@ describe('configuration option wiring', () => {
     ).toBe(28);
   });
 
-  it('extends every nested category separator through the plot', () => {
+  it("extends every nested category separator through the plot with groupLines: 'plot'", () => {
     const el = container();
     new FacetViz(el, {
       chart: { ...baseChart, type: 'column', responsive: false },
       xAxis: {
         dimensions: ['product', 'category', 'city'],
+        groupLines: 'plot',
         lineColor: '#123456',
         title: { text: 'Product / Category / City' },
       },
@@ -989,6 +990,66 @@ describe('configuration option wiring', () => {
     expect(Number(title.getAttribute('y')) - farthestSeparator).toBe(22);
   });
 
+  it('keeps nested group lines out of the plot unless asked', () => {
+    const data = [
+      { y: 2, product: 'Bread', category: 'Beverages', city: 'Chennai' },
+      { y: 3, product: 'Bread', category: 'Beverages', city: 'Bengaluru' },
+      { y: 4, product: 'Bread', category: 'Grocery', city: 'Chennai' },
+      { y: 5, product: 'Eggs', category: 'Grocery', city: 'Chennai' },
+    ];
+    const separatorsOf = (xAxis: Record<string, unknown>) => {
+      const el = container();
+      new FacetViz(el, {
+        chart: { ...baseChart, type: 'column', responsive: false },
+        xAxis: { dimensions: ['product', 'category', 'city'], ...xAxis },
+        series: [{ data }],
+      });
+      const nested = el.querySelector<SVGGElement>('.facet-axis-nested')!;
+      const lines = [...nested.querySelectorAll<SVGLineElement>('.facet-nested-group-separator')]
+        .map((l) => ['x1', 'y1', 'x2', 'y2'].map((a) => Number(l.getAttribute(a))));
+      const baselineY = Math.max(...[...nested.querySelectorAll<SVGLineElement>('line')]
+        .filter((l) => l.getAttribute('y1') === l.getAttribute('y2'))
+        .map((l) => Number(l.getAttribute('y1'))));
+      return { lines, baselineY };
+    };
+    // Default: only the category and product boundaries, from the baseline
+    // down into their label rows; nothing above the baseline.
+    const below = separatorsOf({});
+    expect(below.lines).toHaveLength(2);
+    expect(below.lines.every(([, y1, , y2]) => y1 === below.baselineY && y2 > below.baselineY)).toBe(true);
+    // Split: stubs above the plot and below the baseline, none across it.
+    const split = separatorsOf({ opposite: true });
+    expect(split.lines.length).toBeGreaterThan(0);
+    expect(split.lines.every(([, y1, , y2]) => Math.min(y1, y2) >= split.baselineY || Math.max(y1, y2) < split.baselineY - 50)).toBe(true);
+    // 'none': no dividers, baseline kept.
+    const none = separatorsOf({ groupLines: 'none' });
+    expect(none.lines).toHaveLength(0);
+    expect(Number.isFinite(none.baselineY)).toBe(true);
+  });
+
+  it('keeps vertical nested group lines in the gutter unless asked', () => {
+    const linesOf = (groupLines?: 'plot') => {
+      const el = container();
+      new FacetViz(el, {
+        chart: { ...baseChart, type: 'bar', responsive: false },
+        xAxis: { dimensions: ['region', 'quarter'], ...(groupLines ? { groupLines } : {}) },
+        series: [{ data: [
+          { y: 2, region: 'East', quarter: 'Q1' },
+          { y: 3, region: 'East', quarter: 'Q2' },
+          { y: 4, region: 'West', quarter: 'Q1' },
+        ] }],
+      });
+      const nested = el.querySelector<SVGGElement>('.facet-axis-nested')!;
+      return [...nested.querySelectorAll<SVGLineElement>('.facet-nested-group-separator')]
+        .map((l) => Math.abs(Number(l.getAttribute('x2')) - Number(l.getAttribute('x1'))));
+    };
+    const gutter = linesOf();
+    const plot = linesOf('plot');
+    expect(gutter.length).toBeGreaterThan(0);
+    expect(plot.length).toBeGreaterThan(gutter.length);
+    expect(Math.max(...plot)).toBeGreaterThan(Math.max(...gutter) * 2);
+  });
+
   it('keeps the nested-axis title clear of separators when opposite is true', () => {
     const el = container();
     new FacetViz(el, {
@@ -996,6 +1057,7 @@ describe('configuration option wiring', () => {
       xAxis: {
         dimensions: ['product', 'category', 'city'],
         opposite: true,
+        groupLines: 'plot',
         title: { text: 'Split nested title' },
       },
       series: [{
