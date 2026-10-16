@@ -174,6 +174,13 @@ export interface SeriesOptions
    * same group share one heading; series without one stay as plain items.
    */
   legendGroup?: string;
+  /**
+   * Series with the same key share one legend item: the first one's, named
+   * `legendLabel` when it has one. The item shows and hides them together.
+   */
+  legendKey?: string;
+  /** The label of a `legendKey` item, in place of the series' name. */
+  legendLabel?: string;
   lineWidth?: number;
   /** Line-family and area series: SVG dash pattern for the line, e.g. '6 4'
    * (dashed) or '1 4' (dotted). Unset draws a solid line. */

@@ -618,6 +618,27 @@ describe('FacetViz rendering', () => {
     expect(chart.series.map((s) => s.visible)).toEqual([true, true, false, true]);
   });
 
+  it('shares one legend item between series with the same legend key', () => {
+    const el = container();
+    const chart = new FacetViz(el, {
+      chart: { type: 'column', animation: false },
+      xAxis: { categories: ['A'] },
+      series: [
+        { name: 'East · Q1', data: [3], legendKey: 'east', legendLabel: 'East' },
+        { name: 'West', data: [4], legendKey: 'west' },
+        { name: 'East · Q2', data: [5], legendKey: 'east', legendLabel: 'East' },
+        { name: 'Total', data: [6] },
+      ],
+    });
+
+    expect(chart.legendItems.map((item) => item.label)).toEqual(['East', 'West', 'Total']);
+    // The shared item shows and hides every series with its key.
+    el.querySelectorAll('.facet-legend-item')[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(chart.series.map((s) => s.visible)).toEqual([false, true, false, true]);
+    el.querySelectorAll('.facet-legend-item')[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(chart.series.map((s) => s.visible)).toEqual([true, true, true, true]);
+  });
+
   it('gives tooltip formatters the series index and options', () => {
     const el = container();
     const seen: unknown[] = [];

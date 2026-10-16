@@ -5020,15 +5020,30 @@ export class FacetViz {
         visible: !first.hiddenPoints.has(p.index),
       }));
     }
-    const items: Array<LegendItem & { seriesIndex?: number }> = [];
+    const items: Array<LegendItem & { seriesIndex?: number; seriesIndexes?: number[] }> = [];
+    // Series sharing a legend key: the item they share.
+    const keyed = new Map<string, LegendItem & { seriesIndexes: number[] }>();
     let group: string | undefined;
     this.series.forEach((s, seriesIndex) => {
       if (s.options.showInLegend === false) return;
+      const key = s.options.legendKey;
+      const shared = key != null ? keyed.get(key) : undefined;
+      if (shared) {
+        shared.seriesIndexes.push(seriesIndex);
+        shared.visible ||= s.visible;
+        return;
+      }
       // A heading before each run of series in a legend group.
       const g = s.options.legendGroup || undefined;
       if (g && g !== group) items.push({ label: g, color: "", visible: true, heading: true });
       group = g;
-      items.push({ label: s.name, color: s.color, visible: s.visible, seriesIndex });
+      if (key != null) {
+        const item = { label: s.options.legendLabel ?? s.name, color: s.color, visible: s.visible, seriesIndexes: [seriesIndex] };
+        keyed.set(key, item);
+        items.push(item);
+      } else {
+        items.push({ label: s.name, color: s.color, visible: s.visible, seriesIndex });
+      }
     });
     return [...scales, ...items];
   }
@@ -5095,6 +5110,16 @@ export class FacetViz {
     }
     // A group's heading stands for nothing to toggle.
     if (item?.heading) return;
+    // An item for series sharing a legend key toggles them all.
+    if (item?.seriesIndexes) {
+      for (const i of item.seriesIndexes) if (this.series[i]) this.series[i].visible = !item.visible;
+      this.options.seriesEvents?.legendItemClick?.({
+        series: item.label,
+        visible: !item.visible,
+      });
+      this.render();
+      return;
+    }
     // Filtered series legends need to retain their original series index.
     const seriesIndex = item?.seriesIndex ?? index;
     const s = this.series[seriesIndex];
