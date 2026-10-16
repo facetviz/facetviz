@@ -2,7 +2,9 @@
  * Waterfall series. Each point is a delta added to a running total, drawn as a
  * floating bar from the previous cumulative to the new one. Points flagged
  * `isSum` / `isIntermediateSum` draw an absolute bar from zero to the running
- * total. Rises, falls and sums are coloured distinctly, with connector lines.
+ * total; `isTotal` sets the running total to the point's own `y` (an opening
+ * balance, or a known total part-way). Rises, falls and totals are coloured
+ * distinctly (`upColor`, `downColor`, `sumColor`), with connector lines.
  * Data labels show each step's change (a sum's running total): `outside`
  * (default) beyond the bar's moving end, `inside`, `center` or `base`.
  */
@@ -17,10 +19,29 @@ export interface WaterfallPointOptions {
    *  absolute bar from zero to the running total. */
   isSum?: boolean;
   isIntermediateSum?: boolean;
+  /** An absolute total: the running total becomes this point's `y`, drawn
+   *  from zero like a sum. Use it for a starting value, e.g.
+   *  `[{ y: 233, isTotal: true }, -29.8, -6.1, { isSum: true }]`. */
+  isTotal?: boolean;
 }
 
+/** Waterfall's series-level fields. */
+export interface WaterfallSeriesOptions {
+  /** Rises. Default `'#26a69a'`. */
+  upColor?: string;
+  /** Falls. Default `'#ef5350'`. */
+  downColor?: string;
+  /** Sums and totals. Default `'#4472c4'`. */
+  sumColor?: string;
+}
+
+const DEFAULT_COLORS = { up: '#26a69a', down: '#ef5350', sum: '#4472c4' };
+
 export class WaterfallSeries extends BaseSeries {
-  private colors = { up: '#26a69a', down: '#ef5350', sum: '#4472c4' };
+  private get colors() {
+    const o = this.options as WaterfallSeriesOptions;
+    return { up: o.upColor ?? DEFAULT_COLORS.up, down: o.downColor ?? DEFAULT_COLORS.down, sum: o.sumColor ?? DEFAULT_COLORS.sum };
+  }
 
   override capabilities(): SeriesCapabilities {
     return { grouped: false, cartesian: true, stackable: false };
@@ -30,7 +51,10 @@ export class WaterfallSeries extends BaseSeries {
   override valueExtent(): [number, number] {
     let cum = 0, min = 0, max = 0;
     for (const p of this.points) {
-      if (p.options.isSum || p.options.isIntermediateSum) {
+      if (p.options.isTotal) {
+        cum = p.y ?? 0;
+        min = Math.min(min, cum); max = Math.max(max, cum);
+      } else if (p.options.isSum || p.options.isIntermediateSum) {
         min = Math.min(min, cum); max = Math.max(max, cum);
       } else {
         const prev = cum; cum += p.y ?? 0;
@@ -54,8 +78,10 @@ export class WaterfallSeries extends BaseSeries {
     let prevEndX: number | null = null;
     let prevY = zeroY;
 
+    const colors = this.colors;
     for (const p of this.points) {
-      const isSum = !!(p.options.isSum || p.options.isIntermediateSum);
+      if (p.options.isTotal) cum = p.y ?? 0;
+      const isSum = !!(p.options.isSum || p.options.isIntermediateSum || p.options.isTotal);
       const from = isSum ? 0 : cum;
       const to = isSum ? cum : cum + (p.y ?? 0);
       if (!isSum) cum = to;
@@ -64,7 +90,7 @@ export class WaterfallSeries extends BaseSeries {
       const x0 = cx - barW / 2;
       const yTop = yScale.scale(Math.max(from, to));
       const yBot = yScale.scale(Math.min(from, to));
-      const color = p.color ?? (isSum ? this.colors.sum : to >= from ? this.colors.up : this.colors.down);
+      const color = p.color ?? (isSum ? colors.sum : to >= from ? colors.up : colors.down);
 
       // Connector from the previous bar's end level.
       if (prevEndX !== null) {

@@ -1669,7 +1669,7 @@ raw array for boxplots.
 | `bullet`                        | Measure bar per row against qualitative `ranges` bands and a `target` marker.                  |
 | `candlestick`                   | OHLC candles (`open`/`high`/`low`/`close`); up/down coloured.                                  |
 | `gauge`                         | 180° dial per value; horizontal, or vertical via `chart.inverted`; supports reference markers. |
-| `waterfall`                     | Running cumulative bars; `isSum` for total bars, coloured rises/falls.                         |
+| `waterfall`                     | Running cumulative bars; `isSum` / `isTotal` for total bars; `upColor` / `downColor` / `sumColor`. |
 | `histogram`                     | Bins an array of raw numbers (`bins` to override the bin count).                               |
 | `timeline`                      | Events placed in order along a line, labels alternating above/below.                           |
 | `funnel`                        | Narrowing stages sized by value.                                                               |
@@ -1687,8 +1687,8 @@ raw array for boxplots.
 **Data fields for the new types** — set on each point: heatmap `{ x, y, value }`;
 candlestick `{ x, open, high, low, close }`; bullet `{ name, y, target, ranges }`;
 gauge series `{ min, max, color, markers }` + one or more points
-`{ name, y, color }`; waterfall `{ x, y }` or
-`{ x, isSum: true }`; histogram raw `number[]`; treegraph / sunburst / treemap
+`{ name, y, color }`; waterfall `{ x, y }`, `{ x, isSum: true }` (the running total so far) or
+`{ x, y, isTotal: true }` (a starting value: the running total becomes `y`); histogram raw `number[]`; treegraph / sunburst / treemap
 `{ id, parent, name, value }` (a treemap without `parent`s is one level); bubble `{ x, y, z }`; sankey `{ from, to, weight }`;
 calendar `{ date, value }`; gantt `{ name, start, end }`; variable-radius pie adds
 `z` per slice.

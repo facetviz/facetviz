@@ -33,7 +33,7 @@ import type {
 } from "../series/dumbbell.js";
 import type { CandlestickPointOptions } from "../series/candlestick.js";
 import type { BulletPointOptions } from "../series/bullet.js";
-import type { WaterfallPointOptions } from "../series/waterfall.js";
+import type { WaterfallPointOptions, WaterfallSeriesOptions } from "../series/waterfall.js";
 import type { SankeyPointOptions } from "../series/sankey.js";
 import type { GanttPointOptions } from "../series/gantt.js";
 import type { CalendarPointOptions } from "../series/calendar.js";
@@ -142,6 +142,7 @@ export interface PointOptions
 export interface SeriesOptions
   extends
     BoxplotSeriesOptions,
+    WaterfallSeriesOptions,
     DumbbellSeriesOptions,
     GaugeSeriesOptions,
     HistogramSeriesOptions,

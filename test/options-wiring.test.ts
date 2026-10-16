@@ -141,6 +141,30 @@ describe('configuration option wiring', () => {
     });
   });
 
+  it('starts a waterfall from a total, in the colors it is given', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { ...baseChart, type: 'waterfall' },
+      xAxis: { categories: ['Sep', 'West', 'East', 'Oct'] },
+      yAxis: { min: 150 },
+      series: [{
+        type: 'waterfall',
+        upColor: '#0000ff',
+        downColor: '#ff8800',
+        sumColor: '#888888',
+        data: [{ y: 233, isTotal: true }, -30, 6, { isSum: true }],
+        dataLabels: { enabled: true },
+      }],
+    } as never);
+    const bars = [...el.querySelectorAll<SVGRectElement>('.facet-waterfall rect.facet-point')];
+    expect(bars.map((b) => b.getAttribute('fill'))).toEqual(['#888888', '#ff8800', '#0000ff', '#888888']);
+    const labels = [...el.querySelectorAll<SVGTextElement>('.facet-waterfall text')].map((t) => t.textContent);
+    expect(labels).toEqual(['233', '-30', '6', '209']);
+    // The first fall hangs from the opening total's top.
+    const [open, fall] = bars;
+    expect(Number(fall.getAttribute('y'))).toBeCloseTo(Number(open.getAttribute('y')));
+  });
+
   it('fires load once after the initial render and render on every render', () => {
     const load = vi.fn();
     const render = vi.fn();
