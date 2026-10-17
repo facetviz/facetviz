@@ -873,6 +873,11 @@ export interface ChartOptions {
     height?: number;
     backgroundColor?: string;
     spacing?: [number, number, number, number]; // top right bottom left
+    /** px between the plot and the chart's edge (inside `spacing`) on each
+     * side with no visible axis: one number, or top, right, bottom, left.
+     * Default 6 above and below, 8 at the sides. 0 lets columns and areas
+     * stand right on the bottom edge, e.g. level with text beside them. */
+    plotPadding?: number | [number, number, number, number];
     inverted?: boolean;
     polar?: boolean;
     /**

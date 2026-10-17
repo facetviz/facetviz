@@ -772,3 +772,30 @@ describe('FacetViz rendering', () => {
     expect(plotBottom).toBeLessThan(firstLegendY);
   });
 });
+
+describe('plotPadding', () => {
+  beforeEach(() => { document.body.innerHTML = ''; });
+
+  const plot = (padding?: number | [number, number, number, number]) => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { type: 'column', animation: false, height: 80, spacing: [0, 0, 0, 0], ...(padding !== undefined ? { plotPadding: padding } : {}) },
+      xAxis: { categories: ['A', 'B'], visible: false },
+      yAxis: { visible: false },
+      legend: { enabled: false },
+      series: [{ name: 'S', data: [3, 5] }],
+    });
+    // The clip reaches 2px past the plot, for strokes on its edges.
+    const clip = el.querySelector('clipPath rect')!;
+    return { y: Number(clip.getAttribute('y')) + 2, height: Number(clip.getAttribute('height')) - 4 };
+  };
+
+  it('keeps 6px above and below a plot with hidden axes by default', () => {
+    expect(plot()).toEqual({ y: 6, height: 68 });
+  });
+
+  it('lets the plot reach the edges, on every side or one', () => {
+    expect(plot(0)).toEqual({ y: 0, height: 80 });
+    expect(plot([6, 0, 0, 0])).toEqual({ y: 6, height: 74 });
+  });
+});

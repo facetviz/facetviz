@@ -1308,12 +1308,20 @@ export class FacetViz {
     return Math.max(MIN_CHROME_SPACING_SCALE, Math.min(1, ratio));
   }
 
+  /** The space kept on a side with no visible axis (`chart.plotPadding`). */
+  private plotPadding(side: "top" | "bottom" | "left" | "right"): number | undefined {
+    const p = this.options.chart?.plotPadding;
+    if (p === undefined) return undefined;
+    if (typeof p === "number") return p;
+    return p[["top", "right", "bottom", "left"].indexOf(side)];
+  }
+
   private axisReserve(
     opts: AxisOptions,
     side: "top" | "bottom" | "left" | "right",
     labelW: number,
   ): number {
-    if (opts.visible === false) return 6;
+    if (opts.visible === false) return this.plotPadding(side) ?? 6;
     const title = opts.title?.text && opts.title.enabled !== false ? 1 : 0;
     const titleMargin = opts.title?.margin ??
       (side === "top" || side === "bottom" ? LAYOUT.axisTitleGap : 8) *
@@ -1478,7 +1486,12 @@ export class FacetViz {
       valSide,
       this.valueLabelWidth(visible, valOpts),
     );
-    const pad = { left: 8, right: 8, top: 6, bottom: 6 };
+    const pad = {
+      left: this.plotPadding("left") ?? 8,
+      right: this.plotPadding("right") ?? 8,
+      top: this.plotPadding("top") ?? 6,
+      bottom: this.plotPadding("bottom") ?? 6,
+    };
     pad[catSide] = catReserve;
     pad[valSide] = valReserve;
     if (renderSecondaryX) {
