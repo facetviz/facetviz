@@ -311,6 +311,7 @@ describe("FacetCard stacks", () => {
     const stack = element.querySelector<HTMLElement>('[data-item="s"]')!;
     expect(stack.style.flexDirection).toBe("column");
     expect(stack.children.length).toBe(2);
+    expect((stack.children[0] as HTMLElement).style.maxWidth).toBe("100%");
     const shadow = element.querySelector<HTMLElement>(".facet-card")!.style.boxShadow;
     expect(shadow).toContain("inset");
     expect(shadow).toContain("1px 2px #000");

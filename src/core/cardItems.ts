@@ -389,8 +389,10 @@ function renderItem(
       el.style.alignItems = item.align === "center" ? "center" : item.align === "end" ? "flex-end" : item.align === "stretch" ? "stretch" : "flex-start";
       for (const child of item.items) {
         const c = renderItem(child, theme, charts, text);
-        // Down a stack, items size to their content, and charts and bars span it.
+        // Down a stack, items size to their content, never past its width
+        // (one-line text ends in an ellipsis), and charts and bars span it.
         c.style.flex = "0 0 auto";
+        c.style.maxWidth = "100%";
         if (child.type === "chart" || child.type === "bar" || child.type === "divider") c.style.alignSelf = "stretch";
         el.appendChild(c);
       }
