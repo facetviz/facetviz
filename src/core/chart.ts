@@ -21,6 +21,7 @@ import type {
   TrellisOptions,
   AppendDataOptions,
   MarkerOptions,
+  DataLabelOptions,
 } from "./options.js";
 import { Renderer } from "./renderer.js";
 import { Axis, Rect, minorGridPositions } from "./axis.js";
@@ -4489,12 +4490,36 @@ export class FacetViz {
       const fontPx = parseFloat(dataLabelFontSize(dl)) || 11;
       const outward = inverted ? (dl.offsetX ?? 0) : -(dl.offsetY ?? 0);
       const need =
-        (inverted ? 18 : 7 + fontPx) +
+        (inverted ? 18 : 7 + this.turnedLabelHeight(s, dl, fontPx)) +
         (dl.distance ?? 0) +
         Math.max(0, outward);
       room = Math.max(room, need, 18);
     }
     return room;
+  }
+
+  /**
+   * How tall `s`'s tallest data label stands: its font size, or, turned
+   * by `dl.rotation`, as much of its longest text as the turn stands up.
+   */
+  private turnedLabelHeight(s: BaseSeries, dl: DataLabelOptions, fontPx: number): number {
+    if (!dl.rotation) return fontPx;
+    const r = (dl.rotation * Math.PI) / 180;
+    const style = { "font-size": dataLabelFontSize(dl), "font-weight": dl.fontWeight };
+    let w = 0;
+    for (const p of s.points) {
+      const text = labelString(dl, {
+        x: p.x,
+        y: p.y,
+        point: p.options,
+        series: s.name,
+        name: p.name ?? p.x,
+        index: p.index,
+        color: p.color ?? s.color,
+      });
+      if (text) w = Math.max(w, this.renderer.measureText(text, style).width);
+    }
+    return Math.max(fontPx * Math.abs(Math.cos(r)), w * Math.abs(Math.sin(r)) + fontPx * Math.abs(Math.cos(r)) * 0.5);
   }
 
   /**

@@ -34,6 +34,39 @@ export interface LabelPlacement {
   /** Use SVG's true vertical centering when the coordinate is a box centre,
    * or hang the text below the coordinate when it is a box's top edge. */
   verticalAlign?: 'middle' | 'hanging';
+  /** Which way from the coordinate the label lies, kept when it is rotated.
+   * Unset: read from the anchoring — left or right of an end or start
+   * anchor, else down for hanging text and up for text sitting on the
+   * coordinate; vertically centred labels turn about their middle. */
+  side?: 'up' | 'down' | 'left' | 'right';
+}
+
+const SIDES = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] } as const;
+
+function sideOf(place: LabelPlacement): keyof typeof SIDES | null {
+  if (place.side) return place.side;
+  if (place.anchor === 'start') return 'right';
+  if (place.anchor === 'end') return 'left';
+  if (place.verticalAlign === 'middle') return null;
+  return place.verticalAlign === 'hanging' ? 'down' : 'up';
+}
+
+/**
+ * A rotated label's anchoring, so it stays on its side of the coordinate
+ * instead of turning about its middle into the mark: text running
+ * outward starts (or ends) at the coordinate; text running across it is
+ * centred, with its glyphs toward the outside.
+ */
+function turnedPlace(place: LabelPlacement, rotation: number): LabelPlacement {
+  const side = sideOf(place);
+  if (!side) return place;
+  const [dx, dy] = SIDES[side];
+  const r = (rotation * Math.PI) / 180;
+  // Along the text, and from its baseline down through its glyphs.
+  const along = Math.cos(r) * dx + Math.sin(r) * dy;
+  const down = -Math.sin(r) * dx + Math.cos(r) * dy;
+  if (Math.abs(along) > 0.2) return { ...place, anchor: along > 0 ? 'start' : 'end', verticalAlign: 'middle' };
+  return { ...place, anchor: 'middle', verticalAlign: down > 0 ? 'hanging' : undefined };
 }
 
 /**
@@ -63,6 +96,7 @@ export function drawDataLabel(
   if (!text) return;
   if (dl.offsetX || dl.offsetY)
     place = { ...place, x: place.x + (dl.offsetX || 0), y: place.y + (dl.offsetY || 0) };
+  if (dl.rotation && !dl.align) place = turnedPlace(place, dl.rotation);
   const anchor = dl.align === 'left'
     ? 'start'
     : dl.align === 'right'
@@ -116,10 +150,15 @@ export function drawPointLabels(
     });
     let place: LabelPlacement;
     switch (pos) {
-      case 'bottom': place = { x: pt.x, y: pt.y + 16 + d, anchor: 'middle' }; break;
-      case 'center': place = { x: pt.x, y: pt.y + 4, anchor: 'middle' }; break;
-      case 'left': place = { x: pt.x - 8 - d, y: pt.y + 4, anchor: 'end' }; break;
-      case 'right': place = { x: pt.x + 8 + d, y: pt.y + 4, anchor: 'start' }; break;
+      // Rotated, a label below the point hangs from just under it.
+      case 'bottom': place = dl.rotation
+        ? { x: pt.x, y: pt.y + 8 + d, anchor: 'middle', side: 'down' }
+        : { x: pt.x, y: pt.y + 16 + d, anchor: 'middle' }; break;
+      case 'center': place = dl.rotation
+        ? { x: pt.x, y: pt.y, anchor: 'middle', verticalAlign: 'middle' }
+        : { x: pt.x, y: pt.y + 4, anchor: 'middle' }; break;
+      case 'left': place = { x: pt.x - 8 - d, y: pt.y + 4, anchor: 'end', side: 'left' }; break;
+      case 'right': place = { x: pt.x + 8 + d, y: pt.y + 4, anchor: 'start', side: 'right' }; break;
       default: place = { x: pt.x, y: pt.y - 8 - d, anchor: 'middle' }; // top
     }
     drawDataLabel(renderer, parent, text, place, dl);

@@ -118,8 +118,8 @@ export class WaterfallSeries extends BaseSeries {
         const pos = dl!.position ?? 'outside';
         let place: LabelPlacement;
         if (pos === 'center') place = { x: cx, y: (yTop + yBot) / 2, anchor: 'middle', verticalAlign: 'middle' };
-        else if (pos === 'inside') place = down ? { x: cx, y: yBot - 5 - d, anchor: 'middle' } : { x: cx, y: yTop + 12 + d, anchor: 'middle' };
-        else if (pos === 'base') place = down ? { x: cx, y: yTop + 12 + d, anchor: 'middle' } : { x: cx, y: yBot - 5 - d, anchor: 'middle' };
+        else if (pos === 'inside') place = down ? { x: cx, y: yBot - 5 - d, anchor: 'middle' } : { x: cx, y: yTop + 12 + d, anchor: 'middle', side: 'down' };
+        else if (pos === 'base') place = down ? { x: cx, y: yTop + 12 + d, anchor: 'middle', side: 'down' } : { x: cx, y: yBot - 5 - d, anchor: 'middle' };
         else place = down ? { x: cx, y: yBot + 4 + d, anchor: 'middle', verticalAlign: 'hanging' } : { x: cx, y: yTop - 4 - d, anchor: 'middle' };
         drawDataLabel(renderer, g, text, place, dl!);
       }

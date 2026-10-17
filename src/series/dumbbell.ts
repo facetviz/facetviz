@@ -500,7 +500,7 @@ export class DumbbellSeries extends BaseSeries {
       } else {
         place = end.isHigh
           ? { x: cat, y: v - radius - 6 - d, anchor: "middle" }
-          : { x: cat, y: v + radius + 14 + d, anchor: "middle" };
+          : { x: cat, y: v + radius + 14 + d, anchor: "middle", side: "down" };
       }
       drawDataLabel(ctx.renderer, ctx.renderer.root, text, place, dl);
     }

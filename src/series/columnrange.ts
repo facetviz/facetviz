@@ -76,7 +76,7 @@ export class ColumnRangeSeries extends BaseSeries {
       } else {
         place = end.isHigh
           ? { x: cat, y: end.v - d, anchor: 'middle' }
-          : { x: cat, y: end.v + d + 10, anchor: 'middle' };
+          : { x: cat, y: end.v + d + 10, anchor: 'middle', side: 'down' };
       }
       drawDataLabel(ctx.renderer, ctx.renderer.root, text, place, dl);
     }

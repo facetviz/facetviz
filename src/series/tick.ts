@@ -92,7 +92,7 @@ export class TickSeries extends BaseSeries {
         : { x: v + gap, y: mid + 4, anchor: 'start' };
     } else {
       place = negative
-        ? { x: mid, y: v + gap + 4, anchor: 'middle' }
+        ? { x: mid, y: v + gap + 4, anchor: 'middle', side: 'down' }
         : { x: mid, y: v - gap, anchor: 'middle' };
     }
     drawDataLabel(ctx.renderer, ctx.renderer.root, text, place, dl);

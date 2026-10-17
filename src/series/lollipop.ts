@@ -122,7 +122,7 @@ export class LollipopSeries extends BaseSeries {
         : { x: cx + gap, y: cy + 4, anchor: "start" };
     } else {
       place = negative
-        ? { x: cx, y: cy + gap + 8, anchor: "middle" }
+        ? { x: cx, y: cy + gap + 8, anchor: "middle", side: "down" }
         : { x: cx, y: cy - gap, anchor: "middle" };
     }
     drawDataLabel(ctx.renderer, ctx.renderer.root, text, place, dl);

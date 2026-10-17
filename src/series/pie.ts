@@ -403,11 +403,10 @@ export class PieSeries extends BaseSeries {
           renderer,
           g,
           text,
-          {
-            x: inside.x,
-            y: inside.y + fontPx * 0.35,
-            anchor: 'middle',
-          },
+          // Turned, the label turns about the point found to fit it.
+          dl.rotation
+            ? { x: inside.x, y: inside.y, anchor: 'middle', verticalAlign: 'middle' }
+            : { x: inside.x, y: inside.y + fontPx * 0.35, anchor: 'middle' },
           { ...dl, color: dl.color ?? '#ffffff' },
         );
         return;

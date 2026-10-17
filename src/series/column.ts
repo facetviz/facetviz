@@ -437,8 +437,11 @@ export class ColumnSeries extends BaseSeries {
         place = { ...place, y: rect.y + rect.height - 2, verticalAlign: undefined };
     } else {
       const cx = rect.x + rect.width / 2;
+      // Rotated, an inside label hangs from just below the column's top.
       if (pos === "inside")
-        place = { x: cx, y: rect.y + 12 + d, anchor: "middle" };
+        place = dl.rotation
+          ? { x: cx, y: rect.y + 4 + d, anchor: "middle", side: "down" }
+          : { x: cx, y: rect.y + 12 + d, anchor: "middle" };
       else if (pos === "center")
         place = {
           x: cx,
@@ -449,11 +452,13 @@ export class ColumnSeries extends BaseSeries {
       else if (pos === "base")
         place = { x: cx, y: rect.y + rect.height - 5 - d, anchor: "middle" };
       else place = { x: cx, y: rect.y - 4 - d, anchor: "middle" }; // outside
-      // Across the column: line up with its left or right edge.
+      // Across the column: line up with its left or right edge, still
+      // above or below the coordinate when rotated.
+      const side = place.side ?? (place.verticalAlign === "middle" ? undefined : "up");
       if (dl.crossAlign === "start")
-        place = { ...place, x: rect.x + 2, anchor: "start" };
+        place = { ...place, x: rect.x + 2, anchor: "start", side };
       else if (dl.crossAlign === "end")
-        place = { ...place, x: rect.x + rect.width - 2, anchor: "end" };
+        place = { ...place, x: rect.x + rect.width - 2, anchor: "end", side };
     }
     // A stacked segment's label sits inside the segment: drop it when it
     // would spill over the segment's edges onto its neighbours.
