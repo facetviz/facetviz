@@ -2,7 +2,7 @@
 
 import type { Renderer } from './renderer.js';
 import type { Scale } from './scale.js';
-import type { AxisOptions } from './options.js';
+import type { AxisOptions, PlotBandOptions } from './options.js';
 import { CategoryScale } from './scale.js';
 import { FONTS, LAYOUT } from './defaults.js';
 import { THEME } from './theme.js';
@@ -27,6 +27,8 @@ export interface AxisConfig {
   grid?: boolean;
   /** Scale applied to default outward chrome gaps on constrained charts. */
   spacingScale?: number;
+  /** The other axis's scale, where plot lines and bands find their `group`. */
+  cross?: Scale;
 }
 
 /**
@@ -107,7 +109,7 @@ export class Axis {
     // everything else in the axis layer. Explicit bands paint second so they
     // remain the more prominent annotation when the two overlap.
     this.drawAlternateCategoryBands(group);
-    this.drawPlotBands(group);
+    this.drawPlotBands(group, 'below');
 
     // Axis baseline.
     const axisColor = options.lineColor ?? THEME.axis.lineColor;
@@ -260,8 +262,10 @@ export class Axis {
   renderAbove(parent: SVGGElement): void {
     const { options, position, renderer } = this.cfg;
     if (options.visible === false) return;
-    if (!(options.plotLines ?? []).some((l) => l.zIndex === 'above')) return;
+    const above = (l: { zIndex?: string }) => l.zIndex === 'above';
+    if (!(options.plotLines ?? []).some(above) && !(options.plotBands ?? []).some(above)) return;
     const group = renderer.group({ class: `facet-axis-above facet-axis-${position}` }, parent);
+    this.drawPlotBands(group, 'above');
     this.drawPlotLines(group, 'above');
   }
 
@@ -310,16 +314,56 @@ export class Axis {
     });
   }
 
+  /**
+   * The pixel extent, along the other axis, of the categories in `group`
+   * (less `padding` of a step at each end): undefined without a group (the
+   * whole plot), null when none match.
+   */
+  private crossExtent(group: Array<number | string> | undefined, padding = 0): [number, number] | null | undefined {
+    const cross = this.cfg.cross;
+    if (!group || !(cross instanceof CategoryScale)) return undefined;
+    const want = group.map(String);
+    const at: number[] = [];
+    for (const tick of cross.ticks()) {
+      const parts = String(tick).split('\u0000');
+      if (want.length <= parts.length && want.every((v, i) => parts[i] === v)) at.push(cross.scale(tick));
+    }
+    if (!at.length) return null;
+    const half = Math.abs(cross.fullStep()) / 2;
+    const pad = Math.abs(cross.fullStep()) * Math.min(Math.max(padding, 0), 0.5);
+    return [Math.min(...at) - half + pad, Math.max(...at) + half - pad];
+  }
+
+  /** The plot's span along the other axis, or a group's part of it. */
+  private crossSpan(group: Array<number | string> | undefined, padding?: number): [number, number] | null {
+    const { plot } = this.cfg;
+    const ext = this.crossExtent(group, padding);
+    if (ext === null) return null;
+    // A horizontal axis draws its lines up the plot, so they span its height.
+    const [lo, hi] = this.horizontal ? [plot.y, plot.y + plot.height] : [plot.x, plot.x + plot.width];
+    return ext ? [Math.max(lo, ext[0]), Math.min(hi, ext[1])] : [lo, hi];
+  }
+
   /** Shaded bands spanning an axis interval (horizontal or vertical). */
-  private drawPlotBands(g: SVGGElement): void {
-    const { renderer, scale, plot } = this.cfg;
+  private drawPlotBands(g: SVGGElement, which: 'above' | 'below'): void {
+    const { renderer, scale } = this.cfg;
     for (const band of this.cfg.options.plotBands ?? []) {
+      if ((band.zIndex === 'above' ? 'above' : 'below') !== which) continue;
+      const span = this.crossSpan(band.group, band.groupPadding);
+      if (!span || span[1] <= span[0]) continue;
       const p0 = scale.scale(band.from);
       const p1 = scale.scale(band.to);
       const rect = this.horizontal
-        ? { x: Math.min(p0, p1), y: plot.y, width: Math.abs(p1 - p0), height: plot.height }
-        : { x: plot.x, y: Math.min(p0, p1), width: plot.width, height: Math.abs(p1 - p0) };
-      renderer.create('rect', { ...rect, fill: band.color ?? 'rgba(70,130,180,0.12)', stroke: 'none', class: 'facet-plotband' }, g);
+        ? { x: Math.min(p0, p1), y: span[0], width: Math.abs(p1 - p0), height: span[1] - span[0] }
+        : { x: span[0], y: Math.min(p0, p1), width: span[1] - span[0], height: Math.abs(p1 - p0) };
+      renderer.create('rect', {
+        ...rect,
+        fill: band.color ?? 'rgba(70,130,180,0.12)',
+        stroke: band.borderColor ?? 'none',
+        'stroke-width': band.borderColor ? (band.borderWidth ?? 1) : undefined,
+        class: 'facet-plotband',
+      }, g);
+      if (band.whiskers) this.drawWhiskers(g, band, span, [p0, p1]);
       if (band.label?.text) {
         const align = band.label.align ?? 'left';
         const x = align === 'center'
@@ -336,6 +380,30 @@ export class Axis {
     }
   }
 
+  /** A band's whiskers: a stem from each end of the band out to its value,
+   * along the band's middle, capped half as wide as the band. */
+  private drawWhiskers(g: SVGGElement, band: PlotBandOptions, span: [number, number], ends: [number, number]): void {
+    const { renderer, scale } = this.cfg;
+    const mid = (span[0] + span[1]) / 2;
+    const cap = (span[1] - span[0]) / 4;
+    const [lo, hi] = [Math.min(...ends), Math.max(...ends)];
+    const stroke = band.borderColor ?? band.color ?? '#666';
+    const attrs = { stroke, 'stroke-width': band.borderWidth ?? 1, class: 'facet-plotband-whisker' };
+    for (const v of band.whiskers!) {
+      const p = scale.scale(v);
+      if (!Number.isFinite(p)) continue;
+      // The band edge nearer to the whisker's end.
+      const from = Math.abs(p - lo) < Math.abs(p - hi) ? lo : hi;
+      if (p >= lo && p <= hi) continue;
+      const line = (a: [number, number], b: [number, number]) =>
+        this.horizontal
+          ? renderer.create('line', { x1: a[1], y1: a[0], x2: b[1], y2: b[0], ...attrs }, g)
+          : renderer.create('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], ...attrs }, g);
+      line([mid, from], [mid, p]);
+      line([mid - cap, p], [mid + cap, p]);
+    }
+  }
+
   /**
    * Reference lines at fixed axis values (horizontal or vertical). `which`
    * selects the subset to draw: lines default to `'below'` (drawn as part
@@ -345,10 +413,12 @@ export class Axis {
     const { renderer, scale, plot } = this.cfg;
     for (const line of this.cfg.options.plotLines ?? []) {
       if ((line.zIndex === 'above' ? 'above' : 'below') !== which) continue;
+      const span = this.crossSpan(line.group, line.groupPadding);
+      if (!span || span[1] <= span[0]) continue;
       const pos = scale.scale(line.value);
       const coords = this.horizontal
-        ? { x1: pos, y1: plot.y, x2: pos, y2: plot.y + plot.height }
-        : { x1: plot.x, y1: pos, x2: plot.x + plot.width, y2: pos };
+        ? { x1: pos, y1: span[0], x2: pos, y2: span[1] }
+        : { x1: span[0], y1: pos, x2: span[1], y2: pos };
       renderer.create('line', {
         ...coords,
         stroke: line.color ?? '#e63946',
@@ -388,17 +458,17 @@ export class Axis {
               anchor = 'end';
             }
           }
-          ly = vAlign === 'below' ? plot.y + plot.height - 6 : plot.y + 12;
+          ly = vAlign === 'below' ? span[1] - 6 : span[0] + 12;
         } else {
           const align = line.label.align ?? 'right';
           if (align === 'left') {
-            lx = plot.x + 4;
+            lx = span[0] + 4;
             anchor = 'start';
           } else if (align === 'center') {
-            lx = plot.x + plot.width / 2;
+            lx = (span[0] + span[1]) / 2;
             anchor = 'middle';
           } else {
-            lx = plot.x + plot.width - 4;
+            lx = span[1] - 4;
             anchor = 'end';
           }
           const target = vAlign === 'below' ? pos + 14 : pos - 4;

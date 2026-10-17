@@ -467,6 +467,16 @@ export interface PlotLineOptions {
   dashStyle?: string;
   /** Stacking order relative to the series (default drawn above grid, below series). */
   zIndex?: "above" | "below";
+  /**
+   * Draws the line across only some categories of the other axis, not the
+   * whole plot: the categories whose values start with these. On a nested
+   * axis, outer values first (`['East']` is every category under East,
+   * `['East', 'Phones']` one); on a plain category axis, one category.
+   * Matching nothing draws nothing.
+   */
+  group?: Array<number | string>;
+  /** With `group`: the part of a category step left clear at each end (0–0.5). */
+  groupPadding?: number;
   label?: {
     text: string;
     /**
@@ -494,6 +504,20 @@ export interface PlotBandOptions {
   /** Band end value. */
   to: number | string;
   color?: string;
+  /** An outline around the band. */
+  borderColor?: string;
+  borderWidth?: number;
+  /** Drawn above the series instead of under them. */
+  zIndex?: "above" | "below";
+  /** Across only some categories of the other axis, as a plot line's `group`. */
+  group?: Array<number | string>;
+  /** With `group`: the part of a category step left clear at each end (0–0.5). */
+  groupPadding?: number;
+  /**
+   * Whiskers out of the band's middle to two values, with a cap at each, so
+   * a band reads as a box plot's box. Drawn in `borderColor`.
+   */
+  whiskers?: [number, number];
   label?: { text: string; align?: "left" | "center" | "right"; color?: string };
 }
 

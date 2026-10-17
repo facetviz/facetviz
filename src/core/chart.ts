@@ -1578,6 +1578,7 @@ export class FacetViz {
       position: valSide,
       spacingScale: this.chromeSpacingScale(valSide),
       plot: axisPlot,
+      cross: catScale,
       options: isSlope ? { ...valOpts, lineWidth: 0 } : valOpts,
       grid: !isSlope,
     });
@@ -1590,6 +1591,7 @@ export class FacetViz {
         position: secondaryYSide,
         spacingScale: this.chromeSpacingScale(secondaryYSide),
         plot: axisPlot,
+        cross: catScale,
         options: valOpts2,
         grid: false,
       });
@@ -2501,6 +2503,7 @@ export class FacetViz {
           ),
           plot: cell,
           grid: true,
+          cross: catScale,
           options: valLabelled
             ? inverted
               ? { ...yOpts0, title: undefined }
@@ -2521,6 +2524,7 @@ export class FacetViz {
             spacingScale: this.chromeSpacingScale("right"),
             plot: cell,
             grid: false,
+            cross: catScale,
             options: isRight
               ? yOpts1
               : { labels: { enabled: false }, lineWidth: 0 },
@@ -3396,6 +3400,7 @@ export class FacetViz {
         position: "left",
         spacingScale: this.chromeSpacingScale("left"),
         plot,
+        cross: catScale,
         options: yOpts0,
         grid: true,
       });
@@ -3407,6 +3412,7 @@ export class FacetViz {
           position: "right",
           spacingScale: this.chromeSpacingScale("right"),
           plot,
+          cross: catScale,
           options: yOpts1,
           grid: false,
         });
@@ -3512,6 +3518,7 @@ export class FacetViz {
         position: "bottom",
         spacingScale: this.chromeSpacingScale("bottom"),
         plot,
+        cross: catScale,
         options: yOpts0,
         grid: true,
       });
@@ -3523,6 +3530,7 @@ export class FacetViz {
           position: "top",
           spacingScale: this.chromeSpacingScale("top"),
           plot,
+          cross: catScale,
           options: yOpts1,
           grid: false,
         });
