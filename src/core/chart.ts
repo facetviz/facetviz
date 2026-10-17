@@ -1419,20 +1419,24 @@ export class FacetViz {
         : "left";
 
     // Secondary y-axis: a series bound via `series.yAxis: 1` gets its own
-    // scale on the side opposite the primary axis.
+    // scale on the side opposite the primary axis (the top or bottom when
+    // the chart is inverted).
     const onSecondary = (s: BaseSeries) => (s.options.yAxis ?? 0) === 1;
-    const renderSecondary = !inverted && visible.some(onSecondary);
+    const renderSecondary = visible.some(onSecondary);
     const valOpts2 = renderSecondary
       ? axisAt(this.options.yAxis, 1)
       : undefined;
+    const [farSide, nearSide] = inverted
+      ? (["top", "bottom"] as const)
+      : (["right", "left"] as const);
     const secondaryYSide =
       valOpts2?.opposite === undefined
-        ? valSide === "right"
-          ? "left"
-          : "right"
+        ? valSide === farSide
+          ? nearSide
+          : farSide
         : valOpts2.opposite
-          ? "right"
-          : "left";
+          ? farSide
+          : nearSide;
     const onSecondaryX = (s: BaseSeries) => (s.options.xAxis ?? 0) === 1;
     const renderSecondaryX = !inverted && visible.some(onSecondaryX);
     const secondaryXSide =
@@ -1579,10 +1583,16 @@ export class FacetViz {
     // Series. High-volume point/line series are drawn to a canvas overlay.
     // A series bound to the secondary axis uses its own scale for both
     // positioning and boost rendering.
+    // Inverted, the value scale is the horizontal one, so the secondary
+    // value scale stands in for x.
     const yScaleFor = (s: BaseSeries) =>
-      yScale2 && onSecondary(s) ? yScale2 : yScale;
+      !inverted && yScale2 && onSecondary(s) ? yScale2 : yScale;
     const xScaleFor = (s: BaseSeries) =>
-      xScale2 && onSecondaryX(s) ? xScale2 : xScale;
+      inverted && yScale2 && onSecondary(s)
+        ? yScale2
+        : xScale2 && onSecondaryX(s)
+          ? xScale2
+          : xScale;
     const boost = !inverted && this.boostEnabled(visible);
     const cctx = boost ? this.createBoostCanvas(axisPlot) : null;
     const hits: BoostHit[] = [];
@@ -1593,7 +1603,8 @@ export class FacetViz {
       xScale,
       xScale2,
       yScale,
-      yScale2,
+      // Inverted, annotations keep to the primary value axis.
+      yScale2: inverted ? undefined : yScale2,
       layer: "below",
     });
     const existing = new Set(this.renderer.root.children);
@@ -1627,7 +1638,8 @@ export class FacetViz {
       xScale,
       xScale2,
       yScale,
-      yScale2,
+      // Inverted, annotations keep to the primary value axis.
+      yScale2: inverted ? undefined : yScale2,
       layer: "above",
     });
 
@@ -3232,15 +3244,14 @@ export class FacetViz {
     // Horizontal bars: category axis becomes vertical (left, or left+right
     // when split), value axis horizontal (bottom) — the same role-swap
     // `renderPanel`/the trellis table apply for `chart.type:'bar'` /
-    // `chart.inverted`. Dual axis is only meaningful in the normal
-    // (non-inverted) layout, same convention as elsewhere.
+    // `chart.inverted`. Inverted, the secondary value axis runs across the top.
     const inverted = this.isInverted(visible);
 
     const yOpts0 = axisAt(this.options.yAxis, 0);
     const yOpts1 = axisAt(this.options.yAxis, 1);
     const onAxis = (s: BaseSeries, i: number) => (s.options.yAxis ?? 0) === i;
     const secondary = aggSeries.filter((s) => onAxis(s, 1));
-    const hasSecondary = !inverted && secondary.length > 0;
+    const hasSecondary = secondary.length > 0;
 
     // Reserve axis space. In split mode (opposite) the innermost dimension is
     // labelled nearest the plot while the outer grouping dimensions sit on
@@ -3432,7 +3443,17 @@ export class FacetViz {
               LAYOUT.axisTitleGap * bottomSpacingScale) - 14) +
             Math.max(0, yOpts0.title.offset ?? 0)
           : 0);
-      const topReserve = 6;
+      const topReserve = hasSecondary
+        ? LAYOUT.defaultBottomAxisHeight +
+          axisLabelOffset(yOpts1) +
+          (yOpts1.title?.text && yOpts1.title.enabled !== false
+            ? 32 +
+              ((yOpts1.title.margin ??
+                LAYOUT.axisTitleGap * this.chromeSpacingScale("top")) -
+                14) +
+              Math.max(0, yOpts1.title.offset ?? 0)
+            : 0)
+        : 6;
       plot = {
         x: outer.x + leftReserve,
         y: outer.y + topReserve,
@@ -3445,20 +3466,25 @@ export class FacetViz {
         categories: keys,
         range: [plot.y, plot.y + plot.height],
       });
-      let [lo, hi] = this.valueDomain(aggSeries, yOpts0);
-      const preserveZeroMin = this.hasNonNegativeZeroBasedSeries(aggSeries, lo);
-      if (yOpts0.type !== "log") {
-        lo = Math.min(lo, 0);
-        hi = Math.max(hi, 0);
-      }
-      valScale0 = this.valueScale(
+      const range: [number, number] = [plot.x, plot.x + plot.width];
+      const scaleFor = (list: BaseSeries[], opts: AxisOptions) => {
+        const domainSeries = list.length ? list : aggSeries;
+        let [lo, hi] = this.valueDomain(domainSeries, opts);
+        const preserveZeroMin = this.hasNonNegativeZeroBasedSeries(
+          domainSeries,
+          lo,
+        );
+        if (opts.type !== "log") {
+          lo = Math.min(lo, 0);
+          hi = Math.max(hi, 0);
+        }
+        return this.valueScale(opts, [lo, hi], range, true, preserveZeroMin);
+      };
+      valScale0 = scaleFor(
+        aggSeries.filter((s) => onAxis(s, 0)),
         yOpts0,
-        [lo, hi],
-        [plot.x, plot.x + plot.width],
-        true,
-        preserveZeroMin,
       );
-      valScale1 = valScale0;
+      valScale1 = hasSecondary ? scaleFor(secondary, yOpts1) : valScale0;
 
       valAxis0 = new Axis({
         renderer: this.renderer,
@@ -3470,6 +3496,18 @@ export class FacetViz {
         grid: true,
       });
       valAxis0.render(axisLayer);
+      if (hasSecondary) {
+        valAxis1 = new Axis({
+          renderer: this.renderer,
+          scale: valScale1,
+          position: "top",
+          spacingScale: this.chromeSpacingScale("top"),
+          plot,
+          options: yOpts1,
+          grid: false,
+        });
+        valAxis1.render(axisLayer);
+      }
       if (catVisible) {
         new NestedAxis({
           renderer: this.renderer,
@@ -4167,10 +4205,9 @@ export class FacetViz {
     // Secondary y-axis: series bound via `series.yAxis: 1` get their own
     // scale instead of silently sharing the primary one — otherwise a line
     // series scaled very differently from the bars renders flat/invisible.
-    // Only supported for the standard (non-inverted) cartesian layout, same
-    // as the nested-axis combo path this mirrors.
+    // When inverted it runs across the top, the primary along the bottom.
     const onSecondary = (s: BaseSeries) => (s.options.yAxis ?? 0) === 1;
-    const hasSecondary = !inverted && ySource.some(onSecondary);
+    const hasSecondary = ySource.some(onSecondary);
     const primaryVisible = hasSecondary
       ? ySource.filter((s) => !onSecondary(s))
       : ySource;
@@ -4323,53 +4360,10 @@ export class FacetViz {
         ? new CategoryScale({ categories: cats, range, reversed: opts.reversed })
         : numericScale(list, opts, range, opts.reversed);
 
-    if (inverted) {
-      // Horizontal bars: value on x (bottom), categories on y (left).
-      const xScale = this.fitLabelHeadroom(
-        yAxisOpts,
-        [vMin, vMax],
-        [plot.x, plot.x + plot.width],
-        preservePrimaryZeroMin,
-        dataMax,
-        labelRoom,
-      );
-      const yScale = categories
-        ? new CategoryScale({
-            categories,
-            range: [plot.y, plot.y + plot.height],
-            reversed: xAxisOpts.reversed,
-          })
-        : numericScale(
-            primaryXSource.length ? primaryXSource : xSource,
-            xAxisOpts,
-            [plot.y, plot.y + plot.height],
-            xAxisOpts.reversed,
-          );
-      return { xScale, yScale };
-    }
-
-    const xRange: [number, number] = [plot.x, plot.x + plot.width];
-    const primaryX = primaryXSource.length ? primaryXSource : xSource;
-    const xScale = horizontalScale(primaryX, xAxisOpts, categories, xRange);
-    const xScale2 = secondaryXSource.length
-      ? horizontalScale(
-          secondaryXSource,
-          xAxisOpts2,
-          this.currentCategories(secondaryXSource, 1),
-          xRange,
-        )
-      : undefined;
-    const yScale = this.fitLabelHeadroom(
-      yAxisOpts,
-      [vMin, vMax],
-      [plot.y + plot.height, plot.y],
-      preservePrimaryZeroMin,
-      dataMax,
-      labelRoom,
-    );
-
-    let yScale2: Scale | undefined;
-    if (hasSecondary) {
+    // The secondary value scale over `range`: its own domain, zero kept in
+    // for bars and areas, and room for its labels.
+    const secondaryScale = (range: [number, number]): Scale | undefined => {
+      if (!hasSecondary) return undefined;
       const secondaryVisible = ySource.filter(onSecondary);
       const secondaryOpts = axisAt(this.options.yAxis, 1);
       let [vMin2, vMax2] = this.valueDomain(secondaryVisible, secondaryOpts);
@@ -4394,16 +4388,65 @@ export class FacetViz {
         vMin2 = Math.min(vMin2, 0);
         vMax2 = Math.max(vMax2, 0);
       }
-      const labelRoom2 = this.labelHeadroom(secondaryVisible, false);
-      yScale2 = this.fitLabelHeadroom(
+      const labelRoom2 = this.labelHeadroom(secondaryVisible, inverted);
+      return this.fitLabelHeadroom(
         secondaryOpts,
         [vMin2, vMax2],
-        [plot.y + plot.height, plot.y],
+        range,
         preserveSecondaryZeroMin,
         vMax2,
         labelRoom2,
       );
+    };
+
+    if (inverted) {
+      // Horizontal bars: value on x (bottom), categories on y (left).
+      const xScale = this.fitLabelHeadroom(
+        yAxisOpts,
+        [vMin, vMax],
+        [plot.x, plot.x + plot.width],
+        preservePrimaryZeroMin,
+        dataMax,
+        labelRoom,
+      );
+      const yScale = categories
+        ? new CategoryScale({
+            categories,
+            range: [plot.y, plot.y + plot.height],
+            reversed: xAxisOpts.reversed,
+          })
+        : numericScale(
+            primaryXSource.length ? primaryXSource : xSource,
+            xAxisOpts,
+            [plot.y, plot.y + plot.height],
+            xAxisOpts.reversed,
+          );
+      // `yScale2` stays the secondary *value* scale, here horizontal.
+      const yScale2 = secondaryScale([plot.x, plot.x + plot.width]);
+      return { xScale, yScale, yScale2 };
     }
+
+    const xRange: [number, number] = [plot.x, plot.x + plot.width];
+    const primaryX = primaryXSource.length ? primaryXSource : xSource;
+    const xScale = horizontalScale(primaryX, xAxisOpts, categories, xRange);
+    const xScale2 = secondaryXSource.length
+      ? horizontalScale(
+          secondaryXSource,
+          xAxisOpts2,
+          this.currentCategories(secondaryXSource, 1),
+          xRange,
+        )
+      : undefined;
+    const yScale = this.fitLabelHeadroom(
+      yAxisOpts,
+      [vMin, vMax],
+      [plot.y + plot.height, plot.y],
+      preservePrimaryZeroMin,
+      dataMax,
+      labelRoom,
+    );
+
+    const yScale2 = secondaryScale([plot.y + plot.height, plot.y]);
     return { xScale, xScale2, yScale, yScale2 };
   }
 

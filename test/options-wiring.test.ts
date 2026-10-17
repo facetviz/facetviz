@@ -877,6 +877,46 @@ describe('configuration option wiring', () => {
     expect(labels).toContain('Q2');
   });
 
+  it('runs an inverted chart\'s secondary value axis across the top', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { ...baseChart, type: 'column', inverted: true },
+      xAxis: { categories: ['A', 'B'] },
+      yAxis: [{}, { opposite: true, labels: { format: 'r:{value}' } }],
+      series: [
+        { name: 'Bars', data: [10, 20] },
+        { type: 'line', name: 'Rate', yAxis: 1, data: [0.5, 0.9], marker: { enabled: true } },
+      ],
+    });
+
+    const top = [...el.querySelectorAll('.facet-axis-top text')].map((n) => n.textContent);
+    expect(top.length).toBeGreaterThan(1);
+    expect(top.every((t) => t?.startsWith('r:'))).toBe(true);
+    expect(el.querySelector('.facet-axis-bottom text')?.textContent?.startsWith('r:')).toBe(false);
+    // The line's points spread across the plot on their own scale, not
+    // squashed against the primary axis's zero.
+    const xs = [...el.querySelectorAll('.facet-line.Rate .facet-point')].map((c) => Number(c.getAttribute('cx')));
+    expect(xs).toHaveLength(2);
+    expect(xs[1] - xs[0]).toBeGreaterThan(100);
+  });
+
+  it('runs a nested inverted chart\'s secondary value axis across the top', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { ...baseChart, type: 'column', inverted: true },
+      xAxis: { dimensions: ['region', 'quarter'] },
+      yAxis: [{}, { labels: { format: 'r:{value}' } }],
+      series: [
+        { name: 'Bars', data: [{ y: 10, region: 'East', quarter: 'Q1' }, { y: 20, region: 'West', quarter: 'Q1' }] },
+        { type: 'line', name: 'Rate', yAxis: 1, data: [{ y: 0.2, region: 'East', quarter: 'Q1' }, { y: 0.9, region: 'West', quarter: 'Q1' }] },
+      ],
+    });
+
+    const top = [...el.querySelectorAll('.facet-axis-top text')].map((n) => n.textContent);
+    expect(top.length).toBeGreaterThan(1);
+    expect(top.every((t) => t?.startsWith('r:'))).toBe(true);
+  });
+
   it('stacks series on a nested axis', () => {
     const el = container();
     const chart = new FacetViz(el, {
