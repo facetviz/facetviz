@@ -21,6 +21,8 @@ export interface LegendItem {
   scale?: { min: string; max: string; colors: string[] };
   /** A group's heading: its label alone, in bold, before the group's items. */
   heading?: boolean;
+  /** A colour key's swatch: says what a colour means, toggles nothing. */
+  key?: boolean;
 }
 
 export interface LegendConfig {

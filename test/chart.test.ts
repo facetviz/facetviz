@@ -688,6 +688,25 @@ describe('FacetViz rendering', () => {
     expect(chart.series.map((s) => s.visible)).toEqual([true, true, true]);
   });
 
+  it('draws a colour key whose swatches toggle nothing', () => {
+    const el = container();
+    const chart = new FacetViz(el, {
+      chart: { type: 'column', animation: false },
+      xAxis: { categories: ['A', 'B'] },
+      legend: { colorKeys: [{ label: 'Size', items: [{ label: 'High', color: '#aa0000' }, { label: 'Low', color: '#0000aa' }] }] },
+      series: [{ name: 'Sales', data: [{ y: 3, color: '#aa0000' }, { y: 1, color: '#0000aa' }], showInLegend: false }],
+    });
+    expect(chart.hasLegend).toBe(true);
+    expect(chart.legendItems.map((item) => [item.label, item.heading ?? false, item.key ?? false])).toEqual([
+      ['Size', true, false],
+      ['High', false, true],
+      ['Low', false, true],
+    ]);
+    const swatch = [...el.querySelectorAll('.facet-legend-item')].find((n) => n.textContent === 'High')!;
+    swatch.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(chart.series.map((s) => s.visible)).toEqual([true]);
+  });
+
   it('shows a legend for a lone colour scale', () => {
     const el = container();
     const chart = new FacetViz(el, {

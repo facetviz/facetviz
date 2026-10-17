@@ -572,6 +572,14 @@ export interface LegendColorScale {
   series?: number[];
 }
 
+/** What a colour means when points take it by a value of theirs rather
+ * than by series: a swatch per value, under a heading. */
+export interface LegendColorKey {
+  /** The heading: what the values are of. */
+  label?: string;
+  items: { label: string; color: string }[];
+}
+
 export interface LegendOptions {
   enabled?: boolean;
   /**
@@ -580,6 +588,12 @@ export interface LegendOptions {
    * with a single entry.
    */
   colorScales?: LegendColorScale[];
+  /**
+   * Swatches drawn after the colour scales, before the series items; they
+   * don't toggle anything. A legend with a key renders even with a single
+   * entry.
+   */
+  colorKeys?: LegendColorKey[];
   /** Horizontal alignment (top/bottom legends) or which side (vertical legends). */
   align?: "left" | "center" | "right";
   /** Vertical placement for a horizontal legend. */

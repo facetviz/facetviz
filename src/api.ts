@@ -87,6 +87,7 @@ export type {
   PointInput,
   TooltipOptions,
   TooltipContext,
+  LegendColorKey,
   LegendColorScale,
   LegendOptions,
   TitleOptions,

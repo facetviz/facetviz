@@ -551,7 +551,7 @@ export class FacetViz {
     const legendItems = this.buildLegendItems();
     const showLegend =
       this.options.legend?.enabled !== false &&
-      (legendItems.length > 1 || legendItems.some((item) => item.scale));
+      (legendItems.length > 1 || legendItems.some((item) => item.scale || item.key));
     const legendPlace = this.legendPlacement();
     const legendVertical = legendPlace === "left" || legendPlace === "right";
     let legendReserveH = 0;
@@ -5058,7 +5058,7 @@ export class FacetViz {
     LegendItem & { seriesIndex?: number; seriesIndexes?: number[] }
   > {
     const first = this.series[0];
-    const scales = this.colorScaleLegendItems();
+    const scales = [...this.colorScaleLegendItems(), ...this.colorKeyLegendItems()];
     if (this.series.length === 1 && first?.options.showInLegend === false) {
       return scales;
     }
@@ -5100,6 +5100,14 @@ export class FacetViz {
       }
     });
     return [...scales, ...items];
+  }
+
+  /** `legend.colorKeys` as legend items: each key's heading, then its swatches. */
+  private colorKeyLegendItems(): LegendItem[] {
+    return (this.options.legend?.colorKeys ?? []).flatMap((k) => [
+      ...(k.label ? [{ label: k.label, color: "", visible: true, heading: true }] : []),
+      ...k.items.map((item) => ({ label: item.label, color: item.color, visible: true, key: true })),
+    ]);
   }
 
   /** `legend.colorScales` as legend items; visible while any of their series is. */
@@ -5162,8 +5170,8 @@ export class FacetViz {
       this.render();
       return;
     }
-    // A group's heading stands for nothing to toggle.
-    if (item?.heading) return;
+    // A group's heading, or a colour key's swatch, stands for nothing to toggle.
+    if (item?.heading || item?.key) return;
     // An item for series sharing a legend key toggles them all.
     if (item?.seriesIndexes) {
       for (const i of item.seriesIndexes) if (this.series[i]) this.series[i].visible = !item.visible;
@@ -5338,7 +5346,7 @@ export class FacetViz {
     return (
       this.options.legend?.enabled !== false &&
       (this.buildLegendItems().length > 1 ||
-        this.buildLegendItems().some((item) => item.scale))
+        this.buildLegendItems().some((item) => item.scale || item.key))
     );
   }
 
