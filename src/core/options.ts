@@ -19,7 +19,7 @@
 import type { ThemeInput } from "./theme.js";
 // Per-type option fields are colocated with the series that owns them and
 // composed back into the public `PointOptions`/`SeriesOptions` here — mirrors
-// how a Highcharts-style library keeps each chart type's shape in its own
+// how a chart library can keep each chart type's shape in its own
 // module instead of one shared grab-bag interface. This import is type-only
 // (erased at build) so it doesn't create a real runtime dependency from core
 // on series/, even though the two files reference each other's types.
