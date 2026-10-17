@@ -88,6 +88,50 @@ the central `forecast.data` line. Status and summary `tone` accepts
 
 Cards expose `update(options)`, `setValue(value)`, `reflow()`, and `destroy()`.
 
+### Free-form cards (`rows`)
+
+For a card laid out by hand, pass `rows` instead of `title`/`value`: each row
+is a line of items that wraps on narrow cards.
+
+```ts
+new FacetCard("#sales", {
+  accent: { color: "#378add", side: "top" },
+  rowsAlign: "between",
+  rows: [
+    { items: [{ type: "text", text: [{ text: "Sales " }, { text: "this month", color: "#888" }] }] },
+    { align: "baseline", items: [
+      { type: "value", value: 830000, format: "$,.2s", size: "clamp(24px, 14cqi, 44px)" },
+      { type: "change", value: 830000, previousValue: 760000, icon: "triangle", pill: true },
+      { type: "badge", text: "On track", tone: "positive" },
+    ] },
+    { items: [{ type: "bar", value: 830000, max: 1000000, target: 900000 }] },
+    { grow: true, items: [{ type: "chart", height: 36, chart: { chart: { type: "sparkline" }, series: [{ type: "sparkline", data: [5, 7, 6, 9] }] } }] },
+  ],
+});
+```
+
+| Item `type` | Fields |
+|---|---|
+| `text` | `text` (string, or `{ text, color, size, weight, italic }` runs), `size`, `weight`, `color`, `italic`, `align`, `nowrap` |
+| `value` | `value`, `format`, `formatter`, `size` (px or CSS length, e.g. with `cqi`), `weight`, `color`, `align` |
+| `change` | `value`, `previousValue` (or `difference` / `percentChange`), `display`, `label`, `favorableDirection`, `icon` (`arrow` / `triangle` / `none`), `pill`, colors, `formatter` |
+| `chart` | `chart` (any FacetViz options), `height` |
+| `bar` | `value`, `min`, `max`, `target`, `bands` (`[{ to, color }]`), `color`, `trackColor`, `targetColor`, `height`, `rounded` |
+| `ring` | `value`, `min`, `max`, `size`, `thickness` (share of size), `color`, `trackColor`, `label` (default the share filled) |
+| `badge` | `text`, `tone`, `color`, `backgroundColor`, `size` |
+| `icon` | `path` (SVG path data), `viewBox`, `size`, `color`, `fill`, `strokeWidth`, `backgroundColor` (a tinted circle) |
+| `image` | `src`, `alt`, `height`, `fit`, `radius` |
+| `divider` | `color`, `vertical` |
+| `spacer` | `size`; with `grow`, pushes the items after it to the row's end |
+| `stack` | `items` one above another (e.g. lines of text beside a ring), `gap`, `align` |
+
+Every item also takes `id` (written to `data-item`, for hosts that select
+items), `tooltip`, `grow`, `width`, `pin` (`top-left`, `top-right`,
+`bottom-left`, `bottom-right`: out of the rows, in that corner), `className`
+and `style`. Rows take `justify`, `align`, `gap`, `grow` (take the card's
+spare height), `nowrap`, `id` (`data-row`) and `style`. The card takes
+`rowsAlign`, `rowGap` and `accent` (`{ color, side, width }`).
+
 ---
 
 ## Charts inside table cells

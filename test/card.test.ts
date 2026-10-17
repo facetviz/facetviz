@@ -198,3 +198,121 @@ describe("FacetCard", () => {
     expect(element.children).toHaveLength(0);
   });
 });
+
+describe("FacetCard rows", () => {
+  beforeEach(() => { document.body.innerHTML = ""; });
+
+  it("lays out items in rows, with ids a host can find", () => {
+    const element = container();
+    new FacetCard(element, {
+      rows: [
+        { items: [{ type: "text", id: "t", text: [{ text: "Revenue " }, { text: "Sep", weight: 600 }] }] },
+        {
+          justify: "between",
+          items: [
+            { type: "value", id: "v", value: 1_284_000, format: "$,.1s", size: 40 },
+            { type: "change", id: "c", value: 120, previousValue: 100, icon: "triangle", pill: true, label: "vs Aug" },
+          ],
+        },
+      ],
+    });
+
+    const rows = element.querySelectorAll(".facet-card-row");
+    expect(rows.length).toBe(2);
+    expect(element.querySelector('[data-item="t"]')?.textContent).toBe("Revenue Sep");
+    const value = element.querySelector<HTMLElement>('[data-item="v"]');
+    expect(value?.textContent).toBe("$1.3M");
+    expect(value?.style.fontSize).toBe("40px");
+    const change = element.querySelector('[data-item="c"]');
+    expect(change?.classList.contains("facet-card-item-change-positive")).toBe(true);
+    expect(change?.textContent).toContain("▲ +20.0%");
+    expect(change?.textContent).toContain("vs Aug");
+    expect(element.querySelector(".facet-card")?.getAttribute("aria-label")).toContain("$1.3M");
+  });
+
+  it("reads a fall as good news when lower is favorable", () => {
+    const element = container();
+    new FacetCard(element, {
+      rows: [{ items: [{ type: "change", value: 80, previousValue: 100, favorableDirection: "decrease" }] }],
+    });
+    const change = element.querySelector(".facet-card-item-change");
+    expect(change?.classList.contains("facet-card-item-change-positive")).toBe(true);
+    expect(change?.getAttribute("data-direction")).toBe("down");
+  });
+
+  it("hides a change with nothing to compare", () => {
+    const element = container();
+    new FacetCard(element, { rows: [{ items: [{ type: "change", value: 80 }] }] });
+    expect(element.querySelector<HTMLElement>(".facet-card-item-change")?.style.display).toBe("none");
+  });
+
+  it("draws a bar to its value, with a target line and bands", () => {
+    const element = container();
+    new FacetCard(element, {
+      rows: [{
+        items: [{
+          type: "bar", value: 72, max: 100, target: 80,
+          bands: [{ to: 50, color: "#eee" }, { to: 100, color: "#ddd" }],
+        }],
+      }],
+    });
+    expect(element.querySelector<HTMLElement>(".facet-card-item-bar-value")?.style.width).toBe("72%");
+    expect(element.querySelector<HTMLElement>(".facet-card-item-bar-target")?.style.left).toBe("calc(80% - 1px)");
+    expect(element.querySelectorAll(".facet-card-item-bar-band").length).toBe(2);
+    expect(element.querySelector(".facet-card-item-bar")?.getAttribute("aria-valuenow")).toBe("72");
+  });
+
+  it("fills a ring to its share and labels it", () => {
+    const element = container();
+    new FacetCard(element, { rows: [{ items: [{ type: "ring", value: 830, max: 1000, size: 80 }] }] });
+    const svg = element.querySelector(".facet-card-item-ring svg");
+    expect(svg?.getAttribute("width")).toBe("80");
+    expect(svg?.querySelector("text")?.textContent).toBe("83%");
+  });
+
+  it("pins items to a corner and draws an accent bar", () => {
+    const element = container();
+    new FacetCard(element, {
+      accent: { color: "#f00", side: "top" },
+      rows: [{ items: [{ type: "icon", id: "i", path: "M4 4h16", pin: "top-right" }, { type: "badge", text: "On track", tone: "positive" }] }],
+    });
+    const root = element.querySelector<HTMLElement>(".facet-card")!;
+    expect(root.style.boxShadow).toContain("inset");
+    const icon = element.querySelector<HTMLElement>('[data-item="i"]')!;
+    expect(icon.parentElement).toBe(root);
+    expect(icon.style.position).toBe("absolute");
+    expect(icon.style.right).toBe("12px");
+    expect(element.querySelector(".facet-card-item-badge")?.textContent).toBe("On track");
+  });
+
+  it("embeds a chart item and destroys it with the card", () => {
+    const element = container();
+    const card = new FacetCard(element, {
+      rows: [{ items: [{ type: "chart", height: 30, chart: { chart: { type: "sparkline" }, series: [{ type: "sparkline", data: [1, 3, 2] }] } }] }],
+    });
+    const host = element.querySelector<HTMLElement>(".facet-card-item-chart")!;
+    expect(host.style.height).toBe("30px");
+    card.destroy();
+    expect(element.querySelector(".facet-card")).toBeNull();
+  });
+});
+
+describe("FacetCard stacks", () => {
+  it("stacks items inside a row and keeps a shadow beside the accent", () => {
+    const element = container();
+    new FacetCard(element, {
+      accent: { color: "#0f0" },
+      style: { root: { boxShadow: "0 1px 2px #000" } },
+      rows: [{ items: [
+        { type: "ring", value: 1, max: 2 },
+        { type: "stack", id: "s", items: [{ type: "text", text: "Sales" }, { type: "value", value: 5 }] },
+      ] }],
+    });
+    const stack = element.querySelector<HTMLElement>('[data-item="s"]')!;
+    expect(stack.style.flexDirection).toBe("column");
+    expect(stack.children.length).toBe(2);
+    const shadow = element.querySelector<HTMLElement>(".facet-card")!.style.boxShadow;
+    expect(shadow).toContain("inset");
+    expect(shadow).toContain("1px 2px #000");
+  });
+});

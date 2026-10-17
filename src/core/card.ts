@@ -11,26 +11,22 @@ import type { ThemeInput } from "./theme.js";
 import { FacetViz } from "./chart.js";
 import { resolveTheme } from "./theme.js";
 import { formatValue, merge } from "./utils.js";
+import {
+  applyStyle, clamp01, finite, formatCardValue, renderCardRows, resolveChange, toneColor, colorMix,
+  type CardAccentOptions, type CardComparisonContext, type CardRow, type CardStyle, type CardTone, type CardValue,
+  type CardValueContext, type ResolvedChange,
+} from "./cardItems.js";
 
-export type CardValue = number | string;
-export type CardStyle = Record<string, string | number | undefined>;
+export type {
+  CardAccentOptions, CardBadgeItem, CardBand, CardBarItem, CardChangeItem, CardChartItem, CardComparisonContext,
+  CardDividerItem, CardIconItem, CardImageItem, CardItem, CardItemPin, CardRingItem, CardRow, CardSpacerItem, CardStackItem,
+  CardStyle, CardTextItem, CardTextSpan, CardTone, CardValue, CardValueContext, CardValueItem,
+} from "./cardItems.js";
 
 export interface CardTitleOptions {
   text: string;
   /** Smaller line directly below the title. */
   subtitle?: string;
-}
-
-export interface CardValueContext {
-  value: CardValue;
-}
-
-export interface CardComparisonContext {
-  value: CardValue;
-  previousValue?: number;
-  difference?: number;
-  percentChange?: number;
-  direction: "up" | "down" | "flat";
 }
 
 export interface CardComparisonOptions {
@@ -61,8 +57,6 @@ export interface CardComparisonOptions {
   neutralColor?: string;
   formatter?: (context: CardComparisonContext) => string;
 }
-
-export type CardTone = "positive" | "negative" | "warning" | "neutral" | "info";
 
 export interface CardProgressOptions {
   /** Goal value used as 100%. */
@@ -179,7 +173,8 @@ export interface CardAccessibilityOptions {
 
 export interface FacetCardOptions {
   title?: string | CardTitleOptions;
-  value: CardValue;
+  /** Primary measure; unused when the card is laid out by `rows`. */
+  value?: CardValue;
   /** FacetViz number format, e.g. `$,.1s`, `,.0f`, or `.1%`. */
   format?: string;
   valueFormatter?: (context: CardValueContext) => string;
@@ -209,24 +204,23 @@ export interface FacetCardOptions {
   /** Default embedded-chart height when `chart.chart.height` is not supplied. */
   chartHeight?: number;
   footer?: string;
+  /** Lay the card out freely: rows of text, values, changes, charts, bars,
+   * rings, badges, icons and images. Replaces the title, value and the
+   * blocks above; `status`, `style.root`, `theme` and `accessibility` still apply. */
+  rows?: CardRow[];
+  /** Where rows sit when the card is taller than they are. Default `start`. */
+  rowsAlign?: "start" | "center" | "end" | "between";
+  /** px between rows. Default 6. */
+  rowGap?: number;
+  /** A colored bar along one side of the card. */
+  accent?: CardAccentOptions | false;
   className?: string;
   theme?: ThemeInput;
   style?: CardStyleOptions;
   accessibility?: CardAccessibilityOptions;
 }
 
-interface ResolvedComparison {
-  text: string;
-  label?: string;
-  direction: CardComparisonContext["direction"];
-  sentiment: "positive" | "negative" | "neutral";
-  color: string;
-}
-
-const UNITLESS_STYLES = new Set([
-  "flex", "flexGrow", "flexShrink", "fontWeight", "lineHeight", "opacity",
-  "order", "zIndex", "zoom",
-]);
+type ResolvedComparison = ResolvedChange;
 
 /** A title/value KPI card, optionally enriched by change analysis and a chart. */
 export class FacetCard {
@@ -234,6 +228,8 @@ export class FacetCard {
   private options: FacetCardOptions;
   private root?: HTMLDivElement;
   private chart?: FacetViz;
+  /** Charts inside `rows`. */
+  private itemCharts: FacetViz[] = [];
   private destroyed = false;
 
   constructor(container: HTMLElement | string, options: FacetCardOptions) {
@@ -261,6 +257,7 @@ export class FacetCard {
   reflow(): void {
     if (this.destroyed) return;
     this.chart?.reflow();
+    this.itemCharts.forEach((c) => c.reflow());
   }
 
   destroy(): void {
@@ -268,6 +265,8 @@ export class FacetCard {
     this.destroyed = true;
     this.chart?.destroy();
     this.chart = undefined;
+    this.itemCharts.forEach((c) => c.destroy());
+    this.itemCharts = [];
     this.root?.remove();
     this.root = undefined;
   }
@@ -275,6 +274,8 @@ export class FacetCard {
   private render(): void {
     this.chart?.destroy();
     this.chart = undefined;
+    this.itemCharts.forEach((c) => c.destroy());
+    this.itemCharts = [];
 
     const theme = resolveTheme(this.options.theme);
     const horizontal = this.options.layout === "horizontal";
@@ -299,6 +300,19 @@ export class FacetCard {
 
     if (this.options.status)
       root.appendChild(this.renderStatus(this.options.status, theme));
+
+    if (this.options.accent) {
+      const { color, side = "left", width = 4 } = this.options.accent;
+      const [x, y] = side === "left" ? [width, 0] : side === "right" ? [-width, 0] : side === "top" ? [0, width] : [0, -width];
+      // An inset shadow follows the rounded corners and needs no clipping,
+      // so tooltips of charts inside can still overflow the card.
+      root.style.boxShadow = [`inset ${x}px ${y}px 0 0 ${color}`, root.style.boxShadow].filter(Boolean).join(", ");
+    }
+
+    if (this.options.rows) {
+      this.renderRows(root, this.options.rows, theme);
+      return;
+    }
 
     const body = document.createElement("div");
     body.className = "facet-card-body";
@@ -440,6 +454,29 @@ export class FacetCard {
     if (chartHost && visualOptions) {
       this.chart = new FacetViz(chartHost, this.chartOptions(visualOptions));
     }
+  }
+
+  private renderRows(root: HTMLDivElement, rows: CardRow[], theme: ReturnType<typeof resolveTheme>): void {
+    const laid = renderCardRows(rows, theme, this.options.rowsAlign, this.options.rowGap);
+    // Items may size themselves to the card's width (`cqi` units).
+    root.style.containerType = "inline-size";
+    if (laid.pinned.length) root.style.position = "relative";
+    root.appendChild(laid.element);
+    root.append(...laid.pinned);
+    if (this.options.accessibility?.enabled !== false) {
+      root.setAttribute("role", "group");
+      root.setAttribute(
+        "aria-label",
+        this.options.accessibility?.description ?? (laid.text.filter(Boolean).join(", ") || "Metric card"),
+      );
+    }
+    this.container.replaceChildren(root);
+    this.root = root;
+    this.itemCharts = laid.charts.map(({ host, item }) => {
+      const options = this.chartOptions(item.chart);
+      options.chart = { ...options.chart, height: item.chart.chart?.height ?? item.height ?? 40 };
+      return new FacetViz(host, options);
+    });
   }
 
   private renderValue(formatted: string, hasTitle: boolean, theme: ReturnType<typeof resolveTheme>): HTMLDivElement {
@@ -872,6 +909,7 @@ export class FacetCard {
   }
 
   private formattedValue(): string {
+    if (this.options.value === undefined) return "";
     if (this.options.valueFormatter)
       return String(this.options.valueFormatter({ value: this.options.value }));
     if (typeof this.options.value === "number") {
@@ -889,56 +927,12 @@ export class FacetCard {
     const current = typeof this.options.value === "number" && Number.isFinite(this.options.value)
       ? this.options.value
       : undefined;
-    const previous = finite(options.previousValue);
-    const difference = finite(options.difference) ??
-      (current !== undefined && previous !== undefined ? current - previous : undefined);
-    const percentChange = finite(options.percentChange) ??
-      (difference !== undefined && previous !== undefined && previous !== 0
-        ? difference / Math.abs(previous)
-        : undefined);
-    const basis = difference ?? percentChange;
-    const direction: CardComparisonContext["direction"] =
-      basis === undefined || basis === 0 ? "flat" : basis > 0 ? "up" : "down";
-    const context: CardComparisonContext = {
-      value: this.options.value,
-      previousValue: previous,
-      difference,
-      percentChange,
-      direction,
-    };
-    const display = options.display ?? "percent";
-    let text = options.formatter?.(context);
-    if (text === undefined) {
-      const absoluteText = difference === undefined
-        ? undefined
-        : signedFormat(difference, options.format ?? this.options.format);
-      const percentText = percentChange === undefined
-        ? undefined
-        : signedFormat(percentChange, options.percentFormat ?? ".1%");
-      if (display === "both" && absoluteText && percentText)
-        text = `${absoluteText} (${percentText})`;
-      else if (display === "difference") text = absoluteText ?? percentText;
-      else text = percentText ?? absoluteText;
-    }
-    if (!text) return undefined;
-
-    const favorable = options.favorableDirection ?? "increase";
-    const sentiment = direction === "flat" || favorable === "neutral"
-      ? "neutral"
-      : (direction === "up") === (favorable === "increase")
-        ? "positive"
-        : "negative";
-    const theme = resolveTheme(this.options.theme);
-    const dark = theme.name === "dark";
-    const color = sentiment === "positive"
-      ? options.positiveColor ?? (dark ? "#4ade80" : "#15803d")
-      : sentiment === "negative"
-        ? options.negativeColor ?? (dark ? "#f87171" : "#b91c1c")
-        : options.neutralColor ?? theme.subtitle.color;
-    const icon = options.showIcon === false
-      ? ""
-      : direction === "up" ? "↗ " : direction === "down" ? "↘ " : "→ ";
-    return { text: `${icon}${text}`, label: options.label, direction, sentiment, color };
+    return resolveChange(
+      current,
+      { ...options, format: options.format ?? this.options.format, icon: options.showIcon === false ? "none" : "arrow" },
+      resolveTheme(this.options.theme),
+      this.options.value ?? "",
+    );
   }
 
   private renderComparison(comparison: ResolvedComparison): HTMLDivElement {
@@ -1024,23 +1018,12 @@ function titleOptions(
   return title;
 }
 
-function finite(value: number | undefined): number | undefined {
+
+function numericCardValue(value: CardValue | undefined): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
-function numericCardValue(value: CardValue): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
 
-function clamp01(value: number): number {
-  return Math.max(0, Math.min(1, value));
-}
-
-function formatCardValue(value: CardValue, format?: string): string {
-  if (typeof value !== "number") return String(value);
-  if (!Number.isFinite(value)) return "—";
-  return format ? formatValue(value, format) : String(value);
-}
 
 function comparisonColumn(
   labelText: string,
@@ -1069,36 +1052,6 @@ function comparisonColumn(
   return column;
 }
 
-function toneColor(
-  tone: CardTone,
-  theme: ReturnType<typeof resolveTheme>,
-): string {
-  const dark = theme.name === "dark";
-  if (tone === "positive") return dark ? "#4ade80" : "#15803d";
-  if (tone === "negative") return dark ? "#f87171" : "#b91c1c";
-  if (tone === "warning") return dark ? "#fbbf24" : "#b45309";
-  if (tone === "info") return theme.colors[0];
-  return theme.subtitle.color;
-}
 
-function colorMix(foreground: string, background: string, percent: number): string {
-  return `color-mix(in srgb, ${foreground} ${percent}%, ${background})`;
-}
 
-function signedFormat(value: number, format?: string): string {
-  const sign = value > 0 ? "+" : value < 0 ? "−" : "";
-  const magnitude = Math.abs(value);
-  return `${sign}${format ? formatValue(magnitude, format) : String(magnitude)}`;
-}
 
-function applyStyle(element: HTMLElement, style: CardStyle | undefined): void {
-  if (!style) return;
-  for (const [property, rawValue] of Object.entries(style)) {
-    if (rawValue === undefined) continue;
-    const customProperty = property.startsWith("--");
-    const value = typeof rawValue === "number" && !customProperty &&
-      !UNITLESS_STYLES.has(property) ? `${rawValue}px` : String(rawValue);
-    if (customProperty || property.includes("-")) element.style.setProperty(property, value);
-    else (element.style as unknown as Record<string, string>)[property] = value;
-  }
-}
