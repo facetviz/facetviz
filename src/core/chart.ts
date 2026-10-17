@@ -845,6 +845,9 @@ export class FacetViz {
       },
       root,
     );
+    // Under the series, just above the background, so points keep their
+    // hover and tooltip; the drag starts from anywhere in the plot (below).
+    root.insertBefore(overlay, root.firstChild?.nextSibling ?? null);
 
     const clampX = (v: number) =>
       Math.max(plot.x, Math.min(plot.x + plot.width, v));
@@ -862,9 +865,20 @@ export class FacetViz {
       height: canY ? Math.abs(y - startY) : plot.height,
     });
 
-    overlay.addEventListener("mousedown", (e: MouseEvent) => {
-      startX = clampX(this.localX(e.clientX));
-      startY = clampY(this.localY(e.clientY));
+    const down = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      if ((e.target as Element | null)?.closest?.(".facet-zoom-reset")) return;
+      const lx = this.localX(e.clientX),
+        ly = this.localY(e.clientY);
+      if (
+        lx < plot.x ||
+        lx > plot.x + plot.width ||
+        ly < plot.y ||
+        ly > plot.y + plot.height
+      )
+        return;
+      startX = clampX(lx);
+      startY = clampY(ly);
       band = this.renderer.create(
         "rect",
         {
@@ -910,7 +924,12 @@ export class FacetViz {
       };
       window.addEventListener("mousemove", move);
       window.addEventListener("mouseup", up);
-    });
+    };
+    // The root outlives a render; drop this listener before the next one.
+    root.addEventListener("mousedown", down);
+    this.boostHoverCleanups.push(() =>
+      root.removeEventListener("mousedown", down),
+    );
 
     // Reset control when a zoom is active on either axis.
     const xa = axisAt(this.options.xAxis, 0);
