@@ -49,6 +49,24 @@ describe('line opacity', () => {
   });
 });
 
+describe('scatter opacity', () => {
+  beforeEach(() => { document.body.innerHTML = ''; });
+
+  it('fades the fill of every point, also of points with their own color', () => {
+    const el = render({
+      chart: { type: 'scatter' },
+      series: [{ name: 'S', opacity: 0.3, data: [{ x: 1, y: 1 }, { x: 2, y: 2, color: '#ff0000' }] }],
+    });
+    const points = [...el.querySelectorAll('.facet-point')];
+    expect(points).toHaveLength(2);
+    for (const p of points) {
+      expect(p.getAttribute('fill-opacity')).toBe('0.3');
+      expect(p.getAttribute('stroke-opacity')).toBeNull();
+    }
+    expect(points[1].getAttribute('fill')).toBe('#ff0000');
+  });
+});
+
 describe('column padding', () => {
   beforeEach(() => { document.body.innerHTML = ''; });
 

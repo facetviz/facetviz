@@ -9,6 +9,8 @@ export interface MarkerSpec {
   fill: string;
   stroke: string;
   strokeWidth: number;
+  /** Opacity (0..1) of the fill only; the outline stays opaque. */
+  fillOpacity?: number;
   width?: number; // for rectangle symbol only
   height?: number; // for rectangle symbol only
 }
@@ -20,7 +22,7 @@ export function drawMarker(
   cy: number,
   spec: MarkerSpec,
 ): SVGElement {
-  const { symbol, fill, stroke, strokeWidth } = spec;
+  const { symbol, fill, stroke, strokeWidth, fillOpacity } = spec;
   // `radius`/`width`/`height` are authored as reference-size px, same
   // convention as font sizes (theme.ts) and columnWidth (column.ts) --
   // without the FONT_SCALE_STATE multiplier they'd stay pinned at their
@@ -33,6 +35,9 @@ export function drawMarker(
     fill,
     stroke,
     "stroke-width": strokeWidth,
+    ...(typeof fillOpacity === "number" && Number.isFinite(fillOpacity)
+      ? { "fill-opacity": Math.min(1, Math.max(0, fillOpacity)) }
+      : {}),
     class: "facet-point",
   };
 

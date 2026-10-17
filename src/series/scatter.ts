@@ -101,6 +101,7 @@ export class ScatterSeries extends BaseSeries {
               fill: p.color ?? marker.fillColor ?? this.color,
               stroke: marker.lineColor ?? "#ffffff",
               strokeWidth: marker.lineWidth ?? 1,
+              fillOpacity: this.options.opacity,
               width: marker.width,
               height: marker.height,
             });

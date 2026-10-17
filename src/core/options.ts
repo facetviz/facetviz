@@ -197,7 +197,9 @@ export interface SeriesOptions
   dashStyle?: string;
   /** Line-family series: opacity (0..1) of the whole series -- line,
    * markers and data labels. Column/bar series: opacity of the bars' fill;
-   * their data labels stay fully opaque. */
+   * their data labels stay fully opaque. Scatter series: opacity of the
+   * points' fill, also of points with their own color; their outline
+   * stays opaque. */
   opacity?: number;
   /**
    * Line series: draw each straight segment shading from its start point's
