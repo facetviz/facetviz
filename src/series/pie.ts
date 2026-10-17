@@ -102,6 +102,13 @@ export class PieSeries extends BaseSeries {
   }
 
   /** The first slice's start: 12 o'clock, turned clockwise by `startAngle`. */
+  /** The line between slices: white and 1px unless the series sets
+   *  `borderColor` / `borderWidth` (0 draws none). */
+  private sliceBorder(): { stroke?: string; 'stroke-width'?: number } {
+    const width = this.options.borderWidth ?? 1;
+    return width > 0 ? { stroke: this.options.borderColor ?? '#ffffff', 'stroke-width': width } : {};
+  }
+
   private startRadians(): number {
     const deg = this.options.startAngle ?? 0;
     return -Math.PI / 2 + ((Number.isFinite(deg) ? deg : 0) * Math.PI) / 180;
@@ -163,7 +170,7 @@ export class PieSeries extends BaseSeries {
       const rr = radiusFor(p);
 
       const path = this.slicePath(c.cx, c.cy, rr, innerR, angle, end);
-      const el = renderer.create('path', { d: path, fill: color, stroke: '#ffffff', 'stroke-width': 1, class: 'facet-point' }, g);
+      const el = renderer.create('path', { d: path, fill: color, ...this.sliceBorder(), class: 'facet-point' }, g);
       ctx.registerHover(el, p);
       this.bindCenterValue(el, p, centerValue, total, color);
       el.addEventListener('click', (e: Event) => ctx.onPointEvent('click', p, e));
@@ -208,7 +215,7 @@ export class PieSeries extends BaseSeries {
 
       // Inner slice (the group itself).
       const innerPath = this.slicePath(c.cx, c.cy, midR, holeR, angle, end);
-      renderer.create('path', { d: innerPath, fill: base, stroke: '#ffffff', 'stroke-width': 1, class: 'facet-point' }, g);
+      renderer.create('path', { d: innerPath, fill: base, ...this.sliceBorder(), class: 'facet-point' }, g);
       // Inner label centred within its band, abbreviated to fit the wedge.
       const innerLabelR = (holeR + midR) / 2;
       const mid = (angle + end) / 2;
@@ -231,7 +238,7 @@ export class PieSeries extends BaseSeries {
         const e2 = a2 + cs;
         const color = p.color ?? shade(base, 0.12 + 0.5 * (ps.length === 1 ? 0 : j / (ps.length - 1)));
         const outerPath = this.slicePath(c.cx, c.cy, c.radius, midR, a2, e2);
-        const el = renderer.create('path', { d: outerPath, fill: color, stroke: '#ffffff', 'stroke-width': 1, class: 'facet-point' }, g);
+        const el = renderer.create('path', { d: outerPath, fill: color, ...this.sliceBorder(), class: 'facet-point' }, g);
         ctx.registerHover(el, p);
         this.bindCenterValue(el, p, centerValue, total, color);
         el.addEventListener('click', (e: Event) => ctx.onPointEvent('click', p, e));

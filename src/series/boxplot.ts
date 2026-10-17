@@ -97,7 +97,8 @@ export class BoxplotSeries extends BaseSeries {
       const bc: BoxColors = { ...this.options.boxColors, ...p.options.boxColors };
       const upperFill = bc.upper ?? shade(base, 0.15);
       const lowerFill = bc.lower ?? shade(base, 0.5);
-      const stroke = bc.border ?? shade(base, -0.25);
+      const stroke = bc.border ?? this.options.borderColor ?? shade(base, -0.25);
+      const boxLine = this.options.borderWidth ?? 1;
       const whisker = bc.whisker ?? stroke;
       const medianColor = bc.median ?? stroke;
 
@@ -131,8 +132,8 @@ export class BoxplotSeries extends BaseSeries {
       renderer.create('line', { ...cap(box.max, half * 0.7), stroke: whisker }, g);
 
       // Interquartile box split at the median into two shades.
-      renderer.create('rect', { ...boxRect(box.median, box.q3), fill: upperFill, stroke, 'stroke-width': 1 }, g);
-      renderer.create('rect', { ...boxRect(box.q1, box.median), fill: lowerFill, stroke, 'stroke-width': 1 }, g);
+      renderer.create('rect', { ...boxRect(box.median, box.q3), fill: upperFill, ...(boxLine > 0 ? { stroke, 'stroke-width': boxLine } : {}) }, g);
+      renderer.create('rect', { ...boxRect(box.q1, box.median), fill: lowerFill, ...(boxLine > 0 ? { stroke, 'stroke-width': boxLine } : {}) }, g);
 
       // Median line.
       renderer.create('line', { ...medLine(), stroke: medianColor, 'stroke-width': 2 }, g);

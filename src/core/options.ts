@@ -183,6 +183,15 @@ export interface SeriesOptions
   /** The label of a `legendKey` item, in place of the series' name. */
   legendLabel?: string;
   lineWidth?: number;
+  /**
+   * Column/bar, pie/donut and box plot series: the outline of each bar,
+   * slice or box. Unset keeps each type's own (none on bars, white between
+   * slices, a darker shade around boxes); either one set draws it, the
+   * other defaulting to the fill's colour or 1px. `borderWidth: 0` draws
+   * none. Colours may carry their own alpha (`rgba(…)`).
+   */
+  borderColor?: string;
+  borderWidth?: number;
   /** Line-family and area series: SVG dash pattern for the line, e.g. '6 4'
    * (dashed) or '1 4' (dotted). Unset draws a solid line. */
   dashStyle?: string;

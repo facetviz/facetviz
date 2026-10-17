@@ -199,6 +199,7 @@ export class ColumnSeries extends BaseSeries {
             d: roundedBarPath(rect, borderRadius, side),
             fill,
             ...this.fillOpacityAttr(),
+            ...this.borderAttr(fill),
             class: "facet-point",
           },
           g,
@@ -206,7 +207,7 @@ export class ColumnSeries extends BaseSeries {
       } else {
         el = renderer.create(
           "rect",
-          { ...rect, rx: 1, fill, ...this.fillOpacityAttr(), class: "facet-point" },
+          { ...rect, rx: 1, fill, ...this.fillOpacityAttr(), ...this.borderAttr(fill), class: "facet-point" },
           g,
         );
       }
@@ -215,6 +216,15 @@ export class ColumnSeries extends BaseSeries {
 
       this.drawDataLabel(ctx, p, rect, g);
     }
+  }
+
+  /** Each bar's outline, when the series sets `borderColor` or
+   *  `borderWidth`: in the bar's own colour, or 1px, for the one unset. */
+  private borderAttr(fill: string | undefined): { stroke?: string; "stroke-width"?: number } {
+    const { borderColor, borderWidth } = this.options;
+    if (borderColor == null && borderWidth == null) return {};
+    const width = borderWidth ?? 1;
+    return width > 0 ? { stroke: borderColor ?? fill, "stroke-width": width } : {};
   }
 
   /** The series' `opacity`, clamped to 0..1, for each bar's fill only,
