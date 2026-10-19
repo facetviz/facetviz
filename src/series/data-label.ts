@@ -85,6 +85,21 @@ export function dataLabelFontSize(dl: DataLabelOptions | undefined): string {
     : FONTS.dataLabel['font-size'];
 }
 
+/**
+ * A data label's text styling beyond its size and color, as SVG attributes:
+ * weight, slant, underline and font. Drawing and measuring a label both use
+ * it, so a bold or italic label is measured as drawn.
+ */
+export function dataLabelTextAttrs(dl: DataLabelOptions | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (dl?.fontWeight) out['font-weight'] = String(dl.fontWeight);
+  if (dl?.fontStyle && dl.fontStyle !== 'normal') out['font-style'] = dl.fontStyle;
+  if (dl?.textDecoration && dl.textDecoration !== 'none') out['text-decoration'] = dl.textDecoration;
+  const family = dl?.fontFamily?.replace(/[;{}<>]/g, '').trim();
+  if (family) out['font-family'] = family;
+  return out;
+}
+
 /** Draw a single data label with the series' styling options. */
 export function drawDataLabel(
   renderer: Renderer,
@@ -111,7 +126,7 @@ export function drawDataLabel(
     'font-size': dataLabelFontSize(dl),
   };
   if (place.verticalAlign) attrs['dominant-baseline'] = place.verticalAlign;
-  if (dl.fontWeight) attrs['font-weight'] = dl.fontWeight;
+  Object.assign(attrs, dataLabelTextAttrs(dl));
   if (dl.rotation) attrs.transform = `rotate(${dl.rotation} ${place.x} ${place.y})`;
 
   if (dl.backgroundColor) {

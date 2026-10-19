@@ -9,6 +9,7 @@ import { CategoryScale, Scale } from "../core/scale.js";
 import type { Point } from "../core/point.js";
 import {
   dataLabelFontSize,
+  dataLabelTextAttrs,
   drawDataLabel,
   labelString,
   LabelPlacement,
@@ -480,7 +481,7 @@ function labelFits(
   const size = ctx.renderer.measureText(text, {
     ...FONTS.dataLabel,
     "font-size": dataLabelFontSize(dl),
-    "font-weight": dl.fontWeight,
+    ...dataLabelTextAttrs(dl),
   });
   const w = Math.max(size.width, dl.backgroundColor ? text.length * 6.5 + 8 : 0);
   const h = Math.max(size.height, dl.backgroundColor ? 15 : 0);

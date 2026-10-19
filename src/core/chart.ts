@@ -75,6 +75,7 @@ import { BaseSeries, SeriesRenderContext } from "../series/base.js";
 import { createSeries } from "../series/registry.js";
 import {
   dataLabelFontSize,
+  dataLabelTextAttrs,
   drawDataLabel,
   labelString,
 } from "../series/data-label.js";
@@ -4526,7 +4527,7 @@ export class FacetViz {
   private turnedLabelHeight(s: BaseSeries, dl: DataLabelOptions, fontPx: number): number {
     if (!dl.rotation) return fontPx;
     const r = (dl.rotation * Math.PI) / 180;
-    const style = { "font-size": dataLabelFontSize(dl), "font-weight": dl.fontWeight };
+    const style = { "font-size": dataLabelFontSize(dl), ...dataLabelTextAttrs(dl) };
     let w = 0;
     for (const p of s.points) {
       const text = labelString(dl, {

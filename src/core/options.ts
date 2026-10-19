@@ -267,6 +267,12 @@ export interface DataLabelOptions {
   color?: string;
   fontSize?: string;
   fontWeight?: string;
+  /** `italic` slants the label. */
+  fontStyle?: "normal" | "italic";
+  /** `underline` or `line-through` the label. */
+  textDecoration?: "none" | "underline" | "line-through";
+  /** The label's font, a CSS font-family list (no `var()`: it is an SVG attribute). */
+  fontFamily?: string;
   /** Horizontal text alignment relative to the resolved label position. */
   align?: "left" | "center" | "right";
   /**
