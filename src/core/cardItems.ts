@@ -81,6 +81,11 @@ export interface CardValueItem extends CardItemBase {
   color?: string;
   italic?: boolean;
   align?: "left" | "center" | "right";
+  /** Counts up to the value as the card first shows: `value` is the number
+   *  it ends at, `format` writes the numbers on the way (the last frame
+   *  writes the item's own text). Skipped when the system asks for less
+   *  motion. */
+  countUp?: { value: number; format: (value: number) => string; duration?: number };
 }
 
 export interface CardChangeItem extends CardItemBase {
@@ -443,6 +448,7 @@ function renderItem(
       el.style.textOverflow = "ellipsis";
       if (item.italic) el.style.fontStyle = "italic";
       if (item.align) el.style.textAlign = item.align;
+      if (item.countUp) countUp(el, item.countUp, written);
       text.push(written);
       break;
     }
@@ -700,6 +706,27 @@ function flexJustify(j: "start" | "center" | "end" | "between" | "around"): stri
 function cssSize(size: number | string | undefined, fallback: number): string {
   if (size === undefined) return `${fallback}px`;
   return typeof size === "number" ? `${size}px` : size;
+}
+
+/** Writes `count.value` counted up from zero into `el` over its duration,
+ *  ending with `written`. Stops once `el` leaves the page. */
+function countUp(el: HTMLElement, count: NonNullable<CardValueItem["countUp"]>, written: string): void {
+  const reduce = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduce || typeof requestAnimationFrame !== "function" || !Number.isFinite(count.value)) return;
+  const duration = count.duration ?? 700;
+  let start: number | undefined;
+  el.textContent = count.format(0);
+  const frame = (now: number) => {
+    start ??= now;
+    const t = Math.min(1, (now - start) / duration);
+    if (t >= 1 || (!el.isConnected && t > 0)) {
+      el.textContent = written;
+      return;
+    }
+    el.textContent = count.format(count.value * (1 - Math.pow(1 - t, 3)));
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
 }
 
 export function finite(value: number | undefined): number | undefined {

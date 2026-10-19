@@ -317,3 +317,29 @@ describe("FacetCard stacks", () => {
     expect(shadow).toContain("1px 2px #000");
   });
 });
+
+describe("FacetCard count up", () => {
+  it("counts a value up from zero and ends on its own text", async () => {
+    const element = container();
+    const seen: string[] = [];
+    new FacetCard(element, {
+      rows: [
+        {
+          items: [
+            {
+              type: "value",
+              id: "v",
+              value: "1,000 orders",
+              countUp: { value: 1000, duration: 60, format: (n) => { const t = `${Math.round(n)}`; seen.push(t); return t; } },
+            },
+          ],
+        },
+      ],
+    });
+    const value = element.querySelector<HTMLElement>('[data-item="v"]')!;
+    expect(value.textContent).toBe("0");
+    await new Promise((r) => setTimeout(r, 200));
+    expect(value.textContent).toBe("1,000 orders");
+    expect(seen.length).toBeGreaterThan(1);
+  });
+});
