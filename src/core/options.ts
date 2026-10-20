@@ -36,6 +36,7 @@ import type { BulletPointOptions } from "../series/bullet.js";
 import type { WaterfallPointOptions, WaterfallSeriesOptions } from "../series/waterfall.js";
 import type { SankeyPointOptions } from "../series/sankey.js";
 import type { MapPointOptions, MapSeriesOptions } from "../series/map.js";
+import type { DecompPointOptions, DecompSeriesOptions } from "../series/decomp.js";
 import type { GanttPointOptions } from "../series/gantt.js";
 import type { CalendarPointOptions } from "../series/calendar.js";
 import type { GaugeSeriesOptions } from "../series/gauge.js";
@@ -86,6 +87,7 @@ export type ChartType =
   | "sunburst" // multi-level radial hierarchy
   | "treemap" // hierarchy as nested rectangles sized by value
   | "map" // areas filled by their data, and dots by longitude and latitude
+  | "decomp" // a total split into its parts, level by level
   | "sankey" // weighted flows between nodes
   | "calendar" // day-grid heatmap by date
   | "gantt" // duration bars per row
@@ -113,6 +115,7 @@ export interface PointOptions
     WaterfallPointOptions,
     SankeyPointOptions,
     MapPointOptions,
+    DecompPointOptions,
     GanttPointOptions,
     CalendarPointOptions,
     ScatterPointOptions,
@@ -155,6 +158,7 @@ export interface SeriesOptions
     SparklineSeriesOptions,
     RadialBarSeriesOptions,
     MapSeriesOptions,
+    DecompSeriesOptions,
     ColumnOptions {
   type?: ChartType;
   name?: string;
