@@ -66,6 +66,51 @@ function polygons(g: MapGeometry): Ring[][] {
   return g.type === 'Polygon' ? [g.coordinates as Ring[]] : (g.coordinates as Ring[][]);
 }
 
+/** The part of a ring on one side of a vertical line (Sutherland–Hodgman). */
+function clipX(ring: Ring, at: number, keepBelow: boolean): Ring {
+  const inside = (p: [number, number]) => (keepBelow ? p[0] <= at : p[0] >= at);
+  const out: Ring = [];
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i];
+    const b = ring[(i + 1) % ring.length];
+    if (inside(a)) out.push(a);
+    if (inside(a) !== inside(b)) {
+      const t = (at - a[0]) / (b[0] - a[0]);
+      out.push([at, a[1] + t * (b[1] - a[1])]);
+    }
+  }
+  return out;
+}
+
+/**
+ * A polygon that crosses the 180th meridian (Russia, Fiji) cut in two along
+ * it, so it isn't drawn as a band across the whole map: its rings are made
+ * continuous (no jump of more than 180°), then what runs past ±180 is moved
+ * to the other edge.
+ */
+export function splitAntimeridian(poly: Ring[]): Ring[][] {
+  let lo = Infinity, hi = -Infinity;
+  const rings = poly.map((ring) => {
+    const out: Ring = [];
+    let shift = 0;
+    ring.forEach(([x, y], i) => {
+      if (i) {
+        const d = x + shift - out[i - 1][0];
+        if (d > 180) shift -= 360;
+        else if (d < -180) shift += 360;
+      }
+      out.push([x + shift, y]);
+      lo = Math.min(lo, x + shift);
+      hi = Math.max(hi, x + shift);
+    });
+    return out;
+  });
+  if (hi <= 180 && lo >= -180) return [poly];
+  const edge = hi > 180 ? 180 : -180;
+  const part = (keepBelow: boolean, by: number) => rings.map((r) => clipX(r, edge, keepBelow)).filter((r) => r.length >= 3).map((r) => r.map(([x, y]) => [x + by, y] as [number, number]));
+  return [part(edge === 180, 0), part(edge !== 180, edge === 180 ? -360 : 360)].filter((p) => p.length);
+}
+
 export class MapSeries extends BaseSeries {
   override capabilities(): SeriesCapabilities {
     return { grouped: false, cartesian: false, stackable: false };
@@ -83,7 +128,9 @@ export class MapSeries extends BaseSeries {
       return [px, -py];
     };
 
-    const shapes = (o.features ?? []).flatMap((f) => (f.geometry ? [{ f, polys: polygons(f.geometry).map((poly) => poly.map((ring) => ring.map(([x, y]) => project(x, y)))) }] : []));
+    // Outlines in degrees are cut at the 180th meridian first.
+    const cut = (polys: Ring[][]) => (planar ? polys : polys.flatMap(splitAntimeridian));
+    const shapes = (o.features ?? []).flatMap((f) => (f.geometry ? [{ f, polys: cut(polygons(f.geometry)).map((poly) => poly.map((ring) => ring.map(([x, y]) => project(x, y)))) }] : []));
     const dots = this.points.filter((p) => Number.isFinite(p.options.lon) && Number.isFinite(p.options.lat)).map((p) => ({ p, at: project(p.options.lon as number, p.options.lat as number) }));
 
     // Fit everything drawn to the plot, keeping its shape.

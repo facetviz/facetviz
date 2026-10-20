@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FacetViz } from "../src/index.js";
 import "../src/entries/series/map.js";
-import { equalEarth } from "../src/series/map.js";
+import { equalEarth, splitAntimeridian } from "../src/series/map.js";
 
 function container(): HTMLElement {
   const element = document.createElement("div");
@@ -77,5 +77,20 @@ describe("Map series", () => {
     // Fitted to the plot: its corners well apart, not at the raw 100–150.
     const xs = [...area.getAttribute("d")!.matchAll(/[ML]([\d.]+),/g)].map((m) => Number(m[1]));
     expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(200);
+  });
+});
+
+describe("antimeridian", () => {
+  it("cuts a polygon crossing 180° in two, each inside ±180", () => {
+    const parts = splitAntimeridian([[[170, 60], [-170, 60], [-170, 70], [170, 70], [170, 60]]]);
+    expect(parts).toHaveLength(2);
+    for (const p of parts) for (const [x] of p[0]) expect(Math.abs(x)).toBeLessThanOrEqual(180);
+    const xs = parts.map((p) => p[0].map(([x]) => x));
+    expect(xs.some((x) => x.includes(170) && x.every((v) => v >= 170))).toBe(true);
+    expect(xs.some((x) => x.includes(-170) && x.every((v) => v <= -170))).toBe(true);
+  });
+  it("leaves other polygons alone", () => {
+    const poly: [number, number][][] = [[[0, 0], [10, 0], [10, 10], [0, 0]]];
+    expect(splitAntimeridian(poly)).toEqual([poly]);
   });
 });
