@@ -41,6 +41,11 @@ export interface MapSeriesOptions {
   /** What the map is fitted to: everything drawn ("all", the default), or
    * the dots ("data"), with a margin, the rest cut off at the plot's edge. */
   fit?: 'all' | 'data';
+  /** The longitude at the middle of the map (default 0): areas far from it
+   * are drawn skewed, so a map of one region is best centred on it. "auto"
+   * is the dots' middle, else the areas'. With fit "data" and no centre,
+   * the dots' middle. */
+  center?: number | 'auto';
   /** Fitted to the dots: the narrowest span shown, in degrees of longitude
    * at the equator (default 12), so one dot isn't shown at street level. */
   minSpan?: number;
@@ -70,6 +75,27 @@ export function equalEarth(lon: number, lat: number): [number, number] {
 
 function polygons(g: MapGeometry): Ring[][] {
   return g.type === 'Polygon' ? [g.coordinates as Ring[]] : (g.coordinates as Ring[][]);
+}
+
+/** A longitude within −180…180. */
+const wrap = (lon: number) => ((((lon + 180) % 360) + 360) % 360) - 180;
+
+/** The middle of longitudes, the short way round the globe (Suva at 178°
+ * and Auckland at 175° are in the middle of the Pacific, not of Africa). */
+export function middleLongitude(lons: number[]): number {
+  if (!lons.length) return 0;
+  const sorted = [...lons].map(wrap).sort((a, b) => a - b);
+  // The widest gap between neighbours (round the back too) is outside them.
+  let gap = sorted[0] + 360 - sorted[sorted.length - 1];
+  let start = sorted[0];
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] - sorted[i - 1] > gap) {
+      gap = sorted[i] - sorted[i - 1];
+      start = sorted[i];
+    }
+  }
+  const span = 360 - gap;
+  return wrap(start + span / 2);
 }
 
 /** The part of a ring on one side of a vertical line (Sutherland–Hodgman). */
@@ -135,9 +161,22 @@ export class MapSeries extends BaseSeries {
     };
 
     // Outlines in degrees are cut at the 180th meridian first.
-    const cut = (polys: Ring[][]) => (planar ? polys : polys.flatMap(splitAntimeridian));
+    const placed = this.points.filter((p) => Number.isFinite(p.options.lon) && Number.isFinite(p.options.lat));
+    // The middle longitude: everything is turned so it's at 0 (and the cut
+    // at the back of the globe moves with it).
+    const areaLons = () => (o.features ?? []).flatMap((f) => (f.geometry ? polygons(f.geometry).flatMap((poly) => poly[0]?.filter((_, i) => i % 8 === 0).map(([x]) => x) ?? []) : []));
+    const center = planar
+      ? 0
+      : typeof o.center === 'number'
+        ? o.center
+        : o.center === 'auto' || o.fit === 'data'
+          ? middleLongitude(placed.length ? placed.map((p) => p.options.lon as number) : o.center === 'auto' ? areaLons() : [])
+          : 0;
+    const turn = (lon: number) => (center ? wrap(lon - center) : lon);
+    const turned = (rings: Ring[]) => (center ? rings.map((ring) => ring.map(([x, y]) => [x - center, y] as [number, number])) : rings);
+    const cut = (polys: Ring[][]) => (planar ? polys : polys.map(turned).flatMap(splitAntimeridian));
     const shapes = (o.features ?? []).flatMap((f) => (f.geometry ? [{ f, polys: cut(polygons(f.geometry)).map((poly) => poly.map((ring) => ring.map(([x, y]) => project(x, y)))) }] : []));
-    const dots = this.points.filter((p) => Number.isFinite(p.options.lon) && Number.isFinite(p.options.lat)).map((p) => ({ p, at: project(p.options.lon as number, p.options.lat as number) }));
+    const dots = placed.map((p) => ({ p, at: project(turn(p.options.lon as number), p.options.lat as number) }));
 
     // Fit everything drawn to the plot, keeping its shape.
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;

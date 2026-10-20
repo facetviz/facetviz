@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FacetViz } from "../src/index.js";
 import "../src/entries/series/map.js";
-import { equalEarth, splitAntimeridian } from "../src/series/map.js";
+import { equalEarth, middleLongitude, splitAntimeridian } from "../src/series/map.js";
 
 function container(): HTMLElement {
   const element = document.createElement("div");
@@ -128,6 +128,32 @@ describe("Map fitted to its dots", () => {
       return Math.max(...xs) - Math.min(...xs);
     };
     expect(size(one(10))).toBeGreaterThan(size(one(40)) * 3);
+  });
+});
+
+describe("map centre", () => {
+  it("takes the middle of longitudes the short way round", () => {
+    expect(middleLongitude([72.8, 77.2, 88.3])).toBeCloseTo(80.55, 2);
+    expect(middleLongitude([178.4, 174.8, -175])).toBeCloseTo(179.9, 1);
+    expect(middleLongitude([-124, -67])).toBeCloseTo(-95.5, 2);
+    expect(middleLongitude([])).toBe(0);
+  });
+  it("draws an area far from 0° square on when centred on it", () => {
+    document.body.innerHTML = "";
+    const skew = (center?: number | "auto") => {
+      const el = container();
+      new FacetViz(el, {
+        chart: { type: "map", width: 600, height: 400, animation: false },
+        legend: { enabled: false },
+        series: [{ type: "map", name: "x", features: [{ id: "a", geometry: square(-110, 30, 10) }], ...(center != null ? { center } : {}), data: [{ key: "a", y: 1 }] }],
+      });
+      // The x of the bottom-left and top-left corners: equal when not skewed.
+      const pts = [...el.querySelectorAll("path.facet-map-area")].pop()!.getAttribute("d")!.match(/-?[\d.]+,-?[\d.]+/g)!.map((p) => p.split(",").map(Number));
+      return Math.abs(pts[0][0] - pts[3][0]);
+    };
+    expect(skew()).toBeGreaterThan(5);
+    expect(skew(-105)).toBeLessThan(skew() / 4);
+    expect(skew("auto" as never)).toBeLessThan(skew() / 4);
   });
 });
 
