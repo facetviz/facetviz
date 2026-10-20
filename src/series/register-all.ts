@@ -29,6 +29,7 @@ import { registerTickSeries } from "../entries/series/tick.js";
 import { registerTimelineSeries } from "../entries/series/timeline.js";
 import { registerTreegraphSeries } from "../entries/series/treegraph.js";
 import { registerTreemapSeries } from "../entries/series/treemap.js";
+import { registerMapSeries } from "../entries/series/map.js";
 import { registerWaterfallSeries } from "../entries/series/waterfall.js";
 
 /** Re-register every built-in family, useful after deliberately replacing one. */
@@ -64,5 +65,6 @@ export function registerAllSeries(): void {
   registerTimelineSeries();
   registerTreegraphSeries();
   registerTreemapSeries();
+  registerMapSeries();
   registerWaterfallSeries();
 }

@@ -35,6 +35,7 @@ import type { CandlestickPointOptions } from "../series/candlestick.js";
 import type { BulletPointOptions } from "../series/bullet.js";
 import type { WaterfallPointOptions, WaterfallSeriesOptions } from "../series/waterfall.js";
 import type { SankeyPointOptions } from "../series/sankey.js";
+import type { MapPointOptions, MapSeriesOptions } from "../series/map.js";
 import type { GanttPointOptions } from "../series/gantt.js";
 import type { CalendarPointOptions } from "../series/calendar.js";
 import type { GaugeSeriesOptions } from "../series/gauge.js";
@@ -84,6 +85,7 @@ export type ChartType =
   | "radar" // line/area over categories arranged around a polar centre
   | "sunburst" // multi-level radial hierarchy
   | "treemap" // hierarchy as nested rectangles sized by value
+  | "map" // areas filled by their data, and dots by longitude and latitude
   | "sankey" // weighted flows between nodes
   | "calendar" // day-grid heatmap by date
   | "gantt" // duration bars per row
@@ -110,6 +112,7 @@ export interface PointOptions
     BulletPointOptions,
     WaterfallPointOptions,
     SankeyPointOptions,
+    MapPointOptions,
     GanttPointOptions,
     CalendarPointOptions,
     ScatterPointOptions,
@@ -151,6 +154,7 @@ export interface SeriesOptions
     ScatterSeriesOptions,
     SparklineSeriesOptions,
     RadialBarSeriesOptions,
+    MapSeriesOptions,
     ColumnOptions {
   type?: ChartType;
   name?: string;
