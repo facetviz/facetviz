@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FacetViz } from "../src/index.js";
 import "../src/entries/series/decomp.js";
+import { fitText } from "../src/series/decomp.js";
 
 function container(): HTMLElement {
   const element = document.createElement("div");
@@ -56,5 +57,13 @@ describe("Decomposition tree series", () => {
     const element = container();
     new FacetViz(element, { chart: { type: "decomp", width: 400, height: 300 }, series: [{ type: "decomp", name: "x", data: [] }] });
     expect(element.querySelectorAll(".facet-decomp-node")).toHaveLength(0);
+  });
+  it("cuts a name short with an ellipsis to the room it has", () => {
+    const measure = (t: string) => t.length * 6;
+    expect(fitText("West", 60, measure)).toBe("West");
+    expect(fitText("Office Supplies and Furniture", 60, measure)).toBe("Office Su…");
+    expect(fitText("Office Supplies and Furniture", 60, measure).length * 6).toBeLessThanOrEqual(60);
+    expect(fitText("Northwest", 5, measure)).toBe("");
+    expect(fitText("Northwest", 6, measure)).toBe("…");
   });
 });

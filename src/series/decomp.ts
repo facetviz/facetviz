@@ -29,6 +29,19 @@ export interface DecompSeriesOptions {
   levels?: string[];
 }
 
+/** `text`, or as much of it as fits `width` followed by “…” (nothing when not even that fits). */
+export function fitText(text: string, width: number, measure: (t: string) => number): string {
+  if (measure(text) <= width) return text;
+  let lo = 0;
+  let hi = text.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (measure(text.slice(0, mid).trimEnd() + '…') <= width) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo > 0 ? text.slice(0, lo).trimEnd() + '…' : measure('…') <= width ? '…' : '';
+}
+
 const NODE_H = 36;
 const GAP = 8;
 const HEAD = 26;
@@ -81,10 +94,16 @@ export class DecompSeries extends BaseSeries {
         const node = renderer.group({ class: `facet-point facet-decomp-node${open ? ' facet-decomp-open' : ''}`, cursor: 'pointer' }, g);
         renderer.create('rect', { x, y, width: barW, height: NODE_H, rx: 4, fill: 'transparent', stroke: open ? color : 'none', 'stroke-width': open ? 1.5 : 0 }, node);
         renderer.create('rect', { x: x + 2, y: y + NODE_H - 9, width: w, height: 6, rx: 3, fill: color, opacity: value < 0 ? 0.45 : 0.9 }, node);
-        const name = String(p.name ?? '');
-        renderer.text(name, x + 4, y + 11, { ...FONTS.axisLabel, 'font-size': scaledFontPx(11.5), 'dominant-baseline': 'middle' }, node);
+        const nameAttrs = { ...FONTS.axisLabel, 'font-size': scaledFontPx(11.5), 'dominant-baseline': 'middle' };
+        const valueAttrs = { ...FONTS.dataLabel, 'font-size': scaledFontPx(11.5), 'font-weight': 600, 'text-anchor': 'end', 'dominant-baseline': 'middle' };
         const shown = String(p.options.valueText ?? value);
-        renderer.text(shown, x + barW - 4, y + 11, { ...FONTS.dataLabel, 'font-size': scaledFontPx(11.5), 'font-weight': 600, 'text-anchor': 'end', 'dominant-baseline': 'middle' }, node);
+        // The name gets the room the value leaves, cut short with “…”.
+        const room = barW - 8 - (shown ? renderer.measureText(shown, valueAttrs).width + 8 : 0);
+        const full = String(p.name ?? '');
+        const name = fitText(full, room, (t) => renderer.measureText(t, nameAttrs).width);
+        const label = renderer.text(name, x + 4, y + 11, nameAttrs, node);
+        if (name !== full) renderer.create('title', {}, label).textContent = full;
+        if (shown) renderer.text(shown, x + barW - 4, y + 11, valueAttrs, node);
         ctx.registerHover(node as unknown as SVGElement, p);
         node.addEventListener('click', (e: Event) => ctx.onPointEvent('click', p, e));
         node.addEventListener('mouseover', (e: Event) => ctx.onPointEvent('mouseOver', p, e));
