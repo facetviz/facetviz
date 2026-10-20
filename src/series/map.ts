@@ -38,6 +38,12 @@ export interface MapSeriesOptions {
   /** Outlines between areas. */
   borderColor?: string;
   borderWidth?: number;
+  /** What the map is fitted to: everything drawn ("all", the default), or
+   * the dots ("data"), with a margin, the rest cut off at the plot's edge. */
+  fit?: 'all' | 'data';
+  /** Fitted to the dots: the narrowest span shown, in degrees of longitude
+   * at the equator (default 12), so one dot isn't shown at street level. */
+  minSpan?: number;
 }
 
 /** Map point fields: an area's key, or a dot's place and size. */
@@ -141,14 +147,29 @@ export class MapSeries extends BaseSeries {
       if (y < minY) minY = y;
       if (y > maxY) maxY = y;
     };
-    for (const s of shapes) for (const poly of s.polys) for (const ring of poly) ring.forEach(grow);
-    dots.forEach((d) => grow(d.at));
+    const toData = o.fit === 'data' && dots.length > 0;
+    if (toData) {
+      dots.forEach((d) => grow(d.at));
+      // A margin around the dots, and at least the narrowest span.
+      const unit = planar ? 1 : equalEarth(1, 0)[0];
+      const least = (o.minSpan ?? 12) * unit;
+      const [cx, cy] = [(minX + maxX) / 2, (minY + maxY) / 2];
+      const half = (span: number) => Math.max(span * 1.25, least) / 2;
+      const [hw, hh] = [half(maxX - minX), half(maxY - minY)];
+      [minX, maxX, minY, maxY] = [cx - hw, cx + hw, cy - hh, cy + hh];
+    } else {
+      for (const s of shapes) for (const poly of s.polys) for (const ring of poly) ring.forEach(grow);
+      dots.forEach((d) => grow(d.at));
+    }
     if (!Number.isFinite(minX)) return;
     const w = maxX - minX || 1, h = maxY - minY || 1;
-    const pad = 4;
+    // Room for the largest dot at the edge of the frame.
+    const pad = toData ? 6 + Math.max(...dots.map((d) => Number(d.p.options.radius ?? 4))) : 4;
     const scale = Math.min((plot.width - 2 * pad) / w, (plot.height - 2 * pad) / h);
-    const ox = plot.x + (plot.width - w * scale) / 2 - minX * scale;
-    const oy = plot.y + (plot.height - h * scale) / 2 - minY * scale;
+    const ox = (plot.width - w * scale) / 2 - minX * scale;
+    const oy = (plot.height - h * scale) / 2 - minY * scale;
+    // Drawn in a frame the size of the plot, which cuts off what's outside it.
+    const frame = renderer.create('svg', { x: plot.x, y: plot.y, width: plot.width, height: plot.height, overflow: 'hidden', class: 'facet-map-frame' }, g) as unknown as SVGGElement;
     const place = ([x, y]: [number, number]) => [ox + x * scale, oy + y * scale];
 
     const byKey = new Map<string, Point>();
@@ -177,7 +198,7 @@ export class MapSeries extends BaseSeries {
         'stroke-width': o.borderWidth ?? 0.6,
         class: p ? 'facet-point facet-map-area' : 'facet-map-area facet-map-empty',
         'data-id': s.f.id,
-      }, g);
+      }, frame);
       if (p) wire(el, p);
     }
 
@@ -187,7 +208,7 @@ export class MapSeries extends BaseSeries {
         cx: x, cy: y, r: (p.options.radius as number | undefined) ?? 4,
         fill: p.color ?? this.color, 'fill-opacity': 0.75,
         stroke: '#ffffff', 'stroke-width': 0.8, class: 'facet-point facet-map-dot',
-      }, g);
+      }, frame);
       wire(el, p);
     }
   }

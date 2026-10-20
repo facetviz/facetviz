@@ -80,6 +80,57 @@ describe("Map series", () => {
   });
 });
 
+describe("Map fitted to its dots", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+  const world = [
+    { id: "a", geometry: square(-170, -60, 20) },
+    { id: "b", geometry: square(150, 50, 20) },
+  ];
+  const draw = (fit: "all" | "data", data: { lon: number; lat: number; radius?: number }[], minSpan?: number) => {
+    const element = container();
+    new FacetViz(element, {
+      chart: { type: "map", width: 600, height: 400, animation: false },
+      legend: { enabled: false },
+      series: [{ type: "map", name: "Stores", features: world, fit, ...(minSpan ? { minSpan } : {}), data }],
+    });
+    return element;
+  };
+  const centers = (el: HTMLElement) => [...el.querySelectorAll("circle.facet-map-dot")].map((c) => [Number(c.getAttribute("cx")), Number(c.getAttribute("cy"))]);
+
+  it("spreads two close dots across the frame, instead of a speck on the world", () => {
+    const pts = [{ lon: 72.8, lat: 19.0 }, { lon: 77.2, lat: 28.6 }];
+    const [a1, b1] = centers(draw("all", pts));
+    const [a2, b2] = centers(draw("data", pts));
+    const apart = (p: number[], q: number[]) => Math.hypot(p[0] - q[0], p[1] - q[1]);
+    expect(apart(a2, b2)).toBeGreaterThan(apart(a1, b1) * 5);
+    // Inside the frame, which cuts off the outlines beyond it.
+    const frame = document.querySelectorAll("svg.facet-map-frame")[1];
+    const w = Number(frame.getAttribute("width")), h = Number(frame.getAttribute("height"));
+    for (const [x, y] of [a2, b2]) {
+      expect(x).toBeGreaterThan(0);
+      expect(x).toBeLessThan(w);
+      expect(y).toBeGreaterThan(0);
+      expect(y).toBeLessThan(h);
+    }
+  });
+
+  it("shows at least the narrowest span around one dot", () => {
+    const one = (span?: number) => {
+      document.body.innerHTML = "";
+      const el = draw("data", [{ lon: 2.35, lat: 48.85 }], span);
+      return el.querySelectorAll("path.facet-map-area")[0].getAttribute("d")!;
+    };
+    // A wider span shows the same outline smaller.
+    const size = (d: string) => {
+      const xs = [...d.matchAll(/[ML](-?[\d.]+),/g)].map((m) => Number(m[1]));
+      return Math.max(...xs) - Math.min(...xs);
+    };
+    expect(size(one(10))).toBeGreaterThan(size(one(40)) * 3);
+  });
+});
+
 describe("antimeridian", () => {
   it("cuts a polygon crossing 180° in two, each inside ±180", () => {
     const parts = splitAntimeridian([[[170, 60], [-170, 60], [-170, 70], [170, 70], [170, 60]]]);
