@@ -155,6 +155,7 @@ export type { CandlestickPointOptions } from "./series/candlestick.js";
 export type { BulletPointOptions } from "./series/bullet.js";
 export type { WaterfallPointOptions, WaterfallSeriesOptions } from "./series/waterfall.js";
 export type { SankeyPointOptions } from "./series/sankey.js";
+export type { MapFeature, MapGeometry, MapSeriesOptions, MapPointOptions } from "./series/map.js";
 export type { GanttPointOptions } from "./series/gantt.js";
 export type { CalendarPointOptions } from "./series/calendar.js";
 export type { GaugeSeriesOptions } from "./series/gauge.js";
