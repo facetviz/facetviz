@@ -334,6 +334,11 @@ export interface FacetTableOptions<Row extends FacetTableRow> {
   pagination?: boolean | FacetTablePaginationOptions;
   /** Custom header sort icon. Defaults to stroked arrows. */
   sortIndicator?: FacetTableSortIndicator;
+  /**
+   * A body row was clicked (or chosen with Enter or Space): its data and its
+   * index in `rows`. With it, rows show a pointer and take keyboard focus.
+   */
+  onRowClick?: (row: Row, rowIndex: number, event: MouseEvent | KeyboardEvent) => void;
 }
 
 interface PendingChart<Row extends FacetTableRow> {
@@ -908,6 +913,18 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
       applyStyle(row, summaryStyle);
       const rowStyle = resolveRowStyle(this.options.style?.row, dataRow, rowIndex);
       applyStyle(row, rowStyle);
+      const onRowClick = this.options.onRowClick;
+      if (onRowClick && !rowType) {
+        row.classList.add("facet-table-row-clickable");
+        row.style.cursor = "pointer";
+        row.tabIndex = 0;
+        row.addEventListener("click", (event) => onRowClick(dataRow, rowIndex, event));
+        row.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          onRowClick(dataRow, rowIndex, event);
+        });
+      }
       for (const [columnIndex, column] of columns.entries()) {
         const cell = document.createElement("td");
         const sourceValue = dataRow[column.key];

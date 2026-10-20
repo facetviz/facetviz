@@ -1025,4 +1025,34 @@ describe("FacetTable", () => {
       .map((row) => row.lastElementChild?.textContent);
     expect(values).toEqual(["15.00", "100.00", "43.33"]);
   });
+
+  it("reports a clicked or chosen body row, with its index in rows", () => {
+    const element = container();
+    const clicked = vi.fn();
+    new FacetTable<{ region: string; revenue: number }>(element, {
+      rows: [
+        { region: "West", revenue: 2 },
+        { region: "East", revenue: 1 },
+      ],
+      columns: [
+        { key: "region", header: "Region" },
+        { key: "revenue", header: "Revenue", sortable: true },
+      ],
+      onRowClick: clicked,
+    });
+    const rows = element.querySelectorAll<HTMLTableRowElement>("tbody tr");
+    expect(rows[0].classList.contains("facet-table-row-clickable")).toBe(true);
+    expect(rows[0].tabIndex).toBe(0);
+    rows[1].click();
+    expect(clicked).toHaveBeenLastCalledWith({ region: "East", revenue: 1 }, 1, expect.any(MouseEvent));
+    rows[0].dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(clicked).toHaveBeenLastCalledWith({ region: "West", revenue: 2 }, 0, expect.any(KeyboardEvent));
+    expect(clicked).toHaveBeenCalledTimes(2);
+  });
+
+  it("leaves rows alone without onRowClick", () => {
+    const element = container();
+    new FacetTable(element, { rows: [{ a: 1 }], columns: [{ key: "a", header: "A" }] });
+    expect(element.querySelector("tbody tr")?.classList.contains("facet-table-row-clickable")).toBe(false);
+  });
 });
