@@ -42,7 +42,7 @@ export interface MapSeriesOptions {
 
 /** Map point fields: an area's key, or a dot's place and size. */
 export interface MapPointOptions {
-  key?: string;
+  key?: string | null;
   lon?: number;
   lat?: number;
   radius?: number;
