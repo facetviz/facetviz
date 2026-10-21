@@ -661,6 +661,30 @@ describe('FacetViz rendering', () => {
     expect(seen).toEqual([[1, 'East', 0, 1]]);
   });
 
+  it('leaves a series with tooltip.enabled false out of the shared tooltip', () => {
+    const el = container();
+    const seen: unknown[] = [];
+    new FacetViz(el, {
+      chart: { type: 'column', animation: false },
+      xAxis: { categories: ['A'] },
+      tooltip: {
+        shared: true,
+        formatter: (ctx) => {
+          seen.push((ctx.points ?? []).map((p) => p.series));
+          return 'x';
+        },
+      },
+      series: [
+        { name: 'Shown', data: [3] },
+        { name: 'Hidden', data: [4], tooltip: { enabled: false } },
+      ],
+    });
+    // Hovering the hidden series still lists the other one.
+    el.querySelectorAll('.facet-point')[1].dispatchEvent(new MouseEvent('mouseenter'));
+    el.querySelectorAll('.facet-point')[0].dispatchEvent(new MouseEvent('mouseenter'));
+    expect(seen).toEqual([['Shown'], ['Shown']]);
+  });
+
   it('draws a colour scale for a run of series and toggles them together', () => {
     const el = container();
     const chart = new FacetViz(el, {

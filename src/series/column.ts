@@ -38,6 +38,12 @@ export interface ColumnOptions {
    */
   borderRadius?: number;
   /**
+   * Which corners `borderRadius` rounds: `'end'` (default) the two at the
+   * bar's outer end, `'both'` all four, so both ends are rounded (a pill
+   * once the radius reaches half the bar's width).
+   */
+  borderRadiusEnds?: "end" | "both";
+  /**
    * Fraction (0..0.95) of each category's width left empty between
    * neighbouring categories (default 0.2). Cartesian columns and bars only.
    */
@@ -54,16 +60,23 @@ const clampPadding = (v: number | undefined, fallback: number) =>
   v == null || !Number.isFinite(v) ? fallback : Math.min(0.95, Math.max(0, v));
 
 /** Rect path with only the two corners on `side` rounded; the opposite pair
- *  stays square. `side` names the edge whose corners get rounded. */
+ *  stays square. `side` names the edge whose corners get rounded, or `all`. */
 function roundedBarPath(
   rect: { x: number; y: number; width: number; height: number },
   radius: number,
-  side: "top" | "bottom" | "left" | "right",
+  side: "top" | "bottom" | "left" | "right" | "all",
 ): string {
   const { x, y, width, height } = rect;
   const r = Math.max(0, Math.min(radius, width / 2, height / 2));
   if (r === 0) return `M${x},${y} h${width} v${height} h${-width} Z`;
   switch (side) {
+    case "all":
+      return (
+        `M${x + r},${y} H${x + width - r} A${r},${r} 0 0 1 ${x + width},${y + r} ` +
+        `V${y + height - r} A${r},${r} 0 0 1 ${x + width - r},${y + height} ` +
+        `H${x + r} A${r},${r} 0 0 1 ${x},${y + height - r} V${y + r} ` +
+        `A${r},${r} 0 0 1 ${x + r},${y} Z`
+      );
     case "top":
       return (
         `M${x},${y + height} V${y + r} A${r},${r} 0 0 1 ${x + r},${y} ` +
@@ -186,8 +199,12 @@ export class ColumnSeries extends BaseSeries {
       let el: SVGElement;
       if (borderRadius > 0) {
         // Round only the corners at the far/value end -- the near end stays
-        // flush against the baseline/axis, whichever pixel side that is.
-        const side = horizontal
+        // flush against the baseline/axis, whichever pixel side that is --
+        // unless the series rounds both ends.
+        const ends = p.options.borderRadiusEnds ?? this.options.borderRadiusEnds;
+        const side = ends === "both"
+          ? "all"
+          : horizontal
           ? vHi >= vLo
             ? "right"
             : "left"

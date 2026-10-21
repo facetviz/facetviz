@@ -4982,7 +4982,7 @@ export class FacetViz {
   private pointsAtX(x: number | string): TooltipContext[] {
     const rows: TooltipContext[] = [];
     this.series.forEach((s, seriesIndex) => {
-      if (!s.visible || !s.capabilities().cartesian) return;
+      if (!s.visible || !s.capabilities().cartesian || s.options.tooltip?.enabled === false) return;
       const match = s.points.find((pp) => String(pp.x) === String(x));
       if (!match) return;
       rows.push({

@@ -130,6 +130,20 @@ describe('series borders', () => {
     expect(el.querySelector('.facet-column.P .facet-point')!.getAttribute('stroke')).toBeNull();
   });
 
+  it('rounds both ends of a column with borderRadiusEnds both', () => {
+    const el = render({
+      chart: { type: 'column' },
+      xAxis: { categories: ['A'] },
+      series: [
+        { name: 'E', borderRadius: 4, data: [2] },
+        { name: 'B', borderRadius: 4, borderRadiusEnds: 'both', data: [2] },
+      ],
+    });
+    const arcs = (name: string) => (el.querySelector(`.facet-column.${name} path.facet-point`)!.getAttribute('d')!.match(/A/g) ?? []).length;
+    expect(arcs('E')).toBe(2);
+    expect(arcs('B')).toBe(4);
+  });
+
   it('sets the line between pie slices, or none', () => {
     const pie = (extra: object) =>
       render({ chart: { type: 'pie' }, series: [{ name: 'S', ...extra, data: [{ name: 'a', y: 1 }, { name: 'b', y: 2 }] }] });

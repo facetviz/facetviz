@@ -907,6 +907,7 @@ One object per series in the `series` array.
 | `stacking`       | `'normal' \| 'percent'`                                   | –             | Enable stacking (`percent` = 100% stacked).                                                                                                                                                                                                     |
 | `grouping`       | `boolean`                                                  | `true`        | Set `false` on a column/bar/tick series to draw it across the full category band instead of its own side-by-side slot, overlapping other `grouping: false` series — see [Overlapping bars](#chart-types).                                     |
 | `borderRadius`   | `number`                                                   | `0`           | Corner radius (px) for a column/bar's outer end, flush at the baseline — see [Rounded bar corners](#chart-types).                                                                                                                              |
+| `borderRadiusEnds` | `'end' \| 'both'` | `'end'` | Which corners `borderRadius` rounds: the outer end, or both ends (all four corners). |
 | `opacity`        | `number`                                                   | `1`           | Opacity (0–1). Line-family series: the whole series — line, markers and data labels. Column/bar series: the bars' fill only; data labels stay fully opaque. |
 | `startAngle`     | `number`                                                   | `-90`         | Radial-bar arc start in degrees; `-90` is 12 o'clock.                                                                                                                                                                                           |
 | `endAngle`       | `number`                                                   | `180`         | Radial-bar arc end in degrees. Use `90` with the default start for a half circle.                                                                                                                                                               |
@@ -1794,7 +1795,8 @@ two corners away from the zero baseline (the top for an upward column, the
 bottom for a downward one; the far end for a `bar`). The near end stays
 square and flush against the baseline/axis. Radius is clamped to at most half
 the bar's shorter side, so a large enough value gives a full capsule/pill
-shape. Set it per series or override per point:
+shape. `borderRadiusEnds: 'both'` rounds all four corners instead (both
+ends). Set it per series or override per point:
 
 ```ts
 series: [{ type: 'column', borderRadius: 6, data: [5, 3, { y: -4, borderRadius: 0 }] }]

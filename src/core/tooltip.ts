@@ -71,7 +71,10 @@ export class Tooltip {
   }
 
   show(ctx: TooltipContext, seriesTip?: SeriesTooltipOptions): void {
-    if (this.options.enabled === false || seriesTip?.enabled === false) return;
+    // A series left out of tooltips shows none of its own, but hovering it
+    // in a shared tooltip still lists the other series at that x.
+    if (this.options.enabled === false) return;
+    if (seriesTip?.enabled === false && !ctx.points?.length) return;
     this.el.innerHTML = this.content(ctx, seriesTip);
     this.el.style.opacity = '1';
   }
