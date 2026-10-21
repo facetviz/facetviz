@@ -443,6 +443,34 @@ describe("FacetTable", () => {
     expect((table.charts[0].options.xAxis as { visible?: boolean }).visible).toBe(false);
   });
 
+  it("resizes a resizable column from its heading's handle, by pointer or keys", () => {
+    const widths: [string, number][] = [];
+    const element = container();
+    new FacetTable(element, {
+      rows: [{ name: "A", trend: [1, 2, 3] }],
+      columns: [
+        { key: "name" },
+        { key: "trend", header: "Trend", resizable: true, chart: { type: "line" } },
+      ],
+      onColumnResize: (key, width) => widths.push([key, width]),
+    });
+    expect(element.querySelectorAll(".facet-table-resize-handle")).toHaveLength(1);
+    const handle = () => element.querySelector<HTMLElement>(".facet-table-resize-handle")!;
+    expect(handle().getAttribute("aria-label")).toBe("Resize Trend");
+    // jsdom has no layout: the heading measures 0 wide, so widths count from 0.
+    handle().dispatchEvent(new PointerEvent("pointerdown", { clientX: 100, pointerId: 1, bubbles: true }));
+    handle().dispatchEvent(new PointerEvent("pointermove", { clientX: 260, pointerId: 1, bubbles: true }));
+    handle().dispatchEvent(new PointerEvent("pointerup", { clientX: 260, pointerId: 1, bubbles: true }));
+    expect(widths).toEqual([["trend", 160]]);
+    const th = () => element.querySelectorAll<HTMLTableCellElement>("th")[1];
+    expect(th().style.width).toBe("160px");
+    expect(th().style.maxWidth).toBe("160px");
+    expect(element.querySelector<HTMLElement>(".facet-table-chart")!.style.minWidth).toMatch(/^0(px)?$/);
+    // Arrow keys step it from its width; never under the minimum.
+    handle().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+    expect(widths.at(-1)).toEqual(["trend", 40]);
+  });
+
   it("uses a shared value domain for every chart in a comparable column", () => {
     const table = new FacetTable(container(), {
       rows: [

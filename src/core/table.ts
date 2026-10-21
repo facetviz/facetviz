@@ -279,6 +279,14 @@ export interface FacetTableColumn<Row extends FacetTableRow> {
   header?: string;
   /** Column width, as pixels or any CSS width string. */
   width?: number | string;
+  /**
+   * A handle on the heading's right edge drags the column wider or narrower
+   * (arrow keys too, once it has focus); the table then keeps that width.
+   * `onColumnResize` hears the width picked.
+   */
+  resizable?: boolean;
+  /** The narrowest a resizable column drags to, px. Default `40`. */
+  minResizeWidth?: number;
   /** Horizontal cell alignment. `align` remains as a backwards-compatible alias. */
   horizontalAlign?: "left" | "center" | "right";
   align?: "left" | "center" | "right";
@@ -344,6 +352,8 @@ export interface FacetTableOptions<Row extends FacetTableRow> {
    * index in `rows`. With it, rows show a pointer and take keyboard focus.
    */
   onRowClick?: (row: Row, rowIndex: number, event: MouseEvent | KeyboardEvent) => void;
+  /** A resizable column was dragged (or stepped by keys) to `width` px. */
+  onColumnResize?: (key: string, width: number) => void;
 }
 
 interface PendingChart<Row extends FacetTableRow> {
@@ -366,6 +376,8 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
   private table?: HTMLTableElement;
   private resizeObserver?: ResizeObserver;
   private resizeFrame?: number;
+  /** Each chart column's chart hosts, by column key, for live resizing. */
+  private chartHosts = new Map<string, HTMLDivElement[]>();
   private currentPage = 1;
   private currentPageSize = 25;
   private currentSort?: FacetTableSortState<Row>;
@@ -551,6 +563,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
   }
 
   private render(): void {
+    this.chartHosts.clear();
     this.destroyCharts();
     this.clampPage();
 
@@ -647,6 +660,88 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
     return head;
   }
 
+  /** A handle on a heading's right edge that drags its column's width. */
+  private addResizeHandle(cell: HTMLTableCellElement, column: FacetTableColumn<Row>): void {
+    const min = column.minResizeWidth ?? 40;
+    cell.style.position = "relative";
+    const handle = document.createElement("div");
+    handle.className = "facet-table-resize-handle";
+    handle.setAttribute("role", "separator");
+    handle.setAttribute("aria-orientation", "vertical");
+    handle.setAttribute("aria-label", `Resize ${column.header ?? column.key}`);
+    handle.tabIndex = 0;
+    Object.assign(handle.style, {
+      position: "absolute",
+      top: "0",
+      // Inside the heading: a last column's would be clipped by the table.
+      right: "0",
+      bottom: "0",
+      width: "8px",
+      cursor: "col-resize",
+      zIndex: "2",
+      touchAction: "none",
+    });
+    const line = document.createElement("div");
+    Object.assign(line.style, { position: "absolute", top: "20%", bottom: "20%", right: "0", width: "2px", borderRadius: "1px", background: "currentColor", opacity: "0" });
+    handle.appendChild(line);
+    handle.addEventListener("mouseenter", () => (line.style.opacity = "0.35"));
+    handle.addEventListener("mouseleave", () => (line.style.opacity = "0"));
+
+    const setWidth = (width: number) => {
+      cell.style.width = `${width}px`;
+      cell.style.minWidth = `${width}px`;
+      cell.style.maxWidth = `${width}px`;
+      // Its charts follow; they're drawn again at the new width once done.
+      for (const host of this.chartHosts.get(column.key) ?? []) {
+        host.style.minWidth = "0";
+        host.style.overflow = "hidden";
+      }
+    };
+    const finish = (width: number) => {
+      column.width = width;
+      this.render();
+      this.options.onColumnResize?.(column.key, width);
+    };
+    // Clicks on the handle don't sort the column.
+    handle.addEventListener("click", (e) => e.stopPropagation());
+    handle.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const start = e.clientX;
+      const from = cell.getBoundingClientRect().width;
+      let width = from;
+      handle.setPointerCapture?.(e.pointerId);
+      line.style.opacity = "0.6";
+      const move = (ev: PointerEvent) => {
+        width = Math.max(min, Math.round(from + ev.clientX - start));
+        setWidth(width);
+      };
+      const up = () => {
+        handle.removeEventListener("pointermove", move);
+        handle.removeEventListener("pointerup", up);
+        handle.removeEventListener("pointercancel", up);
+        if (width !== from) finish(width);
+        else line.style.opacity = "0";
+      };
+      handle.addEventListener("pointermove", move);
+      handle.addEventListener("pointerup", up);
+      handle.addEventListener("pointercancel", up);
+    });
+    handle.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      e.stopPropagation();
+      const step = e.shiftKey ? 50 : 10;
+      const from = Math.round(cell.getBoundingClientRect().width);
+      finish(Math.max(min, from + (e.key === "ArrowRight" ? step : -step)));
+      // Focus stays on the handle as the table is drawn again.
+      this.root?.querySelectorAll<HTMLElement>(".facet-table-resize-handle").forEach((h) => {
+        if (h.getAttribute("aria-label") === handle.getAttribute("aria-label")) h.focus();
+      });
+    });
+    cell.appendChild(handle);
+  }
+
   private renderLeafColumnHeading(
     column: FacetTableColumn<Row>,
     columnIndex: number,
@@ -730,6 +825,8 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
     } else {
       cell.textContent = column.header ?? column.key;
     }
+    // Last: the heading's text, set above, would clear it.
+    if (column.resizable) this.addResizeHandle(cell, column);
     return cell;
   }
 
@@ -964,9 +1061,13 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
           host.className = "facet-table-chart";
           host.style.width = "100%";
           host.style.height = `${column.chart.height ?? (typeof column.chart.options === "function" ? undefined : column.chart.options?.chart?.height) ?? 44}px`;
-          host.style.minWidth = `${column.chart.minWidth ?? 120}px`;
+          // A column resized to a width: its charts fit it, however narrow.
+          host.style.minWidth = column.resizable && typeof column.width === "number" ? "0" : `${column.chart.minWidth ?? 120}px`;
           applyStyle(host, this.options.style?.chartHost);
           cell.appendChild(host);
+          const hosts = this.chartHosts.get(column.key) ?? [];
+          hosts.push(host);
+          this.chartHosts.set(column.key, hosts);
           pending.push({
             host,
             column,
@@ -1380,6 +1481,11 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
       cell.style.width = typeof column.width === "number"
         ? `${column.width}px`
         : column.width;
+    // A resized column keeps its width: the table's spare room goes elsewhere.
+    if (column.resizable && typeof column.width === "number") {
+      cell.style.minWidth = `${column.width}px`;
+      cell.style.maxWidth = `${column.width}px`;
+    }
     applyStyle(
       cell,
       heading
