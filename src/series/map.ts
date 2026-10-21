@@ -6,9 +6,11 @@
  * with an `id`; a data point `{ key, color?, value? }` fills the area whose
  * id is its key, and areas without one are drawn in `emptyColor`. A data
  * point `{ lon, lat, radius?, color? }` is a dot. Longitude/latitude are
- * projected with Equal Earth (`projection: "equalEarth"`, the default), or
- * taken as they are with `"planar"` for outlines already projected (x right,
- * y down). The whole map is fitted to the plot, keeping its shape.
+ * projected with Equal Earth (`projection: "equalEarth"`, the default, for
+ * the whole world: true areas), Mercator (`"mercator"`, for a country or a
+ * region: true local shapes, as most maps of one show it), or taken as they
+ * are with `"planar"` for outlines already projected (x right, y down). The
+ * whole map is fitted to the plot, keeping its shape.
  */
 
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
@@ -31,8 +33,9 @@ export interface MapFeature {
 /** Map series options, beside the common ones. */
 export interface MapSeriesOptions {
   features?: MapFeature[];
-  /** "equalEarth" (longitude/latitude in degrees) or "planar" (already projected). */
-  projection?: 'equalEarth' | 'planar';
+  /** "equalEarth" or "mercator" (longitude/latitude in degrees), or
+   * "planar" (already projected). */
+  projection?: 'equalEarth' | 'mercator' | 'planar';
   /** Areas with no data point. */
   emptyColor?: string;
   /** Outlines between areas. */
@@ -71,6 +74,16 @@ export function equalEarth(lon: number, lat: number): [number, number] {
   const x = (l * Math.cos(t)) / (M * (A1 + 3 * A2 * t2 + t6 * (7 * A3 + 9 * A4 * t2)));
   const y = t * (A1 + A2 * t2 + t6 * (A3 + A4 * t2));
   return [x, y];
+}
+
+/** Mercator's furthest latitude: past it the poles run off to infinity. */
+const MERCATOR_MAX_LAT = 85;
+
+/** Mercator: degrees to plane units (radians of longitude), y up. Shapes
+ * are true locally, sizes grow towards the poles. */
+export function mercator(lon: number, lat: number): [number, number] {
+  const p = (Math.max(-MERCATOR_MAX_LAT, Math.min(MERCATOR_MAX_LAT, lat)) * Math.PI) / 180;
+  return [(lon * Math.PI) / 180, Math.log(Math.tan(Math.PI / 4 + p / 2))];
 }
 
 function polygons(g: MapGeometry): Ring[][] {
@@ -159,9 +172,10 @@ export class MapSeries extends BaseSeries {
     const o = this.options as typeof this.options & MapSeriesOptions;
     const planar = o.projection === 'planar';
     // Plane coordinates, y down.
+    const sphere = o.projection === 'mercator' ? mercator : equalEarth;
     const project = (x: number, y: number): [number, number] => {
       if (planar) return [x, y];
-      const [px, py] = equalEarth(x, y);
+      const [px, py] = sphere(x, y);
       return [px, -py];
     };
 
@@ -195,7 +209,7 @@ export class MapSeries extends BaseSeries {
     if (toData) {
       dots.forEach((d) => grow(d.at));
       // A margin around the dots, and at least the narrowest span.
-      const unit = planar ? 1 : equalEarth(1, 0)[0];
+      const unit = planar ? 1 : sphere(1, 0)[0];
       const least = (o.minSpan ?? 12) * unit;
       const [cx, cy] = [(minX + maxX) / 2, (minY + maxY) / 2];
       const half = (span: number) => Math.max(span * 1.25, least) / 2;

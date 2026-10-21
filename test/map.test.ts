@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FacetViz } from "../src/index.js";
 import "../src/entries/series/map.js";
-import { equalEarth, middleLongitude, splitAntimeridian } from "../src/series/map.js";
+import { equalEarth, mercator, middleLongitude, splitAntimeridian } from "../src/series/map.js";
 
 function container(): HTMLElement {
   const element = document.createElement("div");
@@ -25,6 +25,37 @@ describe("Map series", () => {
     const [, yPole] = equalEarth(0, 90);
     expect(yPole).toBeCloseTo(1.3173, 3);
     expect(equalEarth(-30, -20)[0]).toBeLessThan(0);
+  });
+
+  it("projects with Mercator: true shapes locally, the poles cut off", () => {
+    expect(mercator(0, 0)[0]).toBe(0);
+    expect(mercator(0, 0)[1]).toBeCloseTo(0, 12);
+    expect(mercator(180, 0)[0]).toBeCloseTo(Math.PI, 6);
+    // A small square at 20°N: as tall as it is wide.
+    const [x0, y0] = mercator(80, 20);
+    const [x1, y1] = mercator(80.1, 20.1);
+    expect((y1 - y0) / (x1 - x0)).toBeCloseTo(1 / Math.cos((20 * Math.PI) / 180), 2);
+    expect(mercator(0, 90)[1]).toBe(mercator(0, 85)[1]);
+  });
+
+  it("draws a region in Mercator, keeping its shape", () => {
+    const element = container();
+    // A 10° × 10° square at 15–25°N: about 1.07 times as tall as wide in
+    // Mercator, about 1.3 times in Equal Earth.
+    const draw = (projection: string) => {
+      element.innerHTML = "";
+      new FacetViz(element, {
+        chart: { type: "map", width: 600, height: 400 },
+        legend: { enabled: false },
+        series: [{ type: "map", name: "R", projection, center: "auto", features: [{ id: "A", geometry: square(75, 15, 10) }], data: [] } as never],
+      });
+      const d = element.querySelector("path.facet-map-area")!.getAttribute("d")!;
+      const pts = [...d.matchAll(/[ML](-?[\d.]+),(-?[\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+      const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+      return (Math.max(...ys) - Math.min(...ys)) / (Math.max(...xs) - Math.min(...xs));
+    };
+    expect(draw("mercator")).toBeCloseTo(1.07, 1);
+    expect(draw("equalEarth")).toBeGreaterThan(1.25);
   });
 
   it("wraps a long subtitle to the chart's width", () => {
