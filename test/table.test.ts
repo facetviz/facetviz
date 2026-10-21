@@ -457,6 +457,8 @@ describe("FacetTable", () => {
     expect(element.querySelectorAll(".facet-table-resize-handle")).toHaveLength(1);
     const handle = () => element.querySelector<HTMLElement>(".facet-table-resize-handle")!;
     expect(handle().getAttribute("aria-label")).toBe("Resize Trend");
+    expect(handle().getAttribute("aria-valuemin")).toBe("40");
+    expect(handle().getAttribute("aria-valuenow")).toBe("40");
     // jsdom has no layout: the heading measures 0 wide, so widths count from 0.
     handle().dispatchEvent(new PointerEvent("pointerdown", { clientX: 100, pointerId: 1, bubbles: true }));
     handle().dispatchEvent(new PointerEvent("pointermove", { clientX: 260, pointerId: 1, bubbles: true }));
@@ -464,6 +466,7 @@ describe("FacetTable", () => {
     expect(widths).toEqual([["trend", 160]]);
     const th = () => element.querySelectorAll<HTMLTableCellElement>("th")[1];
     expect(th().style.width).toBe("160px");
+    expect(handle().getAttribute("aria-valuenow")).toBe("160");
     expect(th().style.maxWidth).toBe("160px");
     expect(element.querySelector<HTMLElement>(".facet-table-chart")!.style.minWidth).toMatch(/^0(px)?$/);
     // Arrow keys step it from its width; never under the minimum.

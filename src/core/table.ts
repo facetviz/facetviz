@@ -672,6 +672,11 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
     handle.setAttribute("role", "separator");
     handle.setAttribute("aria-orientation", "vertical");
     handle.setAttribute("aria-label", `Resize ${column.header ?? column.key}`);
+    // A focusable separator is a widget with a value: the column's width.
+    const showWidth = (w: number) => handle.setAttribute("aria-valuenow", String(Math.round(w)));
+    handle.setAttribute("aria-valuemin", String(min));
+    showWidth(typeof column.width === "number" ? column.width : min);
+    handle.addEventListener("focus", () => showWidth(cell.getBoundingClientRect().width || min));
     handle.tabIndex = 0;
     Object.assign(handle.style, {
       position: "absolute",
@@ -691,6 +696,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
     handle.addEventListener("mouseleave", () => (line.style.opacity = "0"));
 
     const setWidth = (width: number) => {
+      showWidth(width);
       cell.style.width = `${width}px`;
       cell.style.minWidth = `${width}px`;
       cell.style.maxWidth = `${width}px`;
