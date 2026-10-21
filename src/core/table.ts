@@ -251,8 +251,13 @@ export interface FacetTableCellChartOptions<Row extends FacetTableRow> {
    * making magnitudes comparable between rows. Default `independent`.
    */
   scale?: "independent" | "shared";
-  /** Base chart options applied to every cell in this column. */
-  options?: Omit<ChartOptions, "series">;
+  /**
+   * Base chart options applied to every cell in this column, or a function
+   * giving each cell's own (its categories, type, colors…).
+   */
+  options?:
+    | Omit<ChartOptions, "series">
+    | ((value: unknown, row: Row, rowIndex: number) => Omit<ChartOptions, "series">);
   /**
    * Build one or more series from the cell value. Use `"value"` when the cell
    * already contains a `SeriesOptions[]`, which also works in data-only JSON.
@@ -958,7 +963,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
           const host = document.createElement("div");
           host.className = "facet-table-chart";
           host.style.width = "100%";
-          host.style.height = `${column.chart.height ?? column.chart.options?.chart?.height ?? 44}px`;
+          host.style.height = `${column.chart.height ?? (typeof column.chart.options === "function" ? undefined : column.chart.options?.chart?.height) ?? 44}px`;
           host.style.minWidth = `${column.chart.minWidth ?? 120}px`;
           applyStyle(host, this.options.style?.chartHost);
           cell.appendChild(host);
@@ -1531,7 +1536,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
         );
       });
       if (!columnValues.length) continue;
-      const type = column.chart.type ?? column.chart.options?.chart?.type ?? "sparkline";
+      const type = column.chart.type ?? (typeof column.chart.options === "function" ? undefined : column.chart.options?.chart?.type) ?? "sparkline";
       domains.set(columnIndex, paddedDomain(columnValues, type));
     }
     return domains;
@@ -1542,8 +1547,12 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
     domain?: [number, number],
   ): FacetViz {
     const cell = item.column.chart!;
-    const type = cell.type ?? cell.options?.chart?.type ?? "sparkline";
-    const height = cell.height ?? cell.options?.chart?.height ?? 44;
+    const own =
+      typeof cell.options === "function"
+        ? cell.options(unwrapCellValue(item.row[item.column.key]), item.row, item.rowIndex)
+        : cell.options;
+    const type = cell.type ?? own?.chart?.type ?? "sparkline";
+    const height = cell.height ?? own?.chart?.height ?? 44;
     let options = merge(
       {
         chart: {
@@ -1561,7 +1570,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
         legend: { enabled: false },
         series: item.series,
       } as ChartOptions,
-      cell.options as Partial<ChartOptions> | undefined,
+      own as Partial<ChartOptions> | undefined,
       { series: item.series },
     );
     options.chart = { ...options.chart, type, height };

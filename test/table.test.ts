@@ -420,6 +420,29 @@ describe("FacetTable", () => {
     expect(padding).toBe(expected);
   });
 
+  it("gives each cell chart its own options when options is a function", () => {
+    const table = new FacetTable(container(), {
+      rows: [
+        { name: "A", cats: ["x", "y"], trend: [1, 2] },
+        { name: "B", cats: ["z"], trend: [3] },
+      ],
+      columns: [
+        { key: "name" },
+        {
+          key: "trend",
+          chart: {
+            type: "column",
+            options: (_value, row) => ({ xAxis: { categories: row.cats as string[] } }),
+          },
+        },
+      ],
+    });
+    const cats = table.charts.map((chart) => (chart.options.xAxis as { categories?: string[] }).categories);
+    expect(cats).toEqual([["x", "y"], ["z"]]);
+    // Axes stay hidden under the cell's own options.
+    expect((table.charts[0].options.xAxis as { visible?: boolean }).visible).toBe(false);
+  });
+
   it("uses a shared value domain for every chart in a comparable column", () => {
     const table = new FacetTable(container(), {
       rows: [
