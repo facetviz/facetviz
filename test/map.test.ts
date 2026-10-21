@@ -58,6 +58,50 @@ describe("Map series", () => {
     expect(draw("equalEarth")).toBeGreaterThan(1.25);
   });
 
+  it("fits a focus of areas, hiding the rest or drawing them faintly around it", () => {
+    const element = container();
+    const draw = (around?: string) => {
+      element.innerHTML = "";
+      new FacetViz(element, {
+        chart: { type: "map", width: 600, height: 400 },
+        legend: { enabled: false },
+        series: [
+          {
+            type: "map",
+            name: "R",
+            projection: "planar",
+            focus: ["B"],
+            ...(around ? { around } : {}),
+            features: [
+              { id: "A", geometry: square(0, 0, 10) },
+              { id: "B", geometry: square(20, 0, 10) },
+            ],
+            data: [{ key: "B", color: "#ff0000", y: 1 }],
+          } as never,
+        ],
+      });
+    };
+    const span = (el: Element) => {
+      const xs = [...el.getAttribute("d")!.matchAll(/[ML](-?[\d.]+),/g)].map((m) => Number(m[1]));
+      return [Math.min(...xs), Math.max(...xs)];
+    };
+    draw();
+    // Only B, filling the plot's height (it's square, the plot is wider).
+    expect(element.querySelectorAll("path.facet-map-area")).toHaveLength(1);
+    expect(element.querySelector("path.facet-map-area")!.getAttribute("data-id")).toBe("B");
+    expect(element.querySelectorAll("path.facet-map-around")).toHaveLength(0);
+    draw("faint");
+    const around = element.querySelectorAll("path.facet-map-around");
+    expect(around).toHaveLength(1);
+    expect(around[0].getAttribute("data-id")).toBe("A");
+    expect(around[0].getAttribute("fill-opacity")).toBe("0.45");
+    // Still fitted to B: A lies off to its left, past the plot's edge.
+    const [, aRight] = span(around[0]);
+    const [bLeft] = span(element.querySelector("path.facet-map-area")!);
+    expect(aRight).toBeLessThan(bLeft);
+    expect(bLeft).toBeGreaterThan(100);
+  });
+
   it("wraps a long subtitle to the chart's width", () => {
     const element = container();
     const text = "Not on the map: " + Array.from({ length: 30 }, (_, i) => `Place number ${i}`).join(", ");

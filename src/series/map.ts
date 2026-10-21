@@ -52,6 +52,12 @@ export interface MapSeriesOptions {
   /** Fitted to the dots: the narrowest span shown, in degrees of longitude
    * at the equator (default 12), so one dot isn't shown at street level. */
   minSpan?: number;
+  /** The areas (by id) the map is about: it's fitted to them, and the rest
+   * are left out or drawn faintly around them (`around`). */
+  focus?: string[];
+  /** With `focus`: the other areas "hide" (the default) or are drawn
+   * "faint", for context, without data. */
+  around?: 'hide' | 'faint';
 }
 
 /** Map point fields: an area's key, or a dot's place and size. */
@@ -183,7 +189,12 @@ export class MapSeries extends BaseSeries {
     const placed = this.points.filter((p) => Number.isFinite(p.options.lon) && Number.isFinite(p.options.lat));
     // The middle longitude: everything is turned so it's at 0 (and the cut
     // at the back of the globe moves with it).
-    const areaLons = () => (o.features ?? []).flatMap((f) => (f.geometry ? polygons(f.geometry).flatMap((poly) => poly[0]?.filter((_, i) => i % 8 === 0).map(([x]) => x) ?? []) : []));
+    // The areas the map is about, and those drawn faintly around them.
+    const focus = o.focus?.length ? new Set(o.focus) : null;
+    const faint = !!focus && o.around === 'faint';
+    const features = (o.features ?? []).filter((f) => !focus || faint || focus.has(f.id));
+    const inFocus = (f: MapFeature) => !focus || focus.has(f.id);
+    const areaLons = () => features.filter(inFocus).flatMap((f) => (f.geometry ? polygons(f.geometry).flatMap((poly) => poly[0]?.filter((_, i) => i % 8 === 0).map(([x]) => x) ?? []) : []));
     const center = planar
       ? 0
       : typeof o.center === 'number'
@@ -194,7 +205,7 @@ export class MapSeries extends BaseSeries {
     const turn = (lon: number) => (center ? wrap(lon - center) : lon);
     const turned = (rings: Ring[]) => (center ? rings.map((ring) => ring.map(([x, y]) => [x - center, y] as [number, number])) : rings);
     const cut = (polys: Ring[][]) => (planar ? polys : polys.map(turned).flatMap(splitAntimeridian));
-    const shapes = (o.features ?? []).flatMap((f) => (f.geometry ? [{ f, polys: cut(polygons(f.geometry)).map((poly) => poly.map((ring) => ring.map(([x, y]) => project(x, y)))) }] : []));
+    const shapes = features.flatMap((f) => (f.geometry ? [{ f, polys: cut(polygons(f.geometry)).map((poly) => poly.map((ring) => ring.map(([x, y]) => project(x, y)))) }] : []));
     const dots = placed.map((p) => ({ p, at: project(turn(p.options.lon as number), p.options.lat as number) }));
 
     // Fit everything drawn to the plot, keeping its shape.
@@ -216,8 +227,13 @@ export class MapSeries extends BaseSeries {
       const [hw, hh] = [half(maxX - minX), half(maxY - minY)];
       [minX, maxX, minY, maxY] = [cx - hw, cx + hw, cy - hh, cy + hh];
     } else {
-      for (const s of shapes) for (const poly of s.polys) for (const ring of poly) ring.forEach(grow);
+      for (const s of shapes) if (inFocus(s.f)) for (const poly of s.polys) for (const ring of poly) ring.forEach(grow);
       dots.forEach((d) => grow(d.at));
+      if (faint && Number.isFinite(minX)) {
+        // A little of what's around shows at the edges.
+        const [mx, my] = [(maxX - minX) * 0.04, (maxY - minY) * 0.04];
+        [minX, maxX, minY, maxY] = [minX - mx, maxX + mx, minY - my, maxY + my];
+      }
     }
     if (!Number.isFinite(minX)) return;
     const w = maxX - minX || 1, h = maxY - minY || 1;
@@ -247,6 +263,20 @@ export class MapSeries extends BaseSeries {
             .join(''),
         )
         .join('');
+      if (!inFocus(s.f)) {
+        // Context around the focus: faint, without data or events.
+        renderer.create('path', {
+          d,
+          fill: o.emptyColor ?? '#e9e8e4',
+          'fill-opacity': 0.45,
+          'fill-rule': 'evenodd',
+          stroke: o.borderColor ?? '#ffffff',
+          'stroke-width': o.borderWidth ?? 0.6,
+          class: 'facet-map-around',
+          'data-id': s.f.id,
+        }, frame);
+        continue;
+      }
       const p = byKey.get(s.f.id);
       const el = renderer.create('path', {
         d,
