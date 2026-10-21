@@ -354,6 +354,9 @@ export interface FacetTableOptions<Row extends FacetTableRow> {
   onRowClick?: (row: Row, rowIndex: number, event: MouseEvent | KeyboardEvent) => void;
   /** A resizable column was dragged (or stepped by keys) to `width` px. */
   onColumnResize?: (key: string, width: number) => void;
+  /** A header click changed the sort; `undefined` when it went back to the
+   * rows' own order. Not called by `sortBy()` / `clearSort()`. */
+  onSortChange?: (sort: FacetTableSortState<Row> | undefined) => void;
 }
 
 interface PendingChart<Row extends FacetTableRow> {
@@ -1202,6 +1205,7 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
     this.currentPage = 1;
     this.sortedRowCache = undefined;
     this.render();
+    this.options.onSortChange?.(this.currentSort ? { ...this.currentSort } : undefined);
   }
 
   private invalidateFilteredRows(): void {

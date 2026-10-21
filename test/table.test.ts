@@ -471,6 +471,23 @@ describe("FacetTable", () => {
     expect(widths.at(-1)).toEqual(["trend", 40]);
   });
 
+  it("tells onSortChange about header clicks, not sortBy()", () => {
+    const seen: unknown[] = [];
+    const element = container();
+    const table = new FacetTable(element, {
+      rows: [{ v: 2 }, { v: 1 }],
+      columns: [{ key: "v", header: "V", sortable: true }],
+      onSortChange: (s) => seen.push(s),
+    });
+    const click = () => element.querySelector<HTMLButtonElement>(".facet-table-sort-button")!.click();
+    click();
+    click();
+    click();
+    expect(seen).toEqual([{ key: "v", direction: "asc" }, { key: "v", direction: "desc" }, undefined]);
+    table.sortBy("v", "desc");
+    expect(seen).toHaveLength(3);
+  });
+
   it("uses a shared value domain for every chart in a comparable column", () => {
     const table = new FacetTable(container(), {
       rows: [
