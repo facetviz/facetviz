@@ -101,6 +101,11 @@ export abstract class BaseSeries {
 
   abstract capabilities(): SeriesCapabilities;
 
+  /** Whether it draws something with no points (a map's outlines). */
+  drawsWithoutPoints(): boolean {
+    return false;
+  }
+
   /**
    * True when this series hides each data label that doesn't fit its own
    * mark, so the chart's small-plot label gate can leave it alone.

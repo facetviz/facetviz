@@ -27,6 +27,45 @@ describe("Map series", () => {
     expect(equalEarth(-30, -20)[0]).toBeLessThan(0);
   });
 
+  it("wraps a long subtitle to the chart's width", () => {
+    const element = container();
+    const text = "Not on the map: " + Array.from({ length: 30 }, (_, i) => `Place number ${i}`).join(", ");
+    new FacetViz(element, {
+      chart: { type: "map", width: 600, height: 400 },
+      legend: { enabled: false },
+      subtitle: { text },
+      series: [{ type: "map", name: "R", features: [{ id: "A", geometry: square(0, 0, 10) }], data: [] } as never],
+    });
+    const lines = [...element.querySelectorAll("text")].filter((t) => t.textContent?.includes("Place number"));
+    expect(lines.length).toBeGreaterThan(1);
+    expect(lines.map((t) => t.textContent).join(" ")).toBe(text);
+    const ys = lines.map((t) => Number(t.getAttribute("y")));
+    expect(ys[1]).toBeGreaterThan(ys[0]);
+  });
+
+  it("draws its outlines even with no data points", () => {
+    const element = container();
+    new FacetViz(element, {
+      chart: { type: "map", width: 600, height: 400 },
+      legend: { enabled: false },
+      series: [
+        {
+          type: "map",
+          name: "Revenue",
+          emptyColor: "#eeeeee",
+          features: [
+            { id: "A", name: "Alpha", geometry: square(0, 0, 10) },
+            { id: "B", name: "Beta", geometry: square(20, 0, 10) },
+          ],
+          data: [],
+        } as never,
+      ],
+    });
+    const areas = element.querySelectorAll("path.facet-map-area");
+    expect(areas).toHaveLength(2);
+    expect([...areas].every((a) => a.classList.contains("facet-map-empty"))).toBe(true);
+  });
+
   it("fills an area by its data point, draws the rest empty, and dots by longitude and latitude", () => {
     const element = container();
     const clicked = vi.fn();

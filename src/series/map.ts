@@ -148,6 +148,11 @@ export class MapSeries extends BaseSeries {
     return { grouped: false, cartesian: false, stackable: false };
   }
 
+  /** Its outlines are drawn even when no data falls on them. */
+  override drawsWithoutPoints(): boolean {
+    return !!(this.options as MapSeriesOptions).features?.length;
+  }
+
   override render(ctx: SeriesRenderContext): void {
     const { renderer, plot } = ctx;
     const g = renderer.group({ class: `facet-series facet-map ${this.name}` }, renderer.root);

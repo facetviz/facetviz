@@ -1149,22 +1149,46 @@ export class FacetViz {
       };
       const fontSize = parseFloat(style["font-size"] ?? "13") || 13;
       const baseline = fontSize + 3;
-      this.renderer.text(
-        sub.text,
-        x,
-        top + used + baseline + (sub.offsetY ?? 0),
-        {
-          "text-anchor": this.anchor(sub.align),
-          ...style,
-        },
-        this.renderer.root,
+      // Wrapped to the chart's width, a line at a time.
+      const spacing = this.options.chart?.spacing ?? [16, 16, 16, 16];
+      const lines = this.wrapText(sub.text, this.width - spacing[1] - spacing[3], style);
+      const lineHeight = fontSize + 4;
+      lines.forEach((line, i) =>
+        this.renderer.text(
+          line,
+          x,
+          top + used + baseline + i * lineHeight + (sub.offsetY ?? 0),
+          {
+            "text-anchor": this.anchor(sub.align),
+            ...style,
+          },
+          this.renderer.root,
+        ),
       );
       used +=
         baseline +
+        (lines.length - 1) * lineHeight +
         (sub.margin ?? SUBTITLE_DEFAULT_MARGIN) +
         Math.max(0, sub.offsetY ?? 0);
     }
     return used;
+  }
+
+  /** `text` in lines no wider than `width`, broken between words (a word
+   * wider than the width stands on its own line). */
+  private wrapText(text: string, width: number, style: Record<string, string>): string[] {
+    if (width <= 0 || this.renderer.measureText(text, style).width <= width) return [text];
+    const lines: string[] = [];
+    let line = "";
+    for (const word of text.split(/\s+/)) {
+      const next = line ? `${line} ${word}` : word;
+      if (line && this.renderer.measureText(next, style).width > width) {
+        lines.push(line);
+        line = word;
+      } else line = next;
+    }
+    if (line) lines.push(line);
+    return lines;
   }
 
   private titleX(align?: string): number {
@@ -1393,7 +1417,7 @@ export class FacetViz {
     panel: PanelSpec,
     shared?: { x?: BaseSeries[]; y?: BaseSeries[] },
   ): void {
-    const visible = panel.series.filter((s) => s.visible && s.points.length);
+    const visible = panel.series.filter((s) => s.visible && (s.points.length || s.drawsWithoutPoints()));
     if (!visible.length) return;
 
     const cartesian = visible.some((s) => s.capabilities().cartesian);
