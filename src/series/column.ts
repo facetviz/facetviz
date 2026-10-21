@@ -161,9 +161,11 @@ export class ColumnSeries extends BaseSeries {
       // FONT_SCALE_STATE.scale is 1 then too.
       const explicitColWidth =
         p.options.columnWidth ?? this.options.columnWidth ?? this.options.size;
+      // An explicit width never outgrows the bar's slot, so wide bars on a
+      // small chart don't spill over the next category.
       let colWidth =
         explicitColWidth != null
-          ? explicitColWidth * FONT_SCALE_STATE.scale
+          ? Math.min(explicitColWidth * FONT_SCALE_STATE.scale, Math.max(1, subWidth))
           : max_colWidth; // leave a little gap between bars
 
       const center = catScale.scale(p.x);
