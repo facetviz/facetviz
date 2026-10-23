@@ -1151,6 +1151,7 @@ scatter/jitter, pie/donut and butterfly.
 | `position`        | see below                       | type-dependent | Where the label sits.                                                                                                                                                                       |
 | `distance`        | `number`                        | `0`            | Extra offset in the label's natural direction.                                                                                                                                              |
 | `rotation`        | `number`                        | `0`            | Rotate the text.                                                                                                                                                                            |
+| `every`           | `number`                        | `1`            | Label only points 0, n, 2n … of each series (line, area, scatter, bubble, column, bar). |
 | `backgroundColor` | `string`                        | –              | Draw a background chip behind the label.                                                                                                                                                    |
 
 **`position` values by series family:**

@@ -100,6 +100,15 @@ export function dataLabelTextAttrs(dl: DataLabelOptions | undefined): Record<str
   return out;
 }
 
+/**
+ * Whether the point at `index` of its series gets a label under
+ * `dl.every`: points 0, n, 2n …; every point when unset or below 2.
+ */
+export function labelEvery(dl: DataLabelOptions | undefined, index: number | undefined): boolean {
+  const n = Math.floor(dl?.every ?? 1);
+  return !(n > 1) || (index ?? 0) % n === 0;
+}
+
 /** Draw a single data label with the series' styling options. */
 export function drawDataLabel(
   renderer: Renderer,
@@ -158,6 +167,7 @@ export function drawPointLabels(
   const pos = dl.position ?? 'top';
   const total = data.reduce((sum, { p }) => sum + (p.y ?? 0), 0);
   for (const { pt, p } of data) {
+    if (!labelEvery(dl, p.index)) continue;
     const text = labelString(dl, {
       x: p.x, y: p.y, point: p.options, series: seriesName,
       name: p.name ?? p.x, index: p.index, color: p.color ?? seriesColor,

@@ -315,6 +315,12 @@ export interface DataLabelOptions {
   offsetY?: number;
   /** Rotate the label text (degrees). */
   rotation?: number;
+  /**
+   * Label every `every`th point of the series only: points 0, n, 2n … in
+   * the series' own order (its data's indexes, so gaps still count). Unset
+   * or 1: every point. Line, area, scatter, bubble, column and bar.
+   */
+  every?: number;
   backgroundColor?: string;
 }
 

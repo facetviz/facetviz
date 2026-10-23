@@ -11,6 +11,7 @@ import {
   dataLabelFontSize,
   dataLabelTextAttrs,
   drawDataLabel,
+  labelEvery,
   labelString,
   LabelPlacement,
 } from "./data-label.js";
@@ -299,7 +300,7 @@ export class ColumnSeries extends BaseSeries {
         ctx.registerHover(el, p);
         this.wireEvents(el, p, ctx);
 
-        if (this.options.dataLabels?.enabled) {
+        if (this.options.dataLabels?.enabled && labelEvery(this.options.dataLabels, p.index)) {
           const point = projectPolar(ctx.plot, hi, outer + 8);
           const total = this.points.reduce(
             (sum, item) => sum + (item.y ?? 0),
@@ -362,7 +363,7 @@ export class ColumnSeries extends BaseSeries {
       ctx.registerHover(el, p);
       this.wireEvents(el, p, ctx);
 
-      if (this.options.dataLabels?.enabled) {
+      if (this.options.dataLabels?.enabled && labelEvery(this.options.dataLabels, p.index)) {
         const mid = (start + end) / 2;
         const point = projectPolar(ctx.plot, mid, outer + 8);
         const total = this.points.reduce((sum, item) => sum + (item.y ?? 0), 0);
@@ -412,7 +413,7 @@ export class ColumnSeries extends BaseSeries {
     parent: SVGElement,
   ): void {
     const dl = this.options.dataLabels;
-    if (!dl?.enabled) return;
+    if (!dl?.enabled || !labelEvery(dl, p.index)) return;
     const total = this.points.reduce((s, pt) => s + (pt.y ?? 0), 0);
     const text = labelString(dl, {
       x: p.x,
