@@ -800,7 +800,7 @@ interface SeriesOptions {
     distance?: number; rotation?: number; backgroundColor?: string };
   tooltip?: { enabled?: boolean; format?: string; formatter?: (ctx)=>string;
     valuePrefix?: string; valueSuffix?: string; valueDecimals?: number };
-  states?: { hover?: { enabled?: boolean; scale?: number; brightness?: number } };
+  states?: { hover?: { enabled?: boolean; scale?: number; brightness?: number; borderWidth?: number; borderColor?: string } };
   // gauge series
   min?: number; max?: number;
   minLabel?: string; maxLabel?: string;

@@ -1212,14 +1212,16 @@ the adaptive inside-first behaviour.
 
 ### HoverStateOptions
 
-`SeriesOptions.states.hover` — subtle brightness highlight by default; scaling is
-opt-in.
+`SeriesOptions.states.hover` — subtle brightness highlight by default; scaling and
+a border are opt-in.
 
 | Key          | Type      | Default | Description                            |
 | ------------ | --------- | ------- | -------------------------------------- |
 | `enabled`    | `boolean` | `true`  | Enable hover highlight.                |
 | `brightness` | `number`  | `0.08`  | Brightness increase ratio on hover.    |
 | `scale`      | `number`  | –       | Optional scale multiplier, e.g. `1.1`. |
+| `borderWidth` | `number` | `0`     | Outline the hovered point, in px.      |
+| `borderColor` | `string` | darker shade of the point's color | The hover border's color. |
 
 ---
 

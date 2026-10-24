@@ -5017,17 +5017,26 @@ export class FacetViz {
 
   /**
    * Subtle hover highlight (brightness only). Scaling was reverted — it looked
-   * jarring — but remains opt-in via `states.hover.scale` for anyone who wants it.
+   * jarring — but remains opt-in via `states.hover.scale` for anyone who wants
+   * it, as does a border (`states.hover.borderWidth`).
    */
   private applyHover(el: SVGElement, s: BaseSeries): void {
     const hover = s.options.states?.hover;
     if (hover?.enabled === false) return;
     const scale = hover?.scale ?? 0;
     const brightness = hover?.brightness ?? 0.08;
+    const border = hover?.borderWidth ?? 0;
     const style = el.style as CSSStyleDeclaration & { transformBox: string };
     style.transition = "filter 0.12s ease";
     el.addEventListener("mouseenter", () => {
       style.filter = `brightness(${1 + brightness})`;
+      if (border && !hidden(el)) {
+        const fill = el.getAttribute("fill");
+        const own = fill && !fill.startsWith("url(") ? fill : s.color;
+        style.stroke =
+          hover?.borderColor ?? `color-mix(in srgb, ${own} 60%, black)`;
+        style.strokeWidth = String(border);
+      }
       if (scale) {
         style.transformBox = "fill-box";
         style.transformOrigin = "center";
@@ -5037,6 +5046,8 @@ export class FacetViz {
     });
     el.addEventListener("mouseleave", () => {
       style.filter = "";
+      style.stroke = "";
+      style.strokeWidth = "";
       if (scale) style.transform = "";
     });
   }
@@ -5544,4 +5555,15 @@ interface BoostHit {
   y: number;
   point: Point;
   series: BaseSeries;
+}
+
+/** An invisible hit area (a line's hover target, say): no hover border on it. */
+function hidden(el: SVGElement): boolean {
+  const fill = el.getAttribute("fill");
+  return (
+    fill === "none" ||
+    fill === "transparent" ||
+    el.getAttribute("opacity") === "0" ||
+    el.getAttribute("fill-opacity") === "0"
+  );
 }

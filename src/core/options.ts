@@ -547,6 +547,10 @@ export interface HoverStateOptions {
   scale?: number;
   /** Brighten the point colour on hover by this ratio (0..1). */
   brightness?: number;
+  /** Outline the point on hover with a border this wide, in px (default 0: none). */
+  borderWidth?: number;
+  /** The hover border's color (default: a darker shade of the point's own). */
+  borderColor?: string;
 }
 
 export interface TooltipOptions {
