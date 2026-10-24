@@ -43,7 +43,7 @@ export interface SeriesRenderContext {
   /** This stacked radial-bar series' paint order (0 draws tracks/labels). */
   radialSeriesIndex?: number;
   /** Called by a series when a point is interacted with. */
-  onPointEvent: (kind: 'click' | 'mouseOver' | 'mouseOut', p: Point, dom: Event) => void;
+  onPointEvent: (kind: 'click' | 'contextMenu' | 'mouseOver' | 'mouseOut', p: Point, dom: Event) => void;
   /** Registers a hoverable region + its tooltip payload. */
   registerHover: (el: SVGElement, p: Point) => void;
   /**

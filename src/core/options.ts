@@ -782,6 +782,11 @@ export interface ChartEvents {
 
 export interface SeriesEvents {
   click?: (ev: FacetVizPointEvent) => void;
+  /**
+   * A point right-clicked (or its menu key / Shift+F10 pressed while it has
+   * focus). When set, the browser's own context menu doesn't open.
+   */
+  contextMenu?: (ev: FacetVizPointEvent) => void;
   mouseOver?: (ev: FacetVizPointEvent) => void;
   mouseOut?: (ev: FacetVizPointEvent) => void;
   legendItemClick?: (ev: { series: string; visible: boolean }) => void;

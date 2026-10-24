@@ -352,6 +352,12 @@ export interface FacetTableOptions<Row extends FacetTableRow> {
    * index in `rows`. With it, rows show a pointer and take keyboard focus.
    */
   onRowClick?: (row: Row, rowIndex: number, event: MouseEvent | KeyboardEvent) => void;
+  /**
+   * A body row right-clicked (or its menu key / Shift+F10 pressed while it
+   * has focus; Enter and Space too when there's no `onRowClick`). When set,
+   * the browser's own context menu doesn't open.
+   */
+  onRowContextMenu?: (row: Row, rowIndex: number, event: MouseEvent | KeyboardEvent) => void;
   /** A resizable column was dragged (or stepped by keys) to `width` px. */
   onColumnResize?: (key: string, width: number) => void;
   /** A header click changed the sort; `undefined` when it went back to the
@@ -1034,6 +1040,22 @@ export class FacetTable<Row extends FacetTableRow = FacetTableRow> {
           if (event.key !== "Enter" && event.key !== " ") return;
           event.preventDefault();
           onRowClick(dataRow, rowIndex, event);
+        });
+      }
+      const onRowContextMenu = this.options.onRowContextMenu;
+      if (onRowContextMenu && !rowType) {
+        row.classList.add("facet-table-row-menu");
+        row.tabIndex = 0;
+        row.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+          onRowContextMenu(dataRow, rowIndex, event);
+        });
+        row.addEventListener("keydown", (event) => {
+          const menuKey = event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey);
+          const enter = !onRowClick && (event.key === "Enter" || event.key === " ");
+          if (!menuKey && !enter) return;
+          event.preventDefault();
+          onRowContextMenu(dataRow, rowIndex, event);
         });
       }
       for (const [columnIndex, column] of columns.entries()) {

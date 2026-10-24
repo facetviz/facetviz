@@ -2056,14 +2056,20 @@ export class FacetViz {
     const onClick = (e: MouseEvent) => {
       if (active) this.handlePointEvent("click", active.series, active.point, e);
     };
+    const onContextMenu = (e: MouseEvent) => {
+      if (active)
+        this.handlePointEvent("contextMenu", active.series, active.point, e);
+    };
     root.addEventListener("mousemove", onMove);
     root.addEventListener("mouseleave", onLeave);
     root.addEventListener("click", onClick);
+    root.addEventListener("contextmenu", onContextMenu);
     this.boostHoverCleanups.push(() => {
       marker?.remove();
       root.removeEventListener("mousemove", onMove);
       root.removeEventListener("mouseleave", onLeave);
       root.removeEventListener("click", onClick);
+      root.removeEventListener("contextmenu", onContextMenu);
     });
   }
 
@@ -4796,6 +4802,9 @@ export class FacetViz {
     // Hover scale/highlight animation — independent of the tooltip.
     this.applyHover(el, s);
     this.bindPointAccessibility(el, s, p);
+    el.addEventListener("contextmenu", (e) =>
+      this.handlePointEvent("contextMenu", s, p, e),
+    );
 
     if (!this.tooltip) return;
     const total = s.points.reduce((sum, pt) => sum + (pt.y ?? 0), 0);
@@ -4879,7 +4888,7 @@ export class FacetViz {
     el.setAttribute("tabindex", this.accessiblePoints.length === 1 ? "0" : "-1");
     el.setAttribute(
       "aria-keyshortcuts",
-      "ArrowLeft ArrowRight ArrowUp ArrowDown Home End Enter Space",
+      "ArrowLeft ArrowRight ArrowUp ArrowDown Home End Enter Space ContextMenu Shift+F10",
     );
 
     const activate = () => {
@@ -4902,6 +4911,12 @@ export class FacetViz {
       else if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         this.handlePointEvent("click", s, p, event);
+        return;
+      } else if (
+        event.key === "ContextMenu" ||
+        (event.key === "F10" && event.shiftKey)
+      ) {
+        this.handlePointEvent("contextMenu", s, p, event);
         return;
       } else return;
 
@@ -5027,7 +5042,7 @@ export class FacetViz {
   }
 
   private handlePointEvent(
-    kind: "click" | "mouseOver" | "mouseOut",
+    kind: "click" | "contextMenu" | "mouseOver" | "mouseOut",
     s: BaseSeries,
     p: Point,
     dom: Event,
@@ -5049,6 +5064,10 @@ export class FacetViz {
       this.options.chart?.events?.click?.(payload);
       const ddId = p.options.drilldown;
       if (typeof ddId === "string") this.drillTo(ddId);
+    }
+    if (kind === "contextMenu" && se?.contextMenu) {
+      dom.preventDefault();
+      se.contextMenu(payload);
     }
     if (kind === "mouseOver") se?.mouseOver?.(payload);
     if (kind === "mouseOut") se?.mouseOut?.(payload);

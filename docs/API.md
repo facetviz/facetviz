@@ -1637,13 +1637,14 @@ Register callbacks in config, or subscribe via [`chart.on()`](#instance-methods)
 **`ChartEvents`** (`chart.events`): `load(chart)`, `render(chart)`, `click(ev)`.
 
 **`SeriesEvents`** (`seriesEvents`, applied to all series):
-`click(ev)`, `mouseOver(ev)`, `mouseOut(ev)`, `legendItemClick({ series, visible })`.
+`click(ev)`, `contextMenu(ev)`, `mouseOver(ev)`, `mouseOut(ev)`, `legendItemClick({ series, visible })`.
+`contextMenu` fires on a right-click, or the menu key / Shift+F10 on a focused point; when it is set the browser's own menu doesn't open.
 
 **`FacetVizPointEvent`** (`ev`) payload:
 
 | Field         | Type                  | Description                               |
 | ------------- | --------------------- | ----------------------------------------- |
-| `type`        | `string`              | `'click'` / `'mouseOver'` / `'mouseOut'`. |
+| `type`        | `string`              | `'click'` / `'contextMenu'` / `'mouseOver'` / `'mouseOut'`. |
 | `seriesName`  | `string`              | Series name.                              |
 | `seriesIndex` | `number`              | Series index.                             |
 | `pointIndex`  | `number`              | Point index within the series.            |

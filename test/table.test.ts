@@ -1121,6 +1121,29 @@ describe("FacetTable", () => {
     expect(clicked).toHaveBeenCalledTimes(2);
   });
 
+  it("reports a right-clicked body row and keeps the browser's menu shut", () => {
+    const element = container();
+    const menu = vi.fn();
+    new FacetTable<{ region: string }>(element, {
+      rows: [{ region: "West" }, { region: "East" }],
+      columns: [{ key: "region", header: "Region" }],
+      onRowContextMenu: menu,
+    });
+    const rows = element.querySelectorAll<HTMLTableRowElement>("tbody tr");
+    expect(rows[0].classList.contains("facet-table-row-clickable")).toBe(false);
+    const right = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    rows[1].dispatchEvent(right);
+    expect(right.defaultPrevented).toBe(true);
+    expect(menu).toHaveBeenLastCalledWith({ region: "East" }, 1, right);
+    rows[0].dispatchEvent(new KeyboardEvent("keydown", { key: "F10", shiftKey: true, bubbles: true }));
+    expect(menu).toHaveBeenLastCalledWith({ region: "West" }, 0, expect.any(KeyboardEvent));
+    // With nothing on a click, Enter opens it too.
+    rows[1].dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(menu).toHaveBeenLastCalledWith({ region: "East" }, 1, expect.any(KeyboardEvent));
+    rows[0].click();
+    expect(menu).toHaveBeenCalledTimes(3);
+  });
+
   it("leaves rows alone without onRowClick", () => {
     const element = container();
     new FacetTable(element, { rows: [{ a: 1 }], columns: [{ key: "a", header: "A" }] });
