@@ -169,3 +169,22 @@ describe('scales', () => {
     expect(new LogScale({ domain: [1, 100], range: [0, 100], ticks: [] }).ticks()).toEqual([]);
   });
 });
+
+describe('value padding', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('never takes positive values below zero (or negative ones above it)', () => {
+    const lowest = (o: ChartOptions) => Math.min(...labels(render(o), 'yAxis[0]').map(Number));
+    const highest = (o: ChartOptions) => Math.max(...labels(render(o), 'yAxis[0]').map(Number));
+    // A scatter whose lowest point is near zero: padding stops at zero.
+    expect(lowest({ chart: { type: 'scatter' }, series: [{ name: 'S', data: [[1, 1], [2, 30], [3, 15]] }] })).toBe(0);
+    // Columns told not to reach zero, with values near it.
+    expect(lowest({ chart: { type: 'column' }, xAxis: { categories }, yAxis: { startOnZero: false }, series: [{ name: 'S', data: [1, 20, 30, 40] }] })).toBe(0);
+    // All negative: the top stops at zero.
+    expect(highest({ chart: { type: 'line' }, xAxis: { categories }, series: [{ name: 'S', data: [-1, -20, -30, -40] }] })).toBe(0);
+    // Values across zero are padded as before.
+    expect(lowest({ chart: { type: 'line' }, xAxis: { categories }, series: [{ name: 'S', data: [-10, 20, 30, 40] }] })).toBeLessThan(-10);
+  });
+});

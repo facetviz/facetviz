@@ -4515,12 +4515,19 @@ export class FacetViz {
     if (padDomain) {
       const domainSpan = max - min || Math.abs(max) || Math.abs(min) || 1;
       const padding = domainSpan * VALUE_DOMAIN_PADDING;
+      const lo = min;
+      const hi = max;
       if (
         opts.min === undefined &&
         !(preserveZeroMin && min === 0)
       )
         min -= padding;
       if (opts.max === undefined) max += padding;
+      // Padding never takes values all on one side of zero across it: an
+      // axis that needn't reach zero still shouldn't show a negative step
+      // under positive values (or a positive one over negative values).
+      if (lo >= 0 && min < 0) min = 0;
+      if (hi <= 0 && max > 0) max = 0;
     }
 
     const ticks = fixedTicks(opts, min, max);
