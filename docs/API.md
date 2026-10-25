@@ -1415,16 +1415,22 @@ for just that one point. See [Boxplot options](#boxplot-options) and
 
 ## TrellisOptions
 
-Splits one dataset into a grid of panels (small multiples) by data fields.
+Splits one dataset into a grid of panes (small multiples) by data fields. The
+fields are header levels on the canvas (one header object per value, the
+field's name above), every row × column value pair is a pane (one with no data
+too), value axes run down the left of each pane row and category axes along the
+bottom row; the bottom axis's title is drawn once under the panes.
+`canvas.headers`, `canvas.banding`, `canvas.dividers` and `canvas.fieldLabels`
+(`rows` / `columns`) apply.
 
 | Key       | Type      | Default   | Description                                                                         |
 | --------- | --------- | --------- | ----------------------------------------------------------------------------------- |
-| `columns` | `string`  | –         | Field whose values become grid columns.                                             |
-| `rows`    | `string`  | –         | Field whose values become grid rows.                                                |
-| `gap`     | `number`  | `14`/`24` | Gap in px between panels.                                                           |
-| `table`   | `boolean` | `true`    | `true` → cross-tab table (shared axes, headers once); `false` → independent panels. |
-| `sharedX` | `boolean` | `true`    | Share the x scale across panels.                                                    |
-| `sharedY` | `boolean` | `true`    | Share the y scale across panels.                                                    |
+| `columns` | `string`  | –         | Field whose values become pane columns.                                             |
+| `rows`    | `string`  | –         | Field whose values become pane rows.                                                |
+| `gap`     | `number`  | `0` / `16` | Gap in px between panes (`16` with `table: false`).                                |
+| `table`   | `boolean` | `true`    | `false` repeats both axes in every pane (room for them is left between panes).      |
+| `sharedX` | `boolean` | `true`    | `false`: each pane its own numeric x range.                                         |
+| `sharedY` | `boolean` | `true`    | `false` is `yAxis.range.mode: 'independent'`: each pane row its own value range (each pane, with `table: false`). |
 
 ```ts
 trellis: { columns: 'category', rows: 'region' },
@@ -1707,8 +1713,8 @@ open over canvas parts.
 | `fieldLabel` | the field                                    | A header field's name                         |
 
 **`CanvasObjectEvent`** (`ev`): `type` (`'click'` / `'dblclick'` /
-`'contextmenu'`), `kind`, `id`, `instance` (a small-multiples cell as
-`'row:col'`, or `'left'` / `'right'` on a butterfly), `domEvent`.
+`'contextmenu'`), `kind`, `id`, `instance` (a pane's key on small multiples
+and nested axes, e.g. `'seg=Consumer#region=East'`, or `'left'` / `'right'` on a butterfly), `domEvent`.
 
 ```ts
 yAxis: [{ id: 'sales@rows' }, { id: 'profit@rows:dual' }],

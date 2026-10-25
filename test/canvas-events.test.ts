@@ -113,9 +113,10 @@ describe('canvas parts', () => {
       ] }],
     });
     const areas = [...el.querySelectorAll('[data-fv-kind="plotArea"]')];
-    expect(areas.map((a) => a.getAttribute('data-fv-instance'))).toEqual(['0:0', '0:1']);
+    // Pane keys: row#column, nothing on rows here.
+    expect(areas.map((a) => a.getAttribute('data-fv-instance'))).toEqual(['#region=East', '#region=West']);
     fire(areas[1], 'click');
-    expect(canvasClick.mock.calls[0][0]).toMatchObject({ kind: 'plotArea', instance: '0:1' });
+    expect(canvasClick.mock.calls[0][0]).toMatchObject({ kind: 'plotArea', instance: '#region=West' });
   });
 
   it('marks the nested x axis and its title', () => {
