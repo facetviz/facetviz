@@ -26,7 +26,7 @@ import type {
   DataLabelOptions,
 } from "./options.js";
 import { Renderer } from "./renderer.js";
-import { Axis, Rect, minorGridPositions } from "./axis.js";
+import { Axis, Rect, minorGridPositions, SUBTITLE_LINE } from "./axis.js";
 import { Tooltip } from "./tooltip.js";
 import {
   Legend,
@@ -35,7 +35,7 @@ import {
   legendMargin,
 } from "./legend.js";
 import { EventEmitter } from "./events.js";
-import { LinearScale, LogScale, CategoryScale, Scale } from "./scale.js";
+import { LinearScale, LogScale, SymLogScale, CategoryScale, Scale, intervalTicks } from "./scale.js";
 import { LAYOUT, FONTS } from "./defaults.js";
 import {
   merge,
@@ -1416,21 +1416,27 @@ export class FacetViz {
     labelW: number,
   ): number {
     if (opts.visible === false) return this.plotPadding(side) ?? 6;
+    // A set band size wins over measuring.
+    if (typeof opts.size === "number") return Math.max(0, opts.size);
     const title = opts.title?.text && opts.title.enabled !== false ? 1 : 0;
+    // A subtitle line beyond the title.
+    const subtitle = title && opts.title?.subtitle ? SUBTITLE_LINE : 0;
     const titleMargin = opts.title?.margin ??
       (side === "top" || side === "bottom" ? LAYOUT.axisTitleGap : 8) *
         this.chromeSpacingScale(side);
     const titleExtra = title
       ? 10 +
         titleMargin +
-        Math.max(0, opts.title?.offset ?? 0)
+        Math.max(0, opts.title?.offset ?? 0) +
+        subtitle
       : 0;
     // `14` is the title margin already represented by the fixed baseline
     // reserve. Let the delta be negative too: responsive compaction should
     // return that saved space to the plot, not leave an invisible reserve.
     const horizontalTitleDelta = title
       ? titleMargin - 14 +
-        Math.max(0, opts.title?.offset ?? 0)
+        Math.max(0, opts.title?.offset ?? 0) +
+        subtitle
       : 0;
     const labelsOn = opts.labels?.enabled !== false;
     const labelOffset = axisLabelOffset(opts);
@@ -2208,8 +2214,10 @@ export class FacetViz {
       }
     }
 
-    // Shared value domain (so every cell is directly comparable).
-    const primaryDomainSeries = primaryVisible.length
+    // Shared value domain (so every cell is directly comparable). A
+    // synchronised second axis reads on it too, so it covers both.
+    const synced = hasSecondary && yOpts1?.sync === true;
+    const primaryDomainSeries = primaryVisible.length && !synced
       ? primaryVisible
       : allVisible;
     let [vMin, vMax] = this.valueDomain(primaryDomainSeries, yOpts0);
@@ -2218,10 +2226,10 @@ export class FacetViz {
       vMin,
     );
     if (
-      yOpts0.type !== "log" &&
-      (primaryVisible.length ? primaryVisible : allVisible).some((s) =>
+      !positiveLog(yOpts0) &&
+      reachesZero(yOpts0, (primaryVisible.length ? primaryVisible : allVisible).some((s) =>
         ["column", "bar", "area", "areaspline", "lollipop"].includes(s.type),
-      )
+      ))
     ) {
       vMin = Math.min(vMin, 0);
       vMax = Math.max(vMax, 0);
@@ -2236,10 +2244,10 @@ export class FacetViz {
         vMin2,
       );
       if (
-        yOpts1.type !== "log" &&
-        secondaryVisible.some((s) =>
+        !positiveLog(yOpts1) &&
+        reachesZero(yOpts1, secondaryVisible.some((s) =>
           ["column", "bar", "area", "areaspline", "lollipop"].includes(s.type),
-        )
+        ))
       ) {
         vMin2 = Math.min(vMin2, 0);
         vMax2 = Math.max(vMax2, 0);
@@ -2247,6 +2255,27 @@ export class FacetViz {
       // Stored alongside the shared secondary domain for the per-cell scales.
       secondaryPreservesZeroMin = preserveSecondaryZeroMin;
     }
+
+    // `range.mode: 'independent'`: each pane row (each pane column, when
+    // bars run across) gets its own value range instead of the shared one.
+    const independent = yOpts0.range?.mode === "independent";
+    const rowDomain = new Map<string, [number, number]>();
+    const domainFor = (rv: string | number | undefined, cv: string | number | undefined): [number, number] => {
+      if (!independent) return [vMin, vMax];
+      const key = String(inverted ? cv : rv);
+      const known = rowDomain.get(key);
+      if (known) return known;
+      const list = (inverted ? rowVals.map((r) => cellSeriesFor(cv, r)) : colVals.map((c) => cellSeriesFor(c, rv)))
+        .flat()
+        .filter((s) => synced || !onSecondary(s));
+      let [lo, hi] = list.length ? this.valueDomain(list, yOpts0) : [vMin, vMax];
+      if (!positiveLog(yOpts0) && reachesZero(yOpts0, list.some((s) => ["column", "bar", "area", "areaspline", "lollipop"].includes(s.type)))) {
+        lo = Math.min(lo, 0);
+        hi = Math.max(hi, 0);
+      }
+      rowDomain.set(key, [lo, hi]);
+      return [lo, hi];
+    };
 
     // Gutters: header labels + shared axis space, laid out like a pivot
     // table — column field + values as a header row on top, row field +
@@ -2553,7 +2582,7 @@ export class FacetViz {
         const valScale = dropLastTick(
           this.valueScale(
             yOpts0,
-            [vMin, vMax],
+            domainFor(rv, cv),
             valRange,
             true,
             preservePrimaryZeroMin,
@@ -2561,7 +2590,9 @@ export class FacetViz {
           valRange,
         );
         const valScale2 =
-          hasSecondary && yOpts1
+          hasSecondary && yOpts1 && synced
+            ? syncedScale(valScale, [cell.y + cell.height, cell.y])
+            : hasSecondary && yOpts1
             ? dropLastTick(
                 this.valueScale(
                   yOpts1,
@@ -2838,10 +2869,10 @@ export class FacetViz {
         domain[0],
       );
       if (
-        domainSeries.some((item) =>
+        reachesZero(options, domainSeries.some((item) =>
           ["column", "area", "areaspline"].includes(item.type),
-        ) &&
-        options.type !== "log"
+        )) &&
+        !positiveLog(options)
       )
         domain = [Math.min(0, domain[0]), Math.max(0, domain[1])];
       return this.valueScale(
@@ -3434,7 +3465,7 @@ export class FacetViz {
       const leftSpacingScale = this.chromeSpacingScale("left");
       const rightSpacingScale = this.chromeSpacingScale("right");
       const valueBand = (opts: AxisOptions, list: BaseSeries[], scale: number) =>
-        LAYOUT.tickLength + 8 + axisLabelOffset(opts) + this.valueLabelWidth(list, opts) +
+        typeof opts.size === "number" ? opts.size : LAYOUT.tickLength + 8 + axisLabelOffset(opts) + this.valueLabelWidth(list, opts) +
         (opts.title?.text && opts.title.enabled !== false
           ? 18 + ((opts.title.margin ?? 8 * scale) - 8) + Math.max(0, opts.title.offset ?? 0)
           : 0);
@@ -3463,7 +3494,7 @@ export class FacetViz {
     } else {
       const bottomSpacingScale = this.chromeSpacingScale("bottom");
       const valueBand = (opts: AxisOptions, scale: number) =>
-        LAYOUT.defaultBottomAxisHeight + axisLabelOffset(opts) +
+        typeof opts.size === "number" ? opts.size : LAYOUT.defaultBottomAxisHeight + axisLabelOffset(opts) +
         (opts.title?.text && opts.title.enabled !== false
           ? 32 + ((opts.title.margin ?? LAYOUT.axisTitleGap * scale) - 14) + Math.max(0, opts.title.offset ?? 0)
           : 0);
@@ -3501,14 +3532,15 @@ export class FacetViz {
       const domainSeries = list.length ? list : aggSeries;
       let [lo, hi] = this.valueDomain(domainSeries, opts);
       const preserveZeroMin = this.hasNonNegativeZeroBasedSeries(domainSeries, lo);
-      if (opts.type !== "log") {
+      if (!positiveLog(opts) && reachesZero(opts, true)) {
         lo = Math.min(lo, 0);
         hi = Math.max(hi, 0);
       }
       return this.valueScale(opts, [lo, hi], valueRange, true, preserveZeroMin);
     };
-    const valScale0 = scaleFor(aggSeries.filter((s) => onAxis(s, 0)), yOpts0);
-    const valScale1 = hasSecondary ? scaleFor(secondary, yOpts1) : valScale0;
+    const synced = hasSecondary && yOpts1.sync === true;
+    const valScale0 = scaleFor(synced ? aggSeries : aggSeries.filter((s) => onAxis(s, 0)), yOpts0);
+    const valScale1 = !hasSecondary ? valScale0 : synced ? syncedScale(valScale0, valueRange) : scaleFor(secondary, yOpts1);
 
     const axisLayer = this.renderer.group({ class: "facet-axes" }, this.renderer.root);
     const valAxis0 = new Axis({
@@ -4244,7 +4276,10 @@ export class FacetViz {
     // visible series when nothing besides the secondary axis is present, so
     // this can't produce an empty domain). Error bars are typically overlaid
     // on (and read like) a column series, so they share its zero baseline.
-    const primaryDomainSeries = primaryVisible.length
+    // A synchronised second axis reads on the first's scale, so the first
+    // covers both axes' series.
+    const synced = hasSecondary && axisAt(this.options.yAxis, 1).sync === true;
+    const primaryDomainSeries = primaryVisible.length && !synced
       ? primaryVisible
       : ySource;
     let [vMin, vMax] = this.valueDomain(primaryDomainSeries, yAxisOpts);
@@ -4259,8 +4294,8 @@ export class FacetViz {
     );
     const primaryValueAxis = yAxisOpts;
     if (
-      (includeZero || primaryValueAxis.startOnZero === true) &&
-      primaryValueAxis.type !== "log"
+      reachesZero(primaryValueAxis, includeZero) &&
+      !positiveLog(primaryValueAxis)
     ) {
       vMin = Math.min(vMin, 0);
       vMax = Math.max(vMax, 0);
@@ -4298,7 +4333,7 @@ export class FacetViz {
     if (markerR) {
       const valueAxisOpts = yAxisOpts;
       const valuePx = inverted ? plot.width : plot.height;
-      if (valueAxisOpts.type === "log") {
+      if (positiveLog(valueAxisOpts)) {
         const k = logPadFactor(markerR, valuePx, vMin, vMax);
         if (valueAxisOpts.min === undefined) vMin /= k;
         if (valueAxisOpts.max === undefined) vMax *= k;
@@ -4320,7 +4355,7 @@ export class FacetViz {
       const valueAxisOpts = yAxisOpts;
       const valuePx = inverted ? plot.width : plot.height;
       if (valueAxisOpts.max === undefined) {
-        if (valueAxisOpts.type === "log")
+        if (positiveLog(valueAxisOpts))
           vMax *= logPadFactor(labelRoom, valuePx, vMin, vMax);
         else vMax += (labelRoom / Math.max(1, valuePx)) * (vMax - vMin || 1);
       }
@@ -4336,7 +4371,7 @@ export class FacetViz {
       const [dmin, dmax] = this.xNumericDomain(list);
       let min = opts.min ?? dmin,
         max = opts.max ?? dmax;
-      if (markerR && opts.type === "log") {
+      if (markerR && positiveLog(opts)) {
         const k = logPadFactor(markerR, plot.width, min, max);
         if (opts.min === undefined) min /= k;
         if (opts.max === undefined) max *= k;
@@ -4345,19 +4380,11 @@ export class FacetViz {
         if (opts.min === undefined) min -= padX;
         if (opts.max === undefined) max += padX;
       }
-      if (opts.startOnZero === true && opts.type !== "log") {
+      if (opts.startOnZero === true && !positiveLog(opts)) {
         min = Math.min(min, 0);
         max = Math.max(max, 0);
       }
-      if (opts.type === "log") {
-        return new LogScale({
-          domain: [min, max],
-          range,
-          reversed,
-          niceMin: opts.min === undefined,
-          niceMax: opts.max === undefined,
-        });
-      }
+      if (opts.type === "log") return logScale(opts, [min, max], range, reversed);
       if (opts.type === "datetime") {
         const { ticks, format } = niceDateTicks(min, max);
         return new LinearScale({
@@ -4369,11 +4396,13 @@ export class FacetViz {
           nice: opts.min === undefined && opts.max === undefined,
         });
       }
+      const ticks = fixedTicks(opts, min, max);
       return new LinearScale({
         domain: [min, max],
         range,
         tickCount: opts.tickCount,
         ...(reversed ? { reversed } : {}),
+        ...(ticks ? { ticks } : {}),
         nice: opts.min === undefined && opts.max === undefined,
       });
     };
@@ -4390,8 +4419,9 @@ export class FacetViz {
 
     // The secondary value scale over `range`: its own domain, zero kept in
     // for bars and areas, and room for its labels.
-    const secondaryScale = (range: [number, number]): Scale | undefined => {
+    const secondaryScale = (range: [number, number], primary: Scale): Scale | undefined => {
       if (!hasSecondary) return undefined;
+      if (synced) return syncedScale(primary, range);
       const secondaryVisible = ySource.filter(onSecondary);
       const secondaryOpts = axisAt(this.options.yAxis, 1);
       let [vMin2, vMax2] = this.valueDomain(secondaryVisible, secondaryOpts);
@@ -4410,8 +4440,8 @@ export class FacetViz {
         ].includes(s.type),
       );
       if (
-        (includeZero2 || secondaryOpts.startOnZero === true) &&
-        secondaryOpts.type !== "log"
+        reachesZero(secondaryOpts, includeZero2) &&
+        !positiveLog(secondaryOpts)
       ) {
         vMin2 = Math.min(vMin2, 0);
         vMax2 = Math.max(vMax2, 0);
@@ -4450,7 +4480,7 @@ export class FacetViz {
             xAxisOpts.reversed,
           );
       // `yScale2` stays the secondary *value* scale, here horizontal.
-      const yScale2 = secondaryScale([plot.x, plot.x + plot.width]);
+      const yScale2 = secondaryScale([plot.x, plot.x + plot.width], xScale);
       return { xScale, yScale, yScale2 };
     }
 
@@ -4474,7 +4504,7 @@ export class FacetViz {
       labelRoom,
     );
 
-    const yScale2 = secondaryScale([plot.y + plot.height, plot.y]);
+    const yScale2 = secondaryScale([plot.y + plot.height, plot.y], yScale);
     return { xScale, xScale2, yScale, yScale2 };
   }
 
@@ -4553,7 +4583,7 @@ export class FacetViz {
       if (free >= room) break;
       const [lo, hi] = (scale as LinearScale | LogScale).domain;
       const short = room - free + 1;
-      if (opts.type === "log") max = hi * logPadFactor(short, axisPx, lo, hi);
+      if (positiveLog(opts)) max = hi * logPadFactor(short, axisPx, lo, hi);
       else max = hi + (short / Math.max(1, axisPx)) * (hi - lo || 1);
       scale = this.valueScale(opts, [lo, max], range, false, preserveZeroMin);
     }
@@ -4569,21 +4599,17 @@ export class FacetViz {
   ): Scale {
     let min = opts.min ?? domain[0];
     let max = opts.max ?? domain[1];
-    if (opts.type === "log") {
+    if (positiveLog(opts)) {
       // A logarithmic axis needs multiplicative padding so its lower bound
       // remains positive. Explicit bounds continue to opt out independently.
       if (padDomain && opts.min === undefined)
         min /= 1 + VALUE_DOMAIN_PADDING;
       if (padDomain && opts.max === undefined)
         max *= 1 + VALUE_DOMAIN_PADDING;
-      return new LogScale({
-        domain: [min, max],
-        range,
-        reversed: opts.reversed,
-        niceMin: opts.min === undefined,
-        niceMax: opts.max === undefined,
-      });
+      return logScale(opts, [min, max], range, opts.reversed);
     }
+    // A symmetric log axis snaps its own ends out to powers.
+    if (opts.type === "log") return logScale(opts, [min, max], range, opts.reversed);
 
     if (padDomain) {
       const domainSpan = max - min || Math.abs(max) || Math.abs(min) || 1;
@@ -4596,6 +4622,7 @@ export class FacetViz {
       if (opts.max === undefined) max += padding;
     }
 
+    const ticks = fixedTicks(opts, min, max);
     return new LinearScale({
       domain: [min, max],
       range,
@@ -4603,6 +4630,7 @@ export class FacetViz {
       reversed: opts.reversed,
       niceMin: opts.min === undefined,
       niceMax: opts.max === undefined,
+      ...(ticks ? { ticks } : {}),
     });
   }
 
@@ -4610,7 +4638,7 @@ export class FacetViz {
     visible: BaseSeries[],
     axis?: AxisOptions,
   ): [number, number] {
-    const log = axis?.type === "log";
+    const log = !!axis && positiveLog(axis);
     const mins: number[] = [];
     const maxs: number[] = [];
     for (const s of visible) {
@@ -4618,7 +4646,8 @@ export class FacetViz {
       // A log axis skips non-positive values (e.g. a column's zero
       // baseline): log(0) is -infinity and would drag the axis down to the
       // scale's epsilon, squashing every bar into the top of the plot.
-      const extent = log ? s.positiveValueExtent() : s.valueExtent();
+      // An axis told not to reach zero leaves columns' baselines out.
+      const extent = log ? s.positiveValueExtent() : axis?.startOnZero === false ? s.dataExtent() : s.valueExtent();
       if (!extent) continue;
       mins.push(extent[0]);
       maxs.push(extent[1]);
@@ -5527,4 +5556,47 @@ function hidden(el: SVGElement): boolean {
     el.getAttribute("opacity") === "0" ||
     el.getAttribute("fill-opacity") === "0"
   );
+}
+
+/** A log axis that skips values at or below zero (not a symmetric one). */
+function positiveLog(opts: AxisOptions): boolean {
+  return opts.type === "log" && opts.log?.mode !== "symmetric";
+}
+
+/**
+ * Whether a value axis reaches zero: always with `startOnZero: true`, never
+ * with `false`, else when its marks grow from zero (`byDefault`).
+ */
+function reachesZero(opts: AxisOptions, byDefault: boolean): boolean {
+  return opts.startOnZero ?? byDefault;
+}
+
+/** The axis's fixed ticks over [lo, hi]: every `tickInterval` from `tickOrigin`, none for `'none'`, else undefined (automatic). */
+function fixedTicks(opts: AxisOptions, lo: number, hi: number): number[] | undefined {
+  if (opts.tickInterval === "none") return [];
+  if (typeof opts.tickInterval === "number") return intervalTicks(lo, hi, opts.tickInterval, opts.tickOrigin ?? 0);
+  return undefined;
+}
+
+/** A logarithmic scale for `opts`: symmetric (through zero) or positive, on its base. */
+function logScale(opts: AxisOptions, domain: [number, number], range: [number, number], reversed?: boolean): Scale {
+  const ticks = opts.tickInterval === "none" ? [] : undefined;
+  if (opts.log?.mode === "symmetric")
+    return new SymLogScale({ domain, range, reversed, base: opts.log.base, ...(ticks ? { ticks } : {}) });
+  return new LogScale({
+    domain,
+    range,
+    reversed,
+    base: opts.log?.base,
+    niceMin: opts.min === undefined,
+    niceMax: opts.max === undefined,
+    ...(ticks ? { ticks } : {}),
+  });
+}
+
+/** A second value axis's scale on `primary`'s range and ticks, over `range`. */
+function syncedScale(primary: Scale, range: [number, number]): Scale {
+  const domain = (primary as LinearScale).domain;
+  if (primary instanceof LogScale || primary instanceof SymLogScale || !domain) return primary;
+  return new LinearScale({ domain, range, ticks: primary.ticks() as number[], nice: false });
 }

@@ -35,6 +35,9 @@ export interface AxisConfig {
   instance?: string;
 }
 
+/** Room an axis subtitle line takes beyond its title, px. */
+export const SUBTITLE_LINE = 14;
+
 /** Sub-parts of an axis group, by class, and the canvas kind each reports. */
 const AXIS_PARTS: Array<[string, string]> = [
   ['facet-gridline', 'grid'],
@@ -288,8 +291,11 @@ export class Axis {
     this.drawPlotLines(group, 'below');
 
     const titles: SVGElement[] = [];
-    if (options.title?.text && options.title.enabled !== false)
-      titles.push(this.drawTitle(group, options.title.text));
+    if (options.title?.text && options.title.enabled !== false) {
+      const title = this.drawTitle(group, options.title.text);
+      titles.push(title);
+      if (options.title.subtitle) titles.push(this.drawSubtitle(group, title, options.title.subtitle));
+    }
     markAxisParts(group, options.id ?? this.cfg.id, this.cfg.instance, titles);
   }
 
@@ -728,6 +734,21 @@ export class Axis {
         ...style,
       }, g);
     }
+  }
+
+  /** The subtitle, one line beyond the title (farther from the plot), in the label font. */
+  private drawSubtitle(g: SVGGElement, title: SVGTextElement, text: string): SVGTextElement {
+    const { renderer, position } = this.cfg;
+    const x = Number(title.getAttribute('x'));
+    const y = Number(title.getAttribute('y'));
+    const style = { ...FONTS.axisLabel, ...sanitizeStyle(this.cfg.options.title?.subtitleStyle) };
+    const anchor = title.getAttribute('text-anchor') ?? 'middle';
+    const step = SUBTITLE_LINE;
+    if (position === 'bottom') return renderer.text(text, x, y + step, { 'text-anchor': anchor, ...style }, g);
+    if (position === 'top') return renderer.text(text, x, y - step, { 'text-anchor': anchor, ...style }, g);
+    const sx = position === 'left' ? x - step : x + step;
+    const rot = position === 'left' ? -90 : 90;
+    return renderer.text(text, sx, y, { 'text-anchor': anchor, transform: `rotate(${rot} ${sx} ${y})`, ...style }, g);
   }
 
   /**

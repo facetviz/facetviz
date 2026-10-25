@@ -43,7 +43,41 @@ export function resolveChartOptions(user: ChartOptions): ChartOptions {
       series,
     );
   });
+  merged.xAxis = resolveAxes(merged.xAxis, "xAxis", merged);
+  merged.yAxis = resolveAxes(merged.yAxis, "yAxis", merged);
   return merged;
+}
+
+/**
+ * Each axis with its `canvas.axes` settings laid over it (by its `id`, or
+ * `xAxis[0]`…), and its `range` read into the bounds the scales use:
+ * `fixed` start / end become `min` / `max`, `includeZero` `startOnZero`.
+ */
+function resolveAxes(
+  axis: AxisOptions | AxisOptions[] | undefined,
+  kind: "xAxis" | "yAxis",
+  options: ChartOptions,
+): AxisOptions | AxisOptions[] | undefined {
+  const byId = options.canvas?.axes ?? {};
+  const list = Array.isArray(axis) ? [...axis] : axis ? [axis] : [];
+  // An address past the given axes (yAxis[1] with one y axis) adds it.
+  for (const id of Object.keys(byId)) {
+    const m = id.match(new RegExp(`^${kind}\\[(\\d+)\\]$`));
+    if (m) while (list.length <= Number(m[1])) list.push({});
+  }
+  if (!list.length) return axis;
+  const out = list.map((a, i) => {
+    const over = byId[a.id ?? ""] ?? byId[`${kind}[${i}]`];
+    const r = over ? merge({} as AxisOptions, a, over) : { ...a };
+    const range = r.range;
+    if (range?.mode === "fixed") {
+      if (typeof range.start === "number" && r.min === undefined) r.min = range.start;
+      if (typeof range.end === "number" && r.max === undefined) r.max = range.end;
+    }
+    if (range?.includeZero !== undefined && r.startOnZero === undefined) r.startOnZero = range.includeZero;
+    return r;
+  });
+  return Array.isArray(axis) || out.length > 1 ? out : out[0];
 }
 
 /** Return the first axis configuration when an axis has multiple entries. */

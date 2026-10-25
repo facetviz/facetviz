@@ -118,6 +118,10 @@ export interface LogScaleConfig {
   niceMin?: boolean;
   /** Override nicening for the upper bound independently. */
   niceMax?: boolean;
+  /** Ticks fall on powers of this (default 10). */
+  base?: number;
+  /** Explicit ticks instead of the powers. */
+  ticks?: number[];
 }
 
 /** Strip floating-point dust such as 3 * 0.1 = 0.30000000000000004. */
@@ -129,7 +133,17 @@ const cleanLog = (v: number) => Number(v.toPrecision(12));
  * (thinned to roughly eight labels); narrower ones fill each decade with
  * 1-2-5 or 1..9 multiples so the axis never ends up with a single label.
  */
-function logTickCandidates(lo: number, hi: number): number[] {
+function logTickCandidates(lo: number, hi: number, base = 10): number[] {
+  if (base !== 10 && base > 1) {
+    // Powers of the base, thinned to roughly eight labels.
+    const lb = Math.log(base);
+    const e0 = Math.floor(Math.log(lo) / lb);
+    const e1 = Math.ceil(Math.log(hi) / lb);
+    const step = Math.max(1, Math.ceil((e1 - e0) / 8));
+    const out: number[] = [];
+    for (let e = Math.floor(e0 / step) * step; e <= e1 + step; e += step) out.push(cleanLog(Math.pow(base, e)));
+    return out;
+  }
   const e0 = Math.floor(Math.log10(lo));
   const e1 = Math.ceil(Math.log10(hi));
   const decades = Math.log10(hi) - Math.log10(lo);
@@ -168,7 +182,7 @@ export class LogScale implements Scale {
     const niceByDefault = cfg.nice === true;
     const niceMin = cfg.niceMin ?? niceByDefault;
     const niceMax = cfg.niceMax ?? niceByDefault;
-    const candidates = logTickCandidates(lo, hi);
+    const candidates = cfg.ticks ? [...cfg.ticks].sort((a, b) => a - b) : logTickCandidates(lo, hi, cfg.base);
     const eps = 1e-9;
     if (niceMin) {
       const below = candidates.filter((t) => t <= lo * (1 + eps));
@@ -183,7 +197,9 @@ export class LogScale implements Scale {
     this.tickValues = candidates.filter(
       (t) => t >= lo * (1 - eps) && t <= hi * (1 + eps),
     );
-    if (this.tickValues.length < 2) {
+    if (cfg.ticks) {
+      // Given ticks (none, for no ticks at all) are kept as they are.
+    } else if (this.tickValues.length < 2) {
       // Too narrow for log ticks to say anything: fall back to linear ticks.
       this.tickValues = niceTicks(lo, hi, 4).filter(
         (t) => t > 0 && t >= lo * (1 - eps) && t <= hi * (1 + eps),
@@ -227,6 +243,134 @@ export class LogScale implements Scale {
   range(): [number, number] {
     return [this.r0, this.r1];
   }
+}
+
+export interface SymLogScaleConfig {
+  domain: [number, number];
+  range: [number, number];
+  reversed?: boolean;
+  /** Ticks fall on ±powers of this, and zero (default 10). */
+  base?: number;
+  /** Explicit ticks instead. */
+  ticks?: number[];
+  format?: (v: number) => string;
+}
+
+/**
+ * A logarithmic scale that runs through zero: sign(v)·log(1 + |v| / c), with
+ * `c` one unit, so it's close to linear near zero and logarithmic beyond,
+ * either side. For values spanning zero over several orders of magnitude
+ * (profit and loss, growth from negative to large).
+ */
+export class SymLogScale implements Scale {
+  private t0: number;
+  private t1: number;
+  private r0: number;
+  private r1: number;
+  private tickValues: number[];
+  private format?: (v: number) => string;
+  private lb: number;
+
+  constructor(cfg: SymLogScaleConfig) {
+    const base = cfg.base && cfg.base > 1 ? cfg.base : 10;
+    this.lb = Math.log(base);
+    let [lo, hi] = cfg.domain[0] <= cfg.domain[1] ? cfg.domain : [cfg.domain[1], cfg.domain[0]];
+    if (lo === hi) {
+      lo -= 1;
+      hi += 1;
+    }
+    // Snap each end outward to a power of the base (zero stays zero), so
+    // both ends are ticks: upward for the top end, downward for the bottom.
+    const pow = (v: number, round: (x: number) => number) => Math.pow(base, round(Math.log(Math.abs(v)) / this.lb));
+    const snap = (v: number, up: boolean) =>
+      v === 0 ? 0 : v > 0 ? pow(v, up ? Math.ceil : Math.floor) : -pow(v, up ? Math.floor : Math.ceil);
+    if (!cfg.ticks) {
+      lo = Math.min(lo, snap(lo, false));
+      hi = Math.max(hi, snap(hi, true));
+    }
+    this.t0 = this.transform(lo);
+    this.t1 = this.transform(hi);
+    [this.r0, this.r1] = cfg.reversed ? [cfg.range[1], cfg.range[0]] : cfg.range;
+    this.format = cfg.format;
+    if (cfg.ticks) this.tickValues = cfg.ticks;
+    else {
+      const ticks: number[] = [];
+      const powers = (max: number) => {
+        const out: number[] = [];
+        for (let e = 0; Math.pow(base, e) <= max * (1 + 1e-9); e++) out.push(cleanLog(Math.pow(base, e)));
+        return out;
+      };
+      if (lo < 0) ticks.push(...powers(-lo).reverse().map((v) => -v));
+      if (lo <= 0 && hi >= 0) ticks.push(0);
+      if (hi > 0) ticks.push(...powers(hi).filter((v) => v >= lo));
+      // Keep zero, then outward each way only ticks at least 16 px from the
+      // last kept one (±1 crowd zero on a wide range).
+      const minGap = 16;
+      const kept = new Set<number>(ticks.includes(0) ? [0] : []);
+      for (const side of [ticks.filter((v) => v > 0), ticks.filter((v) => v < 0).reverse()]) {
+        let last = ticks.includes(0) ? this.scale(0) : undefined;
+        for (const v of side) {
+          const at = this.scale(v);
+          if (last === undefined || Math.abs(at - last) >= minGap) {
+            kept.add(v);
+            last = at;
+          }
+        }
+      }
+      this.tickValues = ticks.filter((v) => kept.has(v));
+    }
+  }
+
+  private transform(v: number): number {
+    return (Math.sign(v) * Math.log(1 + Math.abs(v))) / this.lb;
+  }
+
+  get domain(): [number, number] {
+    const inv = (t: number) => Math.sign(t) * (Math.exp(Math.abs(t) * this.lb) - 1);
+    return [inv(this.t0), inv(this.t1)];
+  }
+
+  scale(value: number | string): number {
+    const v = typeof value === 'number' ? value : parseFloat(value);
+    const t = this.t1 === this.t0 ? 0 : (this.transform(v) - this.t0) / (this.t1 - this.t0);
+    return this.r0 + t * (this.r1 - this.r0);
+  }
+
+  invert(pixel: number): number {
+    const k = this.r1 === this.r0 ? 0 : (pixel - this.r0) / (this.r1 - this.r0);
+    const t = this.t0 + k * (this.t1 - this.t0);
+    return Math.sign(t) * (Math.exp(Math.abs(t) * this.lb) - 1);
+  }
+
+  ticks(): number[] {
+    return this.tickValues;
+  }
+
+  tickLabel(value: number | string): string {
+    const v = typeof value === 'number' ? value : parseFloat(value);
+    return this.format ? this.format(v) : String(cleanLog(v));
+  }
+
+  bandwidth(): number {
+    return 0;
+  }
+
+  range(): [number, number] {
+    return [this.r0, this.r1];
+  }
+}
+
+/**
+ * Ticks every `interval` from `origin` covering [lo, hi] (one past each end,
+ * so a nice domain can snap out to them). At most 1000; none for a bad interval.
+ */
+export function intervalTicks(lo: number, hi: number, interval: number, origin = 0): number[] {
+  if (!(interval > 0) || !Number.isFinite(lo) || !Number.isFinite(hi)) return [];
+  const first = origin + Math.floor((lo - origin) / interval) * interval;
+  const out: number[] = [];
+  for (let v = first; v <= hi + interval * 1e-9 && out.length < 1000; v += interval) out.push(Number(v.toPrecision(12)));
+  if (out.length && out[out.length - 1] < hi) out.push(Number((out[out.length - 1] + interval).toPrecision(12)));
+  return out;
 }
 
 export interface CategoryScaleConfig {

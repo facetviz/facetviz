@@ -369,6 +369,9 @@ export interface AxisTitleOptions {
   /** Polar x-axis placement. Ignored by Cartesian axes. */
   position?: "outer" | "center";
   style?: Record<string, string>;
+  /** A second, smaller line beyond the title. */
+  subtitle?: string;
+  subtitleStyle?: Record<string, string>;
 }
 
 export interface AxisLabelOptions {
@@ -456,8 +459,37 @@ export interface AxisOptions {
   plotBands?: PlotBandOptions[];
   /** Reverse the axis direction. */
   reversed?: boolean;
-  /** Set on a value axis to start at zero regardless of data. */
+  /**
+   * `true`: the axis always reaches zero. `false`: it never forces zero, not
+   * even under columns and areas (which reach zero by default).
+   */
   startOnZero?: boolean;
+  /**
+   * The axis's range. `fixed` takes `start` / `end` (a number, or `'auto'`
+   * for that end); `uniform` gives a repeated axis one range across every
+   * pane row (or column) it spans, `independent` each its own; `auto` is
+   * uniform. `includeZero` is `startOnZero`.
+   */
+  range?: {
+    mode?: "auto" | "uniform" | "independent" | "fixed";
+    start?: number | "auto";
+    end?: number | "auto";
+    includeZero?: boolean;
+  };
+  /**
+   * With `type: 'log'`: `positive` (default) skips values at or below zero;
+   * `symmetric` runs through zero, logarithmic either side of it. `base`
+   * sets which powers the ticks fall on (default 10).
+   */
+  log?: { mode?: "positive" | "symmetric"; base?: number };
+  /** Major ticks every `tickInterval` (data units) from `tickOrigin`; `'none'` draws no ticks, labels or grid lines. */
+  tickInterval?: number | "none";
+  /** Where fixed ticks start counting from. Default 0. */
+  tickOrigin?: number;
+  /** The axis band's thickness in px (width beside the plot, height below or above). Default measured. */
+  size?: number;
+  /** On a second value axis: the first axis's range and ticks, so both read on one scale. */
+  sync?: boolean;
   /**
    * Dimension splitting: bind this axis to a data dimension so the chart
    * is broken into a grid of panels (small multiples). See `trellis`.
@@ -732,6 +764,11 @@ export interface CanvasFieldLabelOptions {
 }
 
 export interface CanvasOptions {
+  /**
+   * Axis settings by canvas address (`xAxis[0]`, `yAxis[1]`, or an axis's own
+   * `id`), laid over that axis's options.
+   */
+  axes?: Record<string, AxisOptions>;
   /** Per header level, by field name. */
   headers?: Record<string, CanvasHeaderOptions>;
   /** Dividers between column groups / row groups. */

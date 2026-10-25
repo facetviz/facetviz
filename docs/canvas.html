@@ -52,6 +52,15 @@
   <div class="row">
     <div class="card chart" id="nestedBars"></div>
   </div>
+  <p>Axis objects: each axis set by its address. Left: a symmetric log axis through zero, ticks every power. Right: a synchronised dual axis (one range, same ticks) with a title subtitle and a fixed tick interval.</p>
+  <div class="row">
+    <div class="card chart" id="symlog" style="flex: 1 1 360px"></div>
+    <div class="card chart" id="sync" style="flex: 1 1 360px"></div>
+  </div>
+  <p>Small multiples with an independent value range: each row its own scale.</p>
+  <div class="row">
+    <div class="card chart" id="independent"></div>
+  </div>
 </main>
 <script type="module">
   import { FacetViz } from "./lib/facetviz.js";
@@ -124,6 +133,41 @@
     xAxis: { dimensions: ["region", "cat"] },
     canvas: { banding: { rows: { color: "rgba(99,102,241,0.06)", level: 0 } } },
     series: [{ name: "Sales", data: nestedData.filter((p) => p.q === "Q1") }],
+  });
+
+  const symEl = document.getElementById("symlog");
+  new FacetViz(symEl, {
+    chart: { type: "column", events: events(symEl) },
+    title: { text: "Profit and loss, symmetric log" },
+    xAxis: { categories: ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6"] },
+    canvas: { axes: { "yAxis[0]": { type: "log", log: { mode: "symmetric" }, title: { text: "Profit", subtitle: "symmetric log" } } } },
+    series: [{ name: "Profit", data: [-4200, -60, 8, 140, 2600, 31000] }],
+  });
+  const syncEl = document.getElementById("sync");
+  new FacetViz(syncEl, {
+    chart: { events: events(syncEl) },
+    title: { text: "Sales against target, synchronised" },
+    xAxis: { categories: months },
+    yAxis: [
+      { id: "sales@rows", title: { text: "Sales", subtitle: "in $K" }, tickInterval: 25 },
+      { id: "target@rows:dual", opposite: true, sync: true, title: { text: "Target" } },
+    ],
+    series: [
+      { type: "column", name: "Sales", data: [42, 61, 55, 78, 90, 84] },
+      { type: "line", name: "Target", yAxis: 1, data: [50, 55, 60, 70, 80, 110], marker: { enabled: true } },
+    ],
+  });
+  const indEl = document.getElementById("independent");
+  const indData = [];
+  for (const [seg, k] of [["Consumer", 1], ["Enterprise", 40]])
+    for (const region of ["East", "West"])
+      months.forEach((m, i) => indData.push({ x: m, y: k * (5 + ((i * 3 + region.length) % 7)), region, seg }));
+  new FacetViz(indEl, {
+    chart: { type: "column", events: events(indEl) },
+    xAxis: { categories: months },
+    yAxis: { range: { mode: "independent" } },
+    trellis: { columns: "region", rows: "seg" },
+    series: [{ name: "Orders", data: indData }],
   });
 </script>
 </body>

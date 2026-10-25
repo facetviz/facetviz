@@ -122,6 +122,21 @@ export class ColumnSeries extends BaseSeries {
     return [0, p.y]; // include baseline so columns anchor at zero
   }
 
+  /** Tops of the columns (and stack segment bottoms off the baseline), no zero. */
+  override dataExtent(): [number, number] {
+    let min = Infinity;
+    let max = -Infinity;
+    for (const p of this.points) {
+      const vals = p.stackHigh !== undefined ? [p.stackHigh, p.stackLow === 0 ? undefined : p.stackLow] : [p.y];
+      for (const v of vals) {
+        if (v == null) continue;
+        if (v < min) min = v;
+        if (v > max) max = v;
+      }
+    }
+    return min === Infinity ? [0, 1] : [min, max];
+  }
+
   override render(ctx: SeriesRenderContext): void {
     if (ctx.polar) {
       this.renderPolar(ctx);

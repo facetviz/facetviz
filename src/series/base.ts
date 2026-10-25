@@ -133,6 +133,14 @@ export abstract class BaseSeries {
   }
 
   /**
+   * The values' extent without any baseline the marks grow from (a column's
+   * zero): for an axis told not to reach zero. Most series have none.
+   */
+  dataExtent(): [number, number] {
+    return this.valueExtent();
+  }
+
+  /**
    * Like {@link valueExtent} but only over strictly positive values, for a
    * logarithmic value axis (where a column's zero baseline has no position).
    * Returns undefined when the series has no positive values.

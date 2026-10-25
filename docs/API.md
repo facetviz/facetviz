@@ -1665,6 +1665,27 @@ Register callbacks in config, or subscribe via [`chart.on()`](#instance-methods)
 **`ChartEvents`** (`chart.events`): `load(chart)`, `render(chart)`, `click(ev)`,
 `canvasClick(ev)`, `canvasDoubleClick(ev)`, `canvasContextMenu(ev)`.
 
+### Axis objects
+
+Every axis is addressed by its canvas id (`xAxis[0]`, `yAxis[1]`, or its own
+`id`), and `canvas.axes[id]` sets any axis option on it:
+
+```ts
+yAxis: [{ id: 'sales@rows' }, { id: 'target@rows:dual', sync: true }],
+canvas: { axes: { 'sales@rows': { range: { mode: 'fixed', start: 0, end: 'auto' }, title: { text: 'Sales', subtitle: 'in $K' } } } },
+```
+
+| Option | Description |
+| --- | --- |
+| `range.mode` | `'auto'` / `'uniform'` (one range for every pane row or column the axis repeats on) / `'independent'` (each its own; small multiples) / `'fixed'` |
+| `range.start`, `range.end` | With `fixed`: a number or `'auto'` for that end (same as `min` / `max`) |
+| `range.includeZero` / `startOnZero` | `true` always reaches zero; `false` never forces it, not even under columns |
+| `type: 'log'` + `log.mode` | `'positive'` (default) or `'symmetric'` (through zero, logarithmic either side); `log.base` sets the powers ticks fall on |
+| `tickInterval`, `tickOrigin` | Major ticks every interval from the origin; `'none'` draws no ticks, labels or grid lines |
+| `title.subtitle` | A second, smaller line beyond the title (`title.subtitleStyle`) |
+| `size` | The axis band's thickness in px |
+| `sync` | On a second value axis: the first's range and ticks, both series on one scale |
+
 ### Canvas parts
 
 Every part of the canvas carries `data-fv-kind` and `data-fv-id` (and
