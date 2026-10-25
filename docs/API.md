@@ -1692,6 +1692,25 @@ canvas: { axes: { 'sales@rows': { range: { mode: 'fixed', start: 0, end: 'auto' 
 | `size` | The axis band's thickness in px |
 | `sync` | On a second value axis: the first's range and ticks, both series on one scale |
 
+### Panes
+
+Give series a `pane` number and the chart stacks the panes down (side by side
+for horizontal bars): each pane has its own value axis and scale, and they
+share the category axis, labelled along the bottom pane. `panes[i]` sets
+pane `i`'s value axis (laid over `yAxis`; its title defaults to its series'
+names) and its share of the height (`weight`); `canvas.paneGap` the space
+between panes (default 16). Series without a pane are in pane 0; with all
+series in one pane the chart is drawn as usual. Each pane's plot area and
+axes carry `data-fv-instance="pane:<n>"`.
+
+```ts
+series: [
+  { type: 'column', name: 'Sales', data: sales },
+  { type: 'line', name: 'Margin %', data: margin, pane: 1 },
+],
+panes: [{ weight: 2 }, { yAxis: { labels: { format: '{value}%' } } }],
+```
+
 ### Fit and resizing
 
 `canvas.fit` sets how panes take the room: `'entire'` (default) fills it both

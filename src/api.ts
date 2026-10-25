@@ -140,6 +140,7 @@ export type {
   CanvasResizeEvent,
   CanvasObjectKind,
   CanvasOptions,
+  PaneOptions,
   CanvasHeaderOptions,
   CanvasDividerOptions,
   CanvasBandOptions,

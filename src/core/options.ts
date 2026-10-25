@@ -175,6 +175,12 @@ export interface SeriesOptions
   /** Which axis (by index) this series binds to. Enables combo charts. */
   xAxis?: 0 | 1;
   yAxis?: 0 | 1;
+  /**
+   * The pane it's drawn in, stacked down from 0 (side by side for horizontal
+   * bars): with series in more than one pane, each pane has its own value
+   * axis and scale and they share the category axis. See `panes`.
+   */
+  pane?: number;
   visible?: boolean;
   /** Whether this series contributes an item to the chart legend. */
   showInLegend?: boolean;
@@ -764,6 +770,8 @@ export interface CanvasFieldLabelOptions {
 }
 
 export interface CanvasOptions {
+  /** Px between panes of a chart with series in several panes. Default 16. */
+  paneGap?: number;
   /**
    * How panes take the chart's room: `entire` (default) fills it both ways;
    * `width` fits pane columns to the width with fixed-height pane rows,
@@ -788,6 +796,14 @@ export interface CanvasOptions {
   dividers?: { columns?: CanvasDividerOptions; rows?: CanvasDividerOptions };
   banding?: { columns?: CanvasBandOptions; rows?: CanvasBandOptions };
   fieldLabels?: { columns?: CanvasFieldLabelOptions; rows?: CanvasFieldLabelOptions };
+}
+
+/** One pane of a chart with series in several panes. */
+export interface PaneOptions {
+  /** Its value axis: laid over the chart's `yAxis`. */
+  yAxis?: AxisOptions;
+  /** Its share of the room, against the others' (default 1). */
+  weight?: number;
 }
 
 /** Small-multiples configuration. */
@@ -1161,6 +1177,12 @@ export interface ChartOptions {
   trellis?: TrellisOptions;
   /** Header levels, dividers, banding and field labels of a chart laid out as a canvas (the nested x axis). */
   canvas?: CanvasOptions;
+  /**
+   * With series in several panes (`series.pane`): each pane's settings, by
+   * pane number — its value axis (laid over `yAxis`; its title defaults to
+   * its series' names) and its share of the height.
+   */
+  panes?: PaneOptions[];
   /** Labels, callouts, and point highlights anchored to chart values. */
   annotations?: AnnotationOptions[];
   /** Text blocks positioned from the chart edges or centre. */

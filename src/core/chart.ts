@@ -615,6 +615,9 @@ export class FacetViz {
       );
     } else if (t && (t.columns || t.rows)) {
       this.renderSmallMultiples(outer, t);
+    } else if (this.paneIds().length > 1) {
+      const panes = this.paneIds();
+      this.renderPanes(outer, vis().filter((s) => s.capabilities().cartesian), panes);
     } else {
       this.renderPanel({ rect: outer, series: this.series });
     }
@@ -1307,6 +1310,17 @@ export class FacetViz {
         handle.addEventListener("pointerup", up);
       });
     }
+  }
+
+  /** The panes visible cartesian series are in (`series.pane`), in order. */
+  private paneIds(): number[] {
+    if (this.options.chart?.polar) return [];
+    const ids = new Set<number>();
+    for (const s of this.series) {
+      if (!s.visible || !s.points.length || !s.capabilities().cartesian) continue;
+      ids.add(Math.max(0, Math.floor(s.options.pane ?? 0)));
+    }
+    return [...ids].sort((a, b) => a - b);
   }
 
   /** `canvas.fit` and `canvas.cell` for {@link layoutCanvas}. */
@@ -2612,6 +2626,120 @@ export class FacetViz {
     }
     if (colDim) line(colDiv, left, plot.y, right, plot.y);
     if (rowDim) line(rowDiv, plot.x, top, plot.x, bottom);
+  }
+
+  /**
+   * Series in several panes (`series.pane`): the panes stacked down (side
+   * by side for horizontal bars), each with its own value axis and scale,
+   * sharing the category axis, which is labelled along the bottom pane
+   * (down the left of the first, for bars). Laid out by {@link layoutCanvas}
+   * with each pane a leaf, as measures on a shelf are.
+   */
+  private renderPanes(outer: Rect, visible: BaseSeries[], paneIds: number[]): void {
+    const inverted = this.isInverted(visible);
+    const xOpts = firstAxis(this.options.xAxis) ?? {};
+    const yOpts0 = axisAt(this.options.yAxis, 0);
+    const paneOpts = this.options.panes ?? [];
+    const seriesOf = (id: number) => visible.filter((s) => (s.options.pane ?? 0) === id);
+    // Each pane's value axis: the chart's, its own laid over it, titled by
+    // its series unless a title is set.
+    const axisOf = (id: number): AxisOptions => {
+      const own = paneOpts[id]?.yAxis ?? {};
+      const merged: AxisOptions = { ...yOpts0, ...own };
+      if (!own.title && !yOpts0.title?.text) merged.title = { ...yOpts0.title, text: seriesOf(id).map((s) => s.name).join(", ") };
+      return merged;
+    };
+    const categories = this.currentCategories(visible);
+    const keys = paneIds.map(String);
+
+    const grid = buildCanvasGrid({
+      [inverted ? "columns" : "rows"]: [{ kind: "axis" as const, measures: keys }],
+      records: [],
+    });
+    // The value band is as wide (tall, for bars) as the widest pane needs.
+    const valueSide = inverted ? "bottom" : "left";
+    const catSide = inverted ? "left" : "bottom";
+    const valueBand = Math.max(...paneIds.map((id) => this.axisReserve(axisOf(id), valueSide, this.valueLabelWidth(seriesOf(id), axisOf(id)))));
+    const catBand = this.axisReserve(xOpts, catSide, this.catLabelWidth(visible));
+    const gap = this.options.canvas?.paneGap ?? 16;
+    const layout = layoutCanvas(grid, outer, {
+      ...this.fitBands(),
+      axes: inverted
+        ? { left: catBand, bottom: valueBand, right: 8, top: 6 }
+        : { left: valueBand, bottom: catBand, right: 8, top: 6 },
+      gap: inverted ? { columns: gap } : { rows: gap },
+      weights: inverted ? { columns: paneIds.map((id) => paneOpts[id]?.weight ?? 1) } : { rows: paneIds.map((id) => paneOpts[id]?.weight ?? 1) },
+    });
+    this.noteCanvas(layout, outer);
+    this.noteCanvasBands(
+      layout,
+      inverted ? { left: xOpts, bottom: yOpts0 } : { left: yOpts0, bottom: xOpts },
+      { left: inverted ? "xAxis[0]" : "yAxis[0]", right: "", top: "", bottom: inverted ? "yAxis[0]" : "xAxis[0]" },
+    );
+    if (layout.panes[0]) this.gateDataLabels(layout.panes[0].rect, visible, true);
+
+    const zeroTypes = ["column", "bar", "area", "areaspline", "errorbar", "lollipop"];
+    layout.panes.forEach((pane, i) => {
+      const id = paneIds[i];
+      const list = seriesOf(id);
+      const opts = axisOf(id);
+      const r = pane.rect;
+      computeStacks(list);
+      const catRange: [number, number] = inverted ? [r.y, r.y + r.height] : [r.x, r.x + r.width];
+      const catScale: Scale = categories
+        ? new CategoryScale({ categories, range: catRange, reversed: xOpts.reversed })
+        : new LinearScale({ domain: this.xNumericDomain(visible), range: catRange, reversed: xOpts.reversed });
+      let [lo, hi] = this.valueDomain(list, opts);
+      const preserveZeroMin = this.hasNonNegativeZeroBasedSeries(list, lo);
+      if (!positiveLog(opts) && reachesZero(opts, list.some((s) => zeroTypes.includes(s.type)))) {
+        lo = Math.min(lo, 0);
+        hi = Math.max(hi, 0);
+      }
+      const valRange: [number, number] = inverted ? [r.x, r.x + r.width] : [r.y + r.height, r.y];
+      const valScale = this.valueScale(opts, [lo, hi], valRange, true, preserveZeroMin);
+
+      const axisLayer = this.renderer.group({ class: "facet-axes" }, this.renderer.root);
+      const instance = `pane:${id}`;
+      this.drawPlotArea(axisLayer, r, instance);
+      // The category axis is labelled once: along the last pane, down the first for bars.
+      const catLabelled = inverted ? i === 0 : i === layout.panes.length - 1;
+      const catAxis = new Axis({
+        renderer: this.renderer,
+        scale: catScale,
+        position: catSide,
+        spacingScale: this.chromeSpacingScale(catSide),
+        plot: r,
+        grid: !!xOpts.gridLineWidth,
+        options: catLabelled ? xOpts : { labels: { enabled: false }, ticks: false, title: undefined, lineColor: xOpts.lineColor, lineWidth: xOpts.lineWidth },
+        id: xOpts.id ?? "xAxis[0]",
+        instance,
+      });
+      catAxis.render(axisLayer);
+      const valAxis = new Axis({
+        renderer: this.renderer,
+        scale: valScale,
+        position: valueSide,
+        spacingScale: this.chromeSpacingScale(valueSide),
+        plot: r,
+        grid: true,
+        cross: catScale,
+        options: opts,
+        id: opts.id ?? "yAxis[0]",
+        instance,
+      });
+      valAxis.render(axisLayer);
+
+      // Every series in the pane reads on its scale (no second axis here).
+      const existing = new Set(this.renderer.root.children);
+      const group = this.groupInfo(list);
+      for (const s of list) {
+        s.render(this.seriesContext(s, r, inverted ? valScale : catScale, inverted ? catScale : valScale, group, inverted, false));
+      }
+      this.clipToPlot(r, existing);
+      const aboveLayer = this.renderer.group({ class: "facet-axes-above" }, this.renderer.root);
+      catAxis.renderAbove(aboveLayer);
+      valAxis.renderAbove(aboveLayer);
+    });
   }
 
   private renderPolarPanel(plot: Rect, visible: BaseSeries[]): void {
