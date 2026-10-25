@@ -1692,6 +1692,30 @@ canvas: { axes: { 'sales@rows': { range: { mode: 'fixed', start: 0, end: 'auto' 
 | `size` | The axis band's thickness in px |
 | `sync` | On a second value axis: the first's range and ticks, both series on one scale |
 
+### Fit and resizing
+
+`canvas.fit` sets how panes take the room: `'entire'` (default) fills it both
+ways; `'width'` fits pane columns to the width and gives pane rows a fixed
+height; `'height'` the other way round; `'standard'` fixes both.
+`canvas.cell` is the fixed size in px — `width` per pane column (per category
+on a nested axis; defaults 200 / 40), `height` per pane row (160 / 24). With a
+fixed direction the chart renders at its canvas's natural size (`chart.size`,
+the `canvasNaturalSize` event) and keeps it rather than shrinking into its
+box, so put it in a scrolling container.
+
+Listening for `chart.events.canvasResize` puts a resize handle on every axis
+band's and header level's edge facing the panes. A drag draws a guide and
+reports `{ phase: 'move' | 'end', kind: 'axis' | 'header', id, size, side }`;
+facetviz only reports — store the size and redraw:
+
+```ts
+canvasResize: (ev) => {
+  if (ev.phase !== 'end') return;
+  (ev.kind === 'axis' ? sizes.axes : sizes.headers)[ev.id] = { size: ev.size };
+  chart.update({ canvas: { axes: sizes.axes, headers: sizes.headers } });
+}
+```
+
 ### Canvas parts
 
 Every part of the canvas carries `data-fv-kind` and `data-fv-id` (and

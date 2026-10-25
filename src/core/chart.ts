@@ -59,7 +59,7 @@ import {
 import { downloadBlob, rasterizePNG, serializeSVG } from "./chart-export.js";
 import { computeStacks } from "./stacking.js";
 import { buildCanvasGrid } from "./canvas-grid.js";
-import { layoutCanvas, type CanvasLayout, type CanvasPlacedCell } from "./canvas-layout.js";
+import { layoutCanvas, type CanvasLayout, type CanvasPlacedCell, type CanvasFit } from "./canvas-layout.js";
 import { HeaderTiers, categoryRotationExtent, tierWidths, SPLIT_TIER_GAP, SPLIT_TIER_PITCH, TIER_HEIGHT } from "./canvas-headers.js";
 import { captureSeriesState, restoreSeriesState } from "./series-state.js";
 import { enforceConfiguredValidation } from "./validation.js";
@@ -173,6 +173,12 @@ export class FacetViz {
   private initialReflowFrame?: number;
   private resizeFrame?: number;
   private destroyed = false;
+  /** How much a fixed `canvas.fit` wants the chart to grow, from this render's layouts. */
+  private naturalDelta?: { dw: number; dh: number };
+  /** Inside the render pass at the canvas's natural size. */
+  private fitting = false;
+  /** Axis bands and header levels drawn this render, for resize handles. */
+  private resizeBands: ResizeBand[] = [];
   private boostHoverCleanups: Array<() => void> = [];
   /** Play the enter animation on the next render (first render + data updates). */
   private animateNext = true;
@@ -494,6 +500,8 @@ export class FacetViz {
 
   render(): void {
     if (this.destroyed) return;
+    this.naturalDelta = undefined;
+    this.resizeBands = [];
     const restoreResponsive = this.applyResponsiveOverrides();
     try {
     this.boostHoverCleanups.forEach((cleanup) => cleanup());
@@ -674,6 +682,7 @@ export class FacetViz {
 
     this.applyAccessibility();
     this.installCanvasEvents();
+    this.installResizeHandles();
     this.installZoom(outer);
     this.drawDrillUp(outer);
     if (this.animateNext) this.animateEnter();
@@ -684,6 +693,36 @@ export class FacetViz {
     } finally {
       restoreResponsive();
     }
+    this.fitToCanvas();
+  }
+
+  /**
+   * A fixed `canvas.fit`: render once more at the size the canvas needs
+   * (its fixed directions only), and let the SVG keep that size rather than
+   * shrinking into its container, so the host can scroll it.
+   */
+  private fitToCanvas(): void {
+    const fit = this.options.canvas?.fit;
+    const fixed = !!fit && fit !== "entire";
+    this.renderer.root.style.maxWidth = fixed ? "none" : "100%";
+    if (!fixed || !this.naturalDelta || this.fitting) return;
+    const w = fit === "width" ? this.width : Math.max(1, Math.round(this.width + this.naturalDelta.dw));
+    const h = fit === "height" ? this.height : Math.max(1, Math.round(this.height + this.naturalDelta.dh));
+    if (Math.abs(w - this.width) < 1 && Math.abs(h - this.height) < 1) return;
+    this.width = w;
+    this.height = h;
+    this.fitting = true;
+    try {
+      this.render();
+    } finally {
+      this.fitting = false;
+    }
+    this.options.chart?.events?.canvasNaturalSize?.({ width: this.width, height: this.height });
+  }
+
+  /** The chart's current size: with a fixed `canvas.fit`, its canvas's natural size. */
+  get size(): { width: number; height: number } {
+    return { width: this.width, height: this.height };
   }
 
   /** Set chart-level semantics after all point marks have been registered. */
@@ -1128,7 +1167,7 @@ export class FacetViz {
     const root = this.renderer!.root;
     const target = (e: MouseEvent): Omit<CanvasObjectEvent, "type"> | null => {
       const from = e.target as Element | null;
-      if (!from || from.closest(".facet-point, .facet-point-hit")) return null;
+      if (!from || from.closest(".facet-point, .facet-point-hit, .facet-resize-handle")) return null;
       let el = from.closest("[data-fv-kind]");
       // The drag-zoom overlay lies over the plot area.
       if (!el && from.classList?.contains("facet-zoom-overlay"))
@@ -1157,6 +1196,134 @@ export class FacetViz {
     on("click", events.canvasClick);
     on("dblclick", events.canvasDoubleClick);
     on("contextmenu", events.canvasContextMenu);
+  }
+
+  private noteBand(kind: ResizeBand["kind"], id: string, side: ResizeBand["side"], rect: Rect, size: number): void {
+    if (size > 0 && rect.width >= 0 && rect.height >= 0) this.resizeBands.push({ kind, id, side, rect, size });
+  }
+
+  /**
+   * A multi-pane canvas's resizable bands: each side's axis band (across
+   * the whole plot area) and each header level (across all its cells).
+   */
+  private noteCanvasBands(
+    layout: CanvasLayout,
+    axes: Partial<Record<ResizeBand["side"], AxisOptions>>,
+    ids: Record<ResizeBand["side"], string>,
+  ): void {
+    const p = layout.plotArea;
+    const b = layout.axisBands;
+    const span = (rects: Rect[]): Rect | undefined => {
+      if (!rects.length) return undefined;
+      const x = Math.min(...rects.map((r) => r.x));
+      const y = Math.min(...rects.map((r) => r.y));
+      return {
+        x,
+        y,
+        width: Math.max(...rects.map((r) => r.x + r.width)) - x,
+        height: Math.max(...rects.map((r) => r.y + r.height)) - y,
+      };
+    };
+    for (const side of ["left", "right", "top", "bottom"] as const) {
+      const opts = axes[side];
+      const rect = span(b[side]);
+      if (!opts || opts.visible === false || !rect) continue;
+      const size = side === "left" || side === "right" ? rect.width : rect.height;
+      this.noteBand("axis", opts.id ?? ids[side], side, rect, size);
+    }
+    // Header levels: across columns their band is a row, down rows a column;
+    // which side follows where they sit relative to the plot area.
+    const level = (cells: CanvasPlacedCell[], across: boolean) => {
+      const rect = span(cells.map((c) => c.rect));
+      const field = cells[0]?.field;
+      if (!rect || !field) return;
+      const side: ResizeBand["side"] = across
+        ? (rect.y + rect.height <= p.y + 0.5 ? "top" : "bottom")
+        : (rect.x + rect.width <= p.x + 0.5 ? "left" : "right");
+      this.noteBand("header", field, side, rect, across ? rect.height : rect.width);
+    };
+    layout.headers.columns.forEach((cells) => level(cells, true));
+    layout.headers.rows.forEach((cells) => level(cells, false));
+  }
+
+  /**
+   * Resize handles on every noted band's edge facing the panes, when the
+   * host listens for `canvasResize`: dragging one draws a guide and reports
+   * the band's new size (phase `move`, then `end`).
+   */
+  private installResizeHandles(): void {
+    const onResize = this.options.chart?.events?.canvasResize;
+    if (!onResize || !this.resizeBands.length) return;
+    const root = this.renderer.root;
+    const g = this.renderer.group({ class: "facet-resize-handles" }, root);
+    const toSvg = (e: MouseEvent): { x: number; y: number } => {
+      const box = root.getBoundingClientRect();
+      const kx = box.width ? this.width / box.width : 1;
+      const ky = box.height ? this.height / box.height : 1;
+      return { x: (e.clientX - box.left) * kx, y: (e.clientY - box.top) * ky };
+    };
+    for (const band of this.resizeBands) {
+      const { rect, side } = band;
+      const vertical = side === "left" || side === "right";
+      // The edge facing the panes, and which way across it grows the band.
+      const edge = side === "left" ? rect.x + rect.width : side === "right" ? rect.x : side === "top" ? rect.y + rect.height : rect.y;
+      const grow = side === "left" || side === "top" ? 1 : -1;
+      const handle = this.renderer.create("rect", vertical
+        ? { x: edge - 3, y: rect.y, width: 6, height: rect.height }
+        : { x: rect.x, y: edge - 3, width: rect.width, height: 6 }, g);
+      handle.setAttribute("fill", "transparent");
+      handle.setAttribute("class", "facet-resize-handle");
+      handle.setAttribute("data-fv-resize", `${band.kind}:${band.id}`);
+      handle.style.cursor = vertical ? "col-resize" : "row-resize";
+      handle.addEventListener("pointerdown", (down) => {
+        down.preventDefault();
+        down.stopPropagation();
+        const start = toSvg(down);
+        handle.setPointerCapture?.(down.pointerId);
+        let guide: SVGLineElement | undefined;
+        const sizeAt = (e: MouseEvent) => {
+          const p = toSvg(e);
+          const moved = vertical ? p.x - start.x : p.y - start.y;
+          return Math.max(0, Math.round(band.size + grow * moved));
+        };
+        const report = (e: MouseEvent, phase: "move" | "end") => {
+          const size = sizeAt(e);
+          const at = edge + grow * (size - band.size);
+          guide?.remove();
+          guide = phase === "move"
+            ? this.renderer.create("line", vertical
+              ? { x1: at, y1: 0, x2: at, y2: this.height, class: "facet-resize-guide", stroke: THEME.axis.lineColor, "stroke-dasharray": "4 3" }
+              : { x1: 0, y1: at, x2: this.width, y2: at, class: "facet-resize-guide", stroke: THEME.axis.lineColor, "stroke-dasharray": "4 3" }, g)
+            : undefined;
+          onResize({ phase, kind: band.kind, id: band.id, size, side });
+        };
+        const move = (e: PointerEvent) => report(e, "move");
+        const up = (e: PointerEvent) => {
+          handle.removeEventListener("pointermove", move);
+          handle.removeEventListener("pointerup", up);
+          report(e, "end");
+        };
+        handle.addEventListener("pointermove", move);
+        handle.addEventListener("pointerup", up);
+      });
+    }
+  }
+
+  /** `canvas.fit` and `canvas.cell` for {@link layoutCanvas}. */
+  private fitBands(): { fit?: CanvasFit; cell?: { width?: number; height?: number } } {
+    const c = this.options.canvas;
+    return c?.fit && c.fit !== "entire" ? { fit: c.fit, cell: c.cell } : {};
+  }
+
+  /**
+   * Remembers how much bigger (or smaller) than `area` a laid-out canvas
+   * needs to be, for a fixed `canvas.fit` to size the chart after it.
+   */
+  private noteCanvas(layout: CanvasLayout, area: Rect): void {
+    const dw = layout.natural.width - area.width;
+    const dh = layout.natural.height - area.height;
+    const d = this.naturalDelta;
+    this.naturalDelta = d ? { dw: Math.max(d.dw, dw), dh: Math.max(d.dh, dh) } : { dw, dh };
   }
 
   private renderTitles(top: number): number {
@@ -1531,7 +1698,16 @@ export class FacetViz {
       );
     }
     // One pane: the canvas layout places it inside the measured axis bands.
-    const axisPlot: Rect = layoutCanvas(SINGLE_PANE, plot, { axes: pad }).panes[0].rect;
+    const single = layoutCanvas(SINGLE_PANE, plot, { axes: pad, ...this.fitBands() });
+    this.noteCanvas(single, plot);
+    const axisPlot: Rect = single.panes[0].rect;
+    const band = (opts: AxisOptions, id: string, side: "left" | "right" | "top" | "bottom") => {
+      if (opts.visible !== false) this.noteBand("axis", opts.id ?? id, side, single.axisBands[side][0], pad[side]);
+    };
+    band(catOpts, "xAxis[0]", catSide);
+    band(valOpts, "yAxis[0]", valSide);
+    if (renderSecondaryX) band(catOpts2, "xAxis[1]", secondaryXSide);
+    if (renderSecondary && valOpts2) band(valOpts2, "yAxis[1]", secondaryYSide);
 
     this.gateDataLabels(axisPlot, visible, true);
     computeStacks(visible);
@@ -2181,20 +2357,30 @@ export class FacetViz {
     const namesOn = (colDim && canvas.fieldLabels?.columns?.visible !== false) ||
       (rowDim && canvas.fieldLabels?.rows?.visible !== false);
     const nameRowH = namesOn ? 16 : 0;
+    // Row headers as wide as their widest (bold) value or the field's name.
+    const headerFont = { ...FONTS.axisLabel, "font-weight": "600", ...sanitizeStyle(canvas.headers?.[rowDim ?? ""]?.label?.style) };
     const rowHeaderW = !headerOn(rowDim) ? 0 : canvas.headers?.[rowDim!]?.size ?? Math.max(
       32,
-      Math.max(rowDim!.length, ...grid.rows.leaves.map((l) => String(l.values[0] ?? "").length)) * 6.6 + 4,
+      this.renderer.measureText(rowDim!, FONTS.axisLabel).width + 8,
+      ...grid.rows.leaves.map((l) => this.renderer.measureText(String(l.values[0] ?? ""), headerFont).width + 12),
     );
     const colHeaderH = !headerOn(colDim) ? 0 : canvas.headers?.[colDim!]?.size ?? 20;
     const gap = t.gap ?? (repeat ? 16 : 0);
     const area = { x: outer.x, y: outer.y + nameRowH, width: outer.width, height: outer.height - nameRowH - bottomTitleH };
     const layout = layoutCanvas(grid, area, {
+      ...this.fitBands(),
       rowHeaders: rowDim ? [rowHeaderW] : [],
       columnHeaders: colDim ? [colHeaderH] : [],
       axes: { left: leftBand, right: rightBand, top: colDim ? 0 : 6, bottom: bottomBand },
       // Repeated axes sit in the gaps between panes.
       gap: { columns: gap + (repeat ? leftBand + rightBand : 0), rows: gap + (repeat ? bottomBand : 0) },
     });
+    this.noteCanvas(layout, area);
+    this.noteCanvasBands(layout, {
+      left: leftOpts,
+      right: hasSecondary ? yOpts1 : undefined,
+      bottom: bottomOpts,
+    }, { left: inverted ? "xAxis[0]" : "yAxis[0]", right: "yAxis[1]", top: "", bottom: inverted ? "yAxis[0]" : "xAxis[0]" });
     const first = layout.panes[0]?.rect;
     if (first) this.gateDataLabels(first, this.series);
 
@@ -3187,6 +3373,7 @@ export class FacetViz {
       const topExtra = catVisible && split ? 8 : 0;
       const area = { x: outer.x, y: outer.y + topExtra, width: outer.width, height: outer.height - topExtra - titleBand };
       layout = layoutCanvas(grid, area, {
+        ...this.fitBands(),
         axes: {
           left: valueBand(yOpts0, aggSeries.filter((s) => onAxis(s, 0)), leftSpacingScale),
           right: hasSecondary ? valueBand(yOpts1, secondary, rightSpacingScale) : 8,
@@ -3198,6 +3385,7 @@ export class FacetViz {
         ),
         columnHeaderSide: split ? "top" : "bottom",
       });
+      this.noteCanvas(layout, area);
     } else {
       const bottomSpacingScale = this.chromeSpacingScale("bottom");
       const valueBand = (opts: AxisOptions, scale: number) =>
@@ -3213,6 +3401,7 @@ export class FacetViz {
       const rightExtra = catVisible && split ? 8 : 0;
       const area = { x: outer.x + leftExtra, y: outer.y, width: outer.width - leftExtra - rightExtra, height: outer.height };
       layout = layoutCanvas(grid, area, {
+        ...this.fitBands(),
         axes: {
           left: catVisible ? LAYOUT.tickLength + catLabelOffset + widths[levels - 1] : 6,
           right: catVisible && split ? LAYOUT.tickLength + catLabelOffset : 8,
@@ -3222,9 +3411,16 @@ export class FacetViz {
         rowHeaders: dims.slice(0, -1).map((_, l) => (shown(l) ? header(l)?.size ?? widths[l] : 0)),
         rowHeaderSide: split ? "right" : "left",
       });
+      this.noteCanvas(layout, area);
     }
     const plot = layout.plotArea;
     this.gateDataLabels(plot, visible);
+    this.noteCanvasBands(layout, {
+      left: inverted ? (catVisible ? xOpts : undefined) : yOpts0,
+      right: !inverted && hasSecondary ? yOpts1 : undefined,
+      top: inverted && hasSecondary ? yOpts1 : undefined,
+      bottom: inverted ? yOpts0 : catVisible ? xOpts : undefined,
+    }, { left: inverted ? "xAxis[0]" : "yAxis[0]", right: "yAxis[1]", top: "yAxis[1]", bottom: inverted ? "yAxis[0]" : "xAxis[0]" });
 
     // One category scale across every pane: the value axes' plot lines find
     // their groups on it, and the header levels their category positions.
@@ -5205,6 +5401,15 @@ export class FacetViz {
     this.events.clear();
     this.renderer?.root.remove();
   }
+}
+
+/** A band a resize handle can drag: its edge facing the panes moves. */
+interface ResizeBand {
+  kind: "axis" | "header";
+  id: string;
+  side: "left" | "right" | "top" | "bottom";
+  rect: Rect;
+  size: number;
 }
 
 /** The grid of a chart with nothing on its Rows or Columns: one pane. */

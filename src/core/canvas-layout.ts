@@ -14,9 +14,13 @@
  *   │              │          │ bottom axis band           │          │
  *   └──────────────┴──────────┴───────────────────────────┴──────────┘
  *
- * Fit is "entire": panes stretch both ways to fill the room. Each pane row
- * or column gets a share by weight: by default its number of categories when
- * its category axis is nested (so bars keep one width across panes), else 1.
+ * Fit "entire" (the default) stretches panes both ways to fill the room;
+ * "width" fits pane columns to the width and gives pane rows a fixed height,
+ * "height" the other way round, "standard" fixes both. Each pane row or
+ * column gets a share (or, fixed, a size) by weight: by default its number of
+ * categories when its category axis is nested (so bars keep one width across
+ * panes), else 1. A fixed size is `cell` px per weight; `natural` says how
+ * big the outer rectangle would have to be to hold it all.
  */
 
 import type { Rect } from "./axis.js";
@@ -41,9 +45,21 @@ export interface CanvasBands {
   columnHeaderSide?: "top" | "bottom";
   /** Where row header levels sit: left of the panes (default) or right. */
   rowHeaderSide?: "left" | "right";
+  /** How panes take the room; see above. Default "entire". */
+  fit?: CanvasFit;
+  /**
+   * Fixed pane sizes, px per weight: `width` per pane column (default 200),
+   * or per category where the columns have a category axis (default 40);
+   * `height` per pane row (default 160, or 24 per category).
+   */
+  cell?: { width?: number; height?: number };
 }
 
+export type CanvasFit = "entire" | "width" | "height" | "standard";
+
 export interface CanvasPlacedCell {
+  /** The header level's field. */
+  field: string;
   cell: CanvasHeaderCell;
   rect: Rect;
 }
@@ -61,14 +77,28 @@ export interface CanvasLayout {
   headers: { rows: CanvasPlacedCell[][]; columns: CanvasPlacedCell[][] };
   /** Axis band rects: left/right one per pane row, top/bottom one per pane column. */
   axisBands: { left: Rect[]; right: Rect[]; top: Rect[]; bottom: Rect[] };
+  /** The outer size that holds everything (the given size when panes fill it). */
+  natural: { width: number; height: number };
 }
 
 /** Default share of each leaf: its categories when they're its own (nested), else 1. */
 function defaultWeights(track: CanvasTrack): number[] {
-  if (!track.category) return track.leaves.map(() => 1);
+  if (!byCategories(track)) return track.leaves.map(() => 1);
   const counts = track.leaves.map((l) => l.categories?.length ?? 0);
   // Crossed categories are the same everywhere: equal shares.
-  return counts.every((c) => c === counts[0]) ? counts.map(() => 1) : counts.map((c) => Math.max(1, c));
+  return counts.map((c) => Math.max(1, c));
+}
+
+/** Fixed-size weights: a leaf's categories when the track has a category axis, else 1. */
+function fixedWeights(track: CanvasTrack): number[] {
+  return track.category ? track.leaves.map((l) => Math.max(1, l.categories?.length ?? 0)) : track.leaves.map(() => 1);
+}
+
+/** Whether a track's leaves are weighted by their own (nested, unequal) categories. */
+function byCategories(track: CanvasTrack): boolean {
+  if (!track.category) return false;
+  const counts = track.leaves.map((l) => l.categories?.length ?? 0);
+  return !counts.every((c) => c === counts[0]);
 }
 
 /**
@@ -76,8 +106,19 @@ function defaultWeights(track: CanvasTrack): number[] {
  * One part gets exactly `size` (no rounding drift), which keeps a lone pane
  * where the plot was before.
  */
-function split(start: number, size: number, weights: number[], gap: number): Array<[number, number]> {
+function split(start: number, size: number, weights: number[], gap: number, fixed?: number): Array<[number, number]> {
   const n = weights.length;
+  if (fixed !== undefined) {
+    // Fixed: each part `fixed` px per weight, one after another.
+    const out: Array<[number, number]> = [];
+    let at = start;
+    for (const w of weights) {
+      const len = Math.max(0, w) * fixed;
+      out.push([at, len]);
+      at += len + gap;
+    }
+    return out;
+  }
   if (n === 1) return [[start, Math.max(0, size)]];
   const room = Math.max(0, size - gap * (n - 1));
   // No positive weight at all: equal shares.
@@ -114,10 +155,24 @@ export function layoutCanvas(grid: CanvasGrid, outer: Rect, bands: CanvasBands =
     height: outer.height - headersH - top - bottom,
   };
 
-  const rowWeights = bands.weights?.rows ?? defaultWeights(grid.rows);
-  const colWeights = bands.weights?.columns ?? defaultWeights(grid.columns);
-  const rows = split(plotArea.y, plotArea.height, rowWeights, bands.gap?.rows ?? 0).map(([y, height]) => ({ y, height }));
-  const columns = split(plotArea.x, plotArea.width, colWeights, bands.gap?.columns ?? 0).map(([x, width]) => ({ x, width }));
+  const fit = bands.fit ?? "entire";
+  const fixedRows = fit === "width" || fit === "standard";
+  const fixedCols = fit === "height" || fit === "standard";
+  // A fixed size on a category axis is per category, even where every pane
+  // has the same number of them.
+  const rowWeights = bands.weights?.rows ?? (fixedRows ? fixedWeights(grid.rows) : defaultWeights(grid.rows));
+  const colWeights = bands.weights?.columns ?? (fixedCols ? fixedWeights(grid.columns) : defaultWeights(grid.columns));
+  const rowGap = bands.gap?.rows ?? 0;
+  const colGap = bands.gap?.columns ?? 0;
+  const rowUnit = fixedRows ? bands.cell?.height ?? (grid.rows.category ? 24 : 160) : undefined;
+  const colUnit = fixedCols ? bands.cell?.width ?? (grid.columns.category ? 40 : 200) : undefined;
+  const rows = split(plotArea.y, plotArea.height, rowWeights, rowGap, rowUnit).map(([y, height]) => ({ y, height }));
+  const columns = split(plotArea.x, plotArea.width, colWeights, colGap, colUnit).map(([x, width]) => ({ x, width }));
+  // Fixed panes set the plot area's size, whatever room there was.
+  const extent = (parts: Array<{ len: number }>, gap: number) =>
+    parts.reduce((a, p) => a + p.len, 0) + gap * Math.max(0, parts.length - 1);
+  if (fixedCols) plotArea.width = extent(columns.map((c) => ({ len: c.width })), colGap);
+  if (fixedRows) plotArea.height = extent(rows.map((r) => ({ len: r.height })), rowGap);
 
   const panes = grid.panes.map((p) => ({
     key: p.key,
@@ -142,7 +197,7 @@ export function layoutCanvas(grid: CanvasGrid, outer: Rect, bands: CanvasBands =
     return level.cells.map((cell) => {
       const first = rows[cell.start];
       const last = rows[cell.start + cell.span - 1];
-      return { cell, rect: { x, y: first.y, width: rowHeaderW[i], height: last.y + last.height - first.y } };
+      return { field: level.field, cell, rect: { x, y: first.y, width: rowHeaderW[i], height: last.y + last.height - first.y } };
     });
   });
   const columnHeaders = grid.columns.headers.map((level, i) => {
@@ -150,7 +205,7 @@ export function layoutCanvas(grid: CanvasGrid, outer: Rect, bands: CanvasBands =
     return level.cells.map((cell) => {
       const first = columns[cell.start];
       const last = columns[cell.start + cell.span - 1];
-      return { cell, rect: { x: first.x, y, width: last.x + last.width - first.x, height: colHeaderH[i] } };
+      return { field: level.field, cell, rect: { x: first.x, y, width: last.x + last.width - first.x, height: colHeaderH[i] } };
     });
   });
 
@@ -161,5 +216,9 @@ export function layoutCanvas(grid: CanvasGrid, outer: Rect, bands: CanvasBands =
     bottom: columns.map((c) => ({ x: c.x, y: plotArea.y + plotArea.height, width: c.width, height: bottom })),
   };
 
-  return { plotArea, rows, columns, panes, headers: { rows: rowHeaders, columns: columnHeaders }, axisBands };
+  const natural = {
+    width: fixedCols ? headersW + left + right + plotArea.width : outer.width,
+    height: fixedRows ? headersH + top + bottom + plotArea.height : outer.height,
+  };
+  return { plotArea, rows, columns, panes, headers: { rows: rowHeaders, columns: columnHeaders }, axisBands, natural };
 }

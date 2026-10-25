@@ -765,6 +765,19 @@ export interface CanvasFieldLabelOptions {
 
 export interface CanvasOptions {
   /**
+   * How panes take the chart's room: `entire` (default) fills it both ways;
+   * `width` fits pane columns to the width with fixed-height pane rows,
+   * `height` the other way round, `standard` fixes both. With a fixed
+   * direction the chart grows (or shrinks) to the canvas's natural size,
+   * so a host can scroll it.
+   */
+  fit?: "entire" | "width" | "height" | "standard";
+  /**
+   * Fixed pane sizes in px: `width` per pane column (per category on a
+   * nested axis), `height` per pane row. Defaults 200 / 160 (40 / 24 per category).
+   */
+  cell?: { width?: number; height?: number };
+  /**
    * Axis settings by canvas address (`xAxis[0]`, `yAxis[1]`, or an axis's own
    * `id`), laid over that axis's options.
    */
@@ -887,6 +900,15 @@ export interface ChartEvents {
   /** A part of the canvas double-clicked. */
   canvasDoubleClick?: (ev: CanvasObjectEvent) => void;
   /**
+   * An axis band or header level dragged to a new thickness. Setting this
+   * puts a resize handle on each band's edge facing the panes. `phase` is
+   * `move` while dragging and `end` on release; facetviz only reports it —
+   * store `size` in `canvas.axes[id].size` / `canvas.headers[id].size`.
+   */
+  canvasResize?: (ev: CanvasResizeEvent) => void;
+  /** With a fixed `canvas.fit`: the size the chart took to hold its canvas. */
+  canvasNaturalSize?: (size: { width: number; height: number }) => void;
+  /**
    * A part of the canvas right-clicked. When set, the browser's own context
    * menu doesn't open over canvas parts.
    */
@@ -910,6 +932,17 @@ export type CanvasObjectKind =
   | "legend"
   | "header"
   | "fieldLabel";
+
+export interface CanvasResizeEvent {
+  phase: "move" | "end";
+  kind: "axis" | "header";
+  /** The axis's canvas id, or the header's field. */
+  id: string;
+  /** The new thickness in px. */
+  size: number;
+  /** Which side of the panes the band is on. */
+  side: "left" | "right" | "top" | "bottom";
+}
 
 export interface CanvasObjectEvent {
   type: "click" | "dblclick" | "contextmenu";

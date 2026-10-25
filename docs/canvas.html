@@ -61,6 +61,10 @@
   <div class="row">
     <div class="card chart" id="independent"></div>
   </div>
+  <p>Fit "standard": every pane a fixed cell, the chart at its natural size, scrolling in its box. Drag the edge of an axis band or header level (where it meets the panes) to resize it.</p>
+  <div class="row">
+    <div class="card" id="fitBox" style="flex: 1 1 100%; height: 420px; overflow: auto; padding: 0"><div id="fit" style="width: 100%; height: 100%"></div></div>
+  </div>
 </main>
 <script type="module">
   import { FacetViz } from "./lib/facetviz.js";
@@ -169,6 +173,25 @@
     trellis: { columns: "region", rows: "seg" },
     series: [{ name: "Orders", data: indData }],
   });
+
+  // The host keeps the sizes a drag reports and redraws with them.
+  const fitEl = document.getElementById("fit");
+  const sizes = { axes: {}, headers: {} };
+  const fitOptions = () => ({
+    chart: { events: { ...events(fitEl), canvasResize: onResize } },
+    xAxis: { categories: months },
+    yAxis: { range: { mode: "independent" } },
+    trellis: { columns: "region", rows: "seg" },
+    canvas: { fit: "standard", cell: { width: 360, height: 220 }, axes: sizes.axes, headers: sizes.headers },
+    series: [{ name: "Orders", data: indData }],
+  });
+  function onResize(ev) {
+    log.textContent = JSON.stringify(ev, null, 2);
+    if (ev.phase !== "end") return;
+    (ev.kind === "axis" ? sizes.axes : sizes.headers)[ev.id] = { size: ev.size };
+    fitChart.update(fitOptions());
+  }
+  const fitChart = new FacetViz(fitEl, fitOptions());
 </script>
 </body>
 </html>

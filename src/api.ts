@@ -137,6 +137,7 @@ export type {
   SeriesEvents,
   FacetVizPointEvent,
   CanvasObjectEvent,
+  CanvasResizeEvent,
   CanvasObjectKind,
   CanvasOptions,
   CanvasHeaderOptions,
