@@ -1636,7 +1636,37 @@ concentric arc bars and dumbbell connectors become circular arcs.
 
 Register callbacks in config, or subscribe via [`chart.on()`](#instance-methods).
 
-**`ChartEvents`** (`chart.events`): `load(chart)`, `render(chart)`, `click(ev)`.
+**`ChartEvents`** (`chart.events`): `load(chart)`, `render(chart)`, `click(ev)`,
+`canvasClick(ev)`, `canvasDoubleClick(ev)`, `canvasContextMenu(ev)`.
+
+### Canvas parts
+
+Every part of the canvas carries `data-fv-kind` and `data-fv-id` (and
+`data-fv-instance` when it repeats), and the `canvas*` events report which
+part was clicked, double-clicked or right-clicked. Clicks on marks stay
+point events. With `canvasContextMenu` set, the browser's own menu doesn't
+open over canvas parts.
+
+| `kind`      | `id`                                          | What it is                                   |
+| ----------- | --------------------------------------------- | -------------------------------------------- |
+| `axis`      | `xAxis[0]`, `xAxis[1]`, `yAxis[0]`, `yAxis[1]`, or the axis's `id` option | The axis: its line, ticks and labels (nested axes too) |
+| `axisTitle` | the axis's id                                 | The axis title                               |
+| `grid`      | the axis's id                                 | Its grid lines and alternate bands           |
+| `plotLine`, `plotBand` | the axis's id                      | Its reference lines and bands                |
+| `plotArea`  | `plotArea`                                    | The empty plot behind the marks              |
+| `title`, `subtitle` | `title`, `subtitle`                   | The chart titles                             |
+| `legend`    | `legend`                                      | The legend                                   |
+
+**`CanvasObjectEvent`** (`ev`): `type` (`'click'` / `'dblclick'` /
+`'contextmenu'`), `kind`, `id`, `instance` (a small-multiples cell as
+`'row:col'`, or `'left'` / `'right'` on a butterfly), `domEvent`.
+
+```ts
+yAxis: [{ id: 'sales@rows' }, { id: 'profit@rows:dual' }],
+chart: { events: { canvasClick: (ev) => openSettings(ev.kind, ev.id) } }
+```
+
+See `docs/canvas.html`.
 
 **`SeriesEvents`** (`seriesEvents`, applied to all series):
 `click(ev)`, `contextMenu(ev)`, `mouseOver(ev)`, `mouseOut(ev)`, `legendItemClick({ series, visible })`.

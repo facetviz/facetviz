@@ -29,6 +29,43 @@ export interface AxisConfig {
   spacingScale?: number;
   /** The other axis's scale, where plot lines and bands find their `group`. */
   cross?: Scale;
+  /** Canvas address when `options.id` isn't set, e.g. `yAxis[0]`. */
+  id?: string;
+  /** Which copy of a repeated axis this is, e.g. a small-multiples cell. */
+  instance?: string;
+}
+
+/** Sub-parts of an axis group, by class, and the canvas kind each reports. */
+const AXIS_PARTS: Array<[string, string]> = [
+  ['facet-gridline', 'grid'],
+  ['facet-minor-gridline', 'grid'],
+  ['facet-alternate-grid-band', 'grid'],
+  ['facet-plotband', 'plotBand'],
+  ['facet-plotband-whisker', 'plotBand'],
+  ['facet-plotline', 'plotLine'],
+];
+
+/**
+ * Marks `group` as an axis's canvas part (`data-fv-kind="axis"`, its id and
+ * instance), and its grid lines, bands, reference lines and title elements
+ * with their own kinds and the same id.
+ */
+export function markAxisParts(
+  group: SVGGElement,
+  id: string | undefined,
+  instance?: string,
+  titles: SVGElement[] = [],
+): void {
+  if (!id) return;
+  const mark = (el: Element, kind: string) => {
+    el.setAttribute('data-fv-kind', kind);
+    el.setAttribute('data-fv-id', id);
+    if (instance) el.setAttribute('data-fv-instance', instance);
+  };
+  mark(group, 'axis');
+  for (const [cls, kind] of AXIS_PARTS)
+    group.querySelectorAll(`.${cls}`).forEach((el) => mark(el, kind));
+  for (const el of titles) mark(el, 'axisTitle');
 }
 
 /**
@@ -250,8 +287,10 @@ export class Axis {
     // `zIndex: 'above'` are skipped here; `renderAbove` draws those instead.
     this.drawPlotLines(group, 'below');
 
+    const titles: SVGElement[] = [];
     if (options.title?.text && options.title.enabled !== false)
-      this.drawTitle(group, options.title.text);
+      titles.push(this.drawTitle(group, options.title.text));
+    markAxisParts(group, options.id ?? this.cfg.id, this.cfg.instance, titles);
   }
 
   /**
@@ -267,6 +306,9 @@ export class Axis {
     const group = renderer.group({ class: `facet-axis-above facet-axis-${position}` }, parent);
     this.drawPlotBands(group, 'above');
     this.drawPlotLines(group, 'above');
+    markAxisParts(group, options.id ?? this.cfg.id, this.cfg.instance);
+    // Only its bands and lines answer clicks; the group itself is no axis.
+    group.removeAttribute('data-fv-kind');
   }
 
   /** Fill every other full category step across the plot area. */
@@ -647,7 +689,7 @@ export class Axis {
     if (rotation) el.setAttribute('transform', `rotate(${rotation} ${x} ${y})`);
   }
 
-  private drawTitle(g: SVGGElement, text: string): void {
+  private drawTitle(g: SVGGElement, text: string): SVGTextElement {
     const { renderer, plot, position } = this.cfg;
     const style = {
       ...FONTS.axisTitle,
@@ -670,7 +712,7 @@ export class Axis {
       const y = position === 'bottom'
         ? plot.y + plot.height + LAYOUT.tickLength + gap + margin + offset + 8
         : plot.y - LAYOUT.tickLength - gap - margin - offset - 4;
-      renderer.text(text, x, y, {
+      return renderer.text(text, x, y, {
         'text-anchor': align === "start" ? "start" : align === "end" ? "end" : "middle",
         ...style,
       }, g);
@@ -680,7 +722,7 @@ export class Axis {
         : plot.x + plot.width + LAYOUT.tickLength + 4 + gap + margin + offset;
       const y = plot.y + plot.height * along;
       const rot = position === 'left' ? -90 : 90;
-      renderer.text(text, x, y, {
+      return renderer.text(text, x, y, {
         'text-anchor': align === "start" ? "start" : align === "end" ? "end" : "middle",
         transform: `rotate(${rot} ${x} ${y})`,
         ...style,

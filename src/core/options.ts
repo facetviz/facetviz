@@ -403,6 +403,11 @@ export interface AxisLabelOptions {
 }
 
 export interface AxisOptions {
+  /**
+   * This axis's canvas address, reported in canvas events (`data-fv-id` on
+   * its elements). Defaults to `xAxis[0]`, `xAxis[1]`, `yAxis[0]`, `yAxis[1]`.
+   */
+  id?: string;
   /** Render the axis at all. When false, no line/ticks/labels/grid are drawn
    *  and no space is reserved for it. */
   visible?: boolean;
@@ -782,6 +787,41 @@ export interface ChartEvents {
   load?: (chart: unknown) => void;
   render?: (chart: unknown) => void;
   click?: (ev: FacetVizPointEvent) => void;
+  /** A part of the canvas (an axis, axis title, the plot area, a title…) clicked. */
+  canvasClick?: (ev: CanvasObjectEvent) => void;
+  /** A part of the canvas double-clicked. */
+  canvasDoubleClick?: (ev: CanvasObjectEvent) => void;
+  /**
+   * A part of the canvas right-clicked. When set, the browser's own context
+   * menu doesn't open over canvas parts.
+   */
+  canvasContextMenu?: (ev: CanvasObjectEvent) => void;
+}
+
+/**
+ * The kinds of canvas part a canvas event can report. `grid` is an axis's
+ * grid lines or alternate bands, `plotLine` / `plotBand` its reference
+ * lines and bands; each carries the axis's id.
+ */
+export type CanvasObjectKind =
+  | "axis"
+  | "axisTitle"
+  | "grid"
+  | "plotLine"
+  | "plotBand"
+  | "plotArea"
+  | "title"
+  | "subtitle"
+  | "legend";
+
+export interface CanvasObjectEvent {
+  type: "click" | "dblclick" | "contextmenu";
+  kind: CanvasObjectKind;
+  /** The part's address: an axis's id, `plotArea`, `title`, `subtitle`, `legend`. */
+  id: string;
+  /** Which copy of a repeated part, e.g. a small-multiples cell (`row:col`). */
+  instance?: string;
+  domEvent: MouseEvent;
 }
 
 export interface SeriesEvents {

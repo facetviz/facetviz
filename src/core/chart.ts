@@ -19,6 +19,8 @@ import type {
   TitleOptions,
   TooltipContext,
   TrellisOptions,
+  CanvasObjectEvent,
+  CanvasObjectKind,
   AppendDataOptions,
   MarkerOptions,
   DataLabelOptions,
@@ -678,7 +680,12 @@ export class FacetViz {
         height: lh,
         layout: legendVertical ? "vertical" : "horizontal",
         onToggle: (i) => this.toggleSeries(i),
-      }).render(this.renderer.group({}, this.renderer.root));
+      }).render(
+        this.renderer.group(
+          { "data-fv-kind": "legend", "data-fv-id": "legend" },
+          this.renderer.root,
+        ),
+      );
     }
 
     renderChartTexts({
@@ -690,6 +697,7 @@ export class FacetViz {
     });
 
     this.applyAccessibility();
+    this.installCanvasEvents();
     this.installZoom(outer);
     this.drawDrillUp(outer);
     if (this.animateNext) this.animateEnter();
@@ -1114,6 +1122,66 @@ export class FacetViz {
     ) as [number, number, number, number];
   }
 
+  /**
+   * An invisible rect over `plot`, first in `layer` so grid lines, series and
+   * labels stay on top: what a click on the empty plot lands on.
+   */
+  private drawPlotArea(layer: SVGGElement, plot: Rect, instance?: string): void {
+    const rect = this.renderer.create("rect", {
+      x: plot.x,
+      y: plot.y,
+      width: Math.max(0, plot.width),
+      height: Math.max(0, plot.height),
+      fill: "transparent",
+      class: "facet-plot-area",
+      "data-fv-kind": "plotArea",
+      "data-fv-id": "plotArea",
+      "data-fv-instance": instance,
+    });
+    layer.insertBefore(rect, layer.firstChild);
+  }
+
+  /**
+   * Reports clicks, double-clicks and right-clicks on canvas parts (anything
+   * carrying `data-fv-kind`) through `chart.events.canvas*`. Points keep
+   * their own events: a click on a mark is never a canvas event.
+   */
+  private installCanvasEvents(): void {
+    const events = this.options.chart?.events;
+    if (!events?.canvasClick && !events?.canvasDoubleClick && !events?.canvasContextMenu) return;
+    const root = this.renderer!.root;
+    const target = (e: MouseEvent): Omit<CanvasObjectEvent, "type"> | null => {
+      const from = e.target as Element | null;
+      if (!from || from.closest(".facet-point, .facet-point-hit")) return null;
+      let el = from.closest("[data-fv-kind]");
+      // The drag-zoom overlay lies over the plot area.
+      if (!el && from.classList?.contains("facet-zoom-overlay"))
+        el = root.querySelector('[data-fv-kind="plotArea"]');
+      if (!el) return null;
+      return {
+        kind: el.getAttribute("data-fv-kind") as CanvasObjectKind,
+        id: el.getAttribute("data-fv-id") ?? "",
+        instance: el.getAttribute("data-fv-instance") ?? undefined,
+        domEvent: e,
+      };
+    };
+    const on = (
+      dom: "click" | "dblclick" | "contextmenu",
+      handler: ((ev: CanvasObjectEvent) => void) | undefined,
+    ) => {
+      if (!handler) return;
+      root.addEventListener(dom, (e) => {
+        const t = target(e);
+        if (!t) return;
+        if (dom === "contextmenu") e.preventDefault();
+        handler({ type: dom, ...t });
+      });
+    };
+    on("click", events.canvasClick);
+    on("dblclick", events.canvasDoubleClick);
+    on("contextmenu", events.canvasContextMenu);
+  }
+
   private renderTitles(top: number): number {
     let used = 0;
     const title = this.options.title;
@@ -1132,6 +1200,8 @@ export class FacetViz {
         {
           "text-anchor": this.anchor(title.align),
           ...style,
+          "data-fv-kind": "title",
+          "data-fv-id": "title",
         },
         this.renderer.root,
       );
@@ -1161,6 +1231,8 @@ export class FacetViz {
           {
             "text-anchor": this.anchor(sub.align),
             ...style,
+            "data-fv-kind": "subtitle",
+            "data-fv-id": "subtitle",
           },
           this.renderer.root,
         ),
@@ -1231,7 +1303,7 @@ export class FacetViz {
           s.filterByDimensions({ [colDim ?? ""]: cv, [rowDim ?? ""]: rv }),
         );
         const title = [cv, rv].filter((v) => v !== undefined).join(" · ");
-        panels.push({ rect, series, title });
+        panels.push({ rect, series, title, instance: `${ri}:${ci}` });
       });
     });
     return panels;
@@ -1568,6 +1640,7 @@ export class FacetViz {
       { class: "facet-axes" },
       this.renderer.root,
     );
+    this.drawPlotArea(axisLayer, axisPlot, panel.instance);
     // Slope charts read as a set of vertical category "rails" with the
     // slope lines strung across them, Tufte-style — no axis baseline and no
     // horizontal value gridlines, just a vertical line at each x-category
@@ -1592,6 +1665,8 @@ export class FacetViz {
       // explicit `gridLineWidth` — currently the only way to opt in, since
       // a category scale never gets "nice" numeric ticks to derive one from.
       grid: isSlope ? true : !!catOpts.gridLineWidth,
+      id: "xAxis[0]",
+      instance: panel.instance,
     });
     catAxis.render(axisLayer);
     let catAxis2: Axis | undefined;
@@ -1607,6 +1682,8 @@ export class FacetViz {
           opposite: secondaryXSide === "top",
         },
         grid: false,
+        id: "xAxis[1]",
+        instance: panel.instance,
       });
       catAxis2.render(axisLayer);
     }
@@ -1619,6 +1696,8 @@ export class FacetViz {
       cross: catScale,
       options: isSlope ? { ...valOpts, lineWidth: 0 } : valOpts,
       grid: !isSlope,
+      id: "yAxis[0]",
+      instance: panel.instance,
     });
     valAxis.render(axisLayer);
     let valAxis2: Axis | undefined;
@@ -1632,6 +1711,8 @@ export class FacetViz {
         cross: catScale,
         options: valOpts2,
         grid: false,
+        id: "yAxis[1]",
+        instance: panel.instance,
       });
       valAxis2.render(axisLayer);
     }
@@ -2510,6 +2591,8 @@ export class FacetViz {
           { class: "facet-axes" },
           this.renderer.root,
         );
+        const instance = `${ri}:${ci}`;
+        this.drawPlotArea(axisLayer, cell, instance);
         const isLeft = ci === 0;
         const isRight = ci === colVals.length - 1;
         const isBottom = ri === rowVals.length - 1;
@@ -2531,6 +2614,8 @@ export class FacetViz {
           options: catLabelled
             ? { ...xOpts, title: undefined, ticks: false }
             : { labels: { enabled: false }, lineWidth: 0, ticks: false },
+          id: xOpts.id ?? "xAxis[0]",
+          instance,
         });
         catAxis.render(axisLayer);
 
@@ -2553,6 +2638,8 @@ export class FacetViz {
               ? { ...yOpts0, title: undefined }
               : yOpts0
             : { labels: { enabled: false }, lineWidth: 0 },
+          id: yOpts0.id ?? "yAxis[0]",
+          instance,
         });
         valAxis.render(axisLayer);
 
@@ -2572,6 +2659,8 @@ export class FacetViz {
             options: isRight
               ? yOpts1
               : { labels: { enabled: false }, lineWidth: 0 },
+            id: yOpts1.id ?? "yAxis[1]",
+            instance,
           });
           rightAxis.render(axisLayer);
         }
@@ -3447,8 +3536,10 @@ export class FacetViz {
         cross: catScale,
         options: yOpts0,
         grid: true,
+        id: "yAxis[0]",
       });
       valAxis0.render(axisLayer);
+      this.drawPlotArea(axisLayer, plot);
       if (hasSecondary) {
         valAxis1 = new Axis({
           renderer: this.renderer,
@@ -3459,11 +3550,13 @@ export class FacetViz {
           cross: catScale,
           options: yOpts1,
           grid: false,
+          id: "yAxis[1]",
         });
         valAxis1.render(axisLayer);
       }
       if (catVisible) {
         new NestedAxis({
+          id: xOpts.id ?? "xAxis[0]",
           renderer: this.renderer,
           scale: catScale,
           plot,
@@ -3565,8 +3658,10 @@ export class FacetViz {
         cross: catScale,
         options: yOpts0,
         grid: true,
+        id: "yAxis[0]",
       });
       valAxis0.render(axisLayer);
+      this.drawPlotArea(axisLayer, plot);
       if (hasSecondary) {
         valAxis1 = new Axis({
           renderer: this.renderer,
@@ -3577,11 +3672,13 @@ export class FacetViz {
           cross: catScale,
           options: yOpts1,
           grid: false,
+          id: "yAxis[1]",
         });
         valAxis1.render(axisLayer);
       }
       if (catVisible) {
         new NestedAxis({
+          id: xOpts.id ?? "xAxis[0]",
           renderer: this.renderer,
           scale: catScale,
           plot,
@@ -3727,6 +3824,8 @@ export class FacetViz {
       grid: false,
       plot: { x: plot.x, y: plot.y, width: halfW, height: plot.height },
       options: { ...yOpts, title: undefined },
+      id: "yAxis[0]",
+      instance: "left",
     });
     leftAxis.render(axisLayer);
     const rightAxis = new Axis({
@@ -3737,8 +3836,11 @@ export class FacetViz {
       grid: false,
       plot: { x: rightZeroX, y: plot.y, width: halfW, height: plot.height },
       options: { ...yOpts, title: undefined },
+      id: "yAxis[0]",
+      instance: "right",
     });
     rightAxis.render(axisLayer);
+    this.drawPlotArea(axisLayer, plot);
 
     // Category names down the central gutter.
     const band = catScale.bandwidth();
@@ -5521,6 +5623,8 @@ interface PanelSpec {
   rect: Rect;
   series: BaseSeries[];
   title?: string;
+  /** Which small-multiples cell (`row:col`); none for a lone panel. */
+  instance?: string;
 }
 
 interface GroupInfo {

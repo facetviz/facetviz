@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FacetViz Canvas Parts</title>
+  <script src="./docs-theme.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f6fb; --panel: #ffffff; --border: #e7e8f0; --text: #16181d;
+      --muted: #5b6270; --accent: #6366f1;
+      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-docs-theme]) { color-scheme: dark; --bg:#0b0e16; --panel:#141926; --border:#232a3b; --text:#e7ecf6; --muted:#a3abbf; }
+    }
+    :root[data-docs-theme="dark"] { color-scheme: dark; --bg:#0b0e16; --panel:#141926; --border:#232a3b; --text:#e7ecf6; --muted:#a3abbf; }
+    :root[data-docs-theme="light"] { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: var(--sans); background: var(--bg); color: var(--text); }
+    main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; display: flex; flex-direction: column; gap: 16px; }
+    h1 { margin: 0; font-size: 22px; }
+    p { margin: 0; color: var(--muted); line-height: 1.5; }
+    .row { display: flex; gap: 16px; flex-wrap: wrap; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+    .chart { flex: 999 1 560px; min-width: 0; height: 420px; }
+    .log { flex: 1 1 260px; font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap; min-height: 120px; }
+    /* What a host might draw on the selected part. */
+    .chart [data-fv-selected] { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .chart line[data-fv-selected] { stroke: var(--accent); stroke-width: 2; }
+    /* The plot area lies under grid lines and axes: tint it rather than outline it. */
+    .chart rect[data-fv-kind="plotArea"][data-fv-selected] { fill: color-mix(in srgb, var(--accent) 10%, transparent); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Canvas parts</h1>
+  <p>Every axis, axis title, grid, plot area, title and legend says what it is. Click, double-click or right-click one: the event reports its kind and id. Clicks on bars stay point events.</p>
+  <div class="row">
+    <div class="card chart" id="chart"></div>
+    <div class="card log" id="log" aria-live="polite">Click a part of the chart.</div>
+  </div>
+  <div class="row">
+    <div class="card chart" id="trellis"></div>
+  </div>
+</main>
+<script type="module">
+  import { FacetViz } from "./lib/facetviz.js";
+
+  const log = document.getElementById("log");
+  const select = (host) => (ev) => {
+    host.querySelectorAll("[data-fv-selected]").forEach((el) => el.removeAttribute("data-fv-selected"));
+    const sel = `[data-fv-kind="${ev.kind}"][data-fv-id="${CSS.escape(ev.id)}"]` +
+      (ev.instance ? `[data-fv-instance="${ev.instance}"]` : "");
+    host.querySelectorAll(sel).forEach((el) => el.setAttribute("data-fv-selected", ""));
+    const { domEvent, ...rest } = ev;
+    log.textContent = JSON.stringify(rest, null, 2);
+  };
+  const events = (host) => ({ canvasClick: select(host), canvasDoubleClick: select(host), canvasContextMenu: select(host) });
+
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
+  const chartEl = document.getElementById("chart");
+  new FacetViz(chartEl, {
+    chart: { events: events(chartEl) },
+    title: { text: "Sales and profit" },
+    subtitle: { text: "First half" },
+    xAxis: { categories: months, title: { text: "Month" } },
+    yAxis: [
+      { id: "sales@rows", title: { text: "Sales" }, plotLines: [{ value: 40, label: { text: "Target" } }] },
+      { id: "profit@rows:dual", title: { text: "Profit" } },
+    ],
+    series: [
+      { type: "column", name: "Sales", data: [32, 41, 38, 45, 50, 47] },
+      { type: "line", name: "Profit", data: [6, 9, 7, 11, 12, 10], yAxis: 1 },
+    ],
+  });
+
+  const trellisEl = document.getElementById("trellis");
+  const data = [];
+  for (const region of ["East", "West", "Central"])
+    months.forEach((m, i) => data.push({ x: m, y: 10 + ((i * 7 + region.length * 3) % 20), region }));
+  new FacetViz(trellisEl, {
+    chart: { events: events(trellisEl) },
+    title: { text: "Small multiples: each cell is its own instance" },
+    xAxis: { categories: months },
+    trellis: { columns: "region", gap: 16 },
+    series: [{ type: "column", name: "Sales", data }],
+  });
+</script>
+</body>
+</html>

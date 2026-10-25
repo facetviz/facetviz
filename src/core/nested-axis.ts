@@ -16,6 +16,7 @@ import type { Renderer, Attrs } from "./renderer.js";
 import type { CategoryScale } from "./scale.js";
 import type { Rect } from "./axis.js";
 import type { AxisOptions } from "./options.js";
+import { markAxisParts } from "./axis.js";
 import { FONTS, LAYOUT } from "./defaults.js";
 import { THEME } from "./theme.js";
 import { formatString, sanitizeStyle } from "./utils.js";
@@ -76,6 +77,8 @@ export interface NestedAxisConfig {
   vertical?: boolean;
   /** Scale applied to default outward chrome gaps on constrained charts. */
   spacingScale?: number;
+  /** Canvas address reported in canvas events, e.g. `xAxis[0]`. */
+  id?: string;
 }
 
 interface Segment {
@@ -194,6 +197,8 @@ export class NestedAxis {
       );
       parent.insertBefore(bandGroup, parent.firstChild);
       this.drawAlternateCategoryBands(bandGroup);
+      markAxisParts(bandGroup, this.cfg.id);
+      bandGroup.removeAttribute("data-fv-kind");
     }
     const g = this.cfg.renderer.group(
       { class: "facet-axis facet-axis-nested" },
@@ -208,7 +213,8 @@ export class NestedAxis {
     } else {
       this.renderStacked(g, this.cfg.position === "top");
     }
-    this.drawTitle(g);
+    const title = this.drawTitle(g);
+    markAxisParts(g, this.cfg.id, undefined, title ? [title] : []);
   }
 
   /** Fill every other leaf category behind nested-axis series. */
@@ -250,9 +256,9 @@ export class NestedAxis {
     });
   }
 
-  private drawTitle(g: SVGGElement): void {
+  private drawTitle(g: SVGGElement): SVGTextElement | undefined {
     const title = this.cfg.title;
-    if (!title?.text || title.enabled === false) return;
+    if (!title?.text || title.enabled === false) return undefined;
     const { plot, leaves, vertical, position } = this.cfg;
     const levels = leaves[0]?.length ?? 0;
     const align = title.align ?? "center";
@@ -285,11 +291,10 @@ export class NestedAxis {
           (title.offset ?? 0);
       const y = plot.y + plot.height * along;
       const rotation = sideRight ? 90 : -90;
-      this.cfg.renderer.text(title.text, x, y, {
+      return this.cfg.renderer.text(title.text, x, y, {
         ...style,
         transform: `rotate(${rotation} ${x} ${y})`,
       }, g);
-      return;
     }
     const rotation = this.cfg.labels?.rotation ?? 0;
     const rotExtra = nestedInnerRotationExtent(leaves, rotation);
@@ -310,7 +315,7 @@ export class NestedAxis {
     const y = top
       ? plot.y - LAYOUT.tickLength - this.labelOffset - labelExtent - margin - offset
       : plot.y + plot.height + LAYOUT.tickLength + this.labelOffset + labelExtent + margin + offset;
-    this.cfg.renderer.text(title.text, x, y, style, g);
+    return this.cfg.renderer.text(title.text, x, y, style, g);
   }
 
   /** A gridline through the plot at each leaf position, opt-in via `gridLineWidth`. */
@@ -326,7 +331,7 @@ export class NestedAxis {
         : { x1: pos, y1: plot.y, x2: pos, y2: plot.y + plot.height };
       renderer.create(
         "line",
-        { ...coords, stroke: color, "stroke-width": width },
+        { ...coords, stroke: color, "stroke-width": width, class: "facet-gridline" },
         g,
       );
     }
