@@ -56,6 +56,10 @@ describe('axis objects', () => {
     expect(every.every((v) => Math.abs(v / 2.5 - Math.round(v / 2.5)) < 1e-9)).toBe(true);
     const shifted = labels(column([1, 4, 7, 9], { yAxis: { tickInterval: 3, tickOrigin: 1 } }), 'yAxis[0]').map(Number);
     expect(shifted.every((v) => (v - 1) % 3 === 0)).toBe(true);
+    // Columns from zero, ticks from 5: the axis stays at zero, no tick below it.
+    const fromFive = labels(column([10, 20, 30, 41], { yAxis: { tickInterval: 15, tickOrigin: 5 } }), 'yAxis[0]').map(Number);
+    expect(fromFive[0]).toBe(5);
+    expect(Math.min(...fromFive)).toBeGreaterThanOrEqual(0);
     const none = column([1, 4, 7, 9], { yAxis: { tickInterval: 'none' } });
     expect(labels(none, 'yAxis[0]')).toEqual([]);
     expect(none.querySelectorAll('[data-fv-kind="grid"][data-fv-id="yAxis[0]"]')).toHaveLength(0);

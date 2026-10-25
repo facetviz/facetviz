@@ -5490,7 +5490,13 @@ function reachesZero(opts: AxisOptions, byDefault: boolean): boolean {
 /** The axis's fixed ticks over [lo, hi]: every `tickInterval` from `tickOrigin`, none for `'none'`, else undefined (automatic). */
 function fixedTicks(opts: AxisOptions, lo: number, hi: number): number[] | undefined {
   if (opts.tickInterval === "none") return [];
-  if (typeof opts.tickInterval === "number") return intervalTicks(lo, hi, opts.tickInterval, opts.tickOrigin ?? 0);
+  if (typeof opts.tickInterval === "number") {
+    // Counted from an origin, a tick may fall just past zero; values all on
+    // one side of it keep the axis there.
+    return intervalTicks(lo, hi, opts.tickInterval, opts.tickOrigin ?? 0).filter(
+      (t) => !(lo >= 0 && t < 0) && !(hi <= 0 && t > 0),
+    );
+  }
   return undefined;
 }
 
