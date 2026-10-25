@@ -62,6 +62,8 @@ import {
 } from "./chart-options.js";
 import { downloadBlob, rasterizePNG, serializeSVG } from "./chart-export.js";
 import { computeStacks } from "./stacking.js";
+import { buildCanvasGrid } from "./canvas-grid.js";
+import { layoutCanvas } from "./canvas-layout.js";
 import { captureSeriesState, restoreSeriesState } from "./series-state.js";
 import { enforceConfiguredValidation } from "./validation.js";
 import { paletteColor, alpha, shade } from "./colors.js";
@@ -1615,12 +1617,8 @@ export class FacetViz {
         ),
       );
     }
-    const axisPlot: Rect = {
-      x: plot.x + pad.left,
-      y: plot.y + pad.top,
-      width: plot.width - pad.left - pad.right,
-      height: plot.height - pad.top - pad.bottom,
-    };
+    // One pane: the canvas layout places it inside the measured axis bands.
+    const axisPlot: Rect = layoutCanvas(SINGLE_PANE, plot, { axes: pad }).panes[0].rect;
 
     this.gateDataLabels(axisPlot, visible, true);
     computeStacks(visible);
@@ -5618,6 +5616,9 @@ export class FacetViz {
     this.renderer?.root.remove();
   }
 }
+
+/** The grid of a chart with nothing on its Rows or Columns: one pane. */
+const SINGLE_PANE = buildCanvasGrid({ records: [] });
 
 interface PanelSpec {
   rect: Rect;
