@@ -45,6 +45,13 @@
   <div class="row">
     <div class="card chart" id="trellis"></div>
   </div>
+  <p>A nested axis: Region and Category are header levels, each its own object (click one), with Region banding, dividers at every level and field labels. Each Region / Category group is its own pane.</p>
+  <div class="row">
+    <div class="card chart" id="nested"></div>
+  </div>
+  <div class="row">
+    <div class="card chart" id="nestedBars"></div>
+  </div>
 </main>
 <script type="module">
   import { FacetViz } from "./lib/facetviz.js";
@@ -87,6 +94,36 @@
     xAxis: { categories: months },
     trellis: { columns: "region", gap: 16 },
     series: [{ type: "column", name: "Sales", data }],
+  });
+
+  const nestedData = [];
+  for (const [region, cats] of [["East", ["Tech", "Office"]], ["West", ["Tech", "Furniture", "Office"]]])
+    for (const cat of cats)
+      for (const q of ["Q1", "Q2", "Q3"])
+        nestedData.push({ y: 5 + ((region.length * 7 + cat.length * 3 + q.charCodeAt(1)) % 17), region, cat, q });
+  const canvas = {
+    headers: { region: { label: { style: { fontWeight: "700" } } } },
+    banding: { columns: { color: "rgba(99,102,241,0.06)", headerColor: "rgba(99,102,241,0.10)", level: 0 } },
+    fieldLabels: { columns: { visible: true } },
+  };
+  const nestedEl = document.getElementById("nested");
+  new FacetViz(nestedEl, {
+    chart: { events: events(nestedEl) },
+    title: { text: "Sales by region, category and quarter" },
+    xAxis: { dimensions: ["region", "cat", "q"], title: { text: "Region / Category / Quarter" } },
+    canvas,
+    series: [
+      { type: "column", name: "Sales", data: nestedData },
+      { type: "line", name: "Trend", data: nestedData.map((p) => ({ ...p, y: p.y * 0.8 })), marker: { enabled: true } },
+    ],
+  });
+  const barsEl = document.getElementById("nestedBars");
+  new FacetViz(barsEl, {
+    chart: { type: "bar", events: events(barsEl) },
+    title: { text: "The same as horizontal bars: header levels down the left" },
+    xAxis: { dimensions: ["region", "cat"] },
+    canvas: { banding: { rows: { color: "rgba(99,102,241,0.06)", level: 0 } } },
+    series: [{ name: "Sales", data: nestedData.filter((p) => p.q === "Q1") }],
   });
 </script>
 </body>

@@ -1448,9 +1448,35 @@ xAxis: { dimensions: ['Region', 'Category'], aggregate: 'sum', opposite: true },
   group, so a group's columns stand without lines between them as on a plain
   category axis; `'all'` also divides every leaf through the plot (the look
   before 0.1.16); `'none'` draws none.
-- A `line`/`area`-type series on a nested axis is drawn as one segment **per
-  first-dimension group** (it does not run continuously across group boundaries),
-  so a column+line combo reads correctly.
+- The outer dimensions are **header levels** and the innermost a category
+  axis inside each pane: every group of the outer dimensions is its own pane,
+  as wide as its number of categories, so bars keep one width. A `line`/`area`
+  series stops at its pane's edge (it does not run across groups).
+- Each header level is its own object: its cells are `text` elements with
+  `data-fv-kind="header"`, `data-fv-id` = the field and `data-fv-path` = the
+  cell's values, outer first; `canvasClick` reports `{ kind: 'header', id, path }`.
+
+#### Header levels, dividers, banding, field labels (`canvas`)
+
+```ts
+canvas: {
+  headers: { Region: { size: 24, label: { style: { fontWeight: '700' } }, background: '#f6f7fb' },
+             Category: { visible: false } },          // hide one level; its room goes to the panes
+  dividers: { columns: { level: 0, color: '#999', width: 1, dashStyle: '4 2' } },
+  banding: { columns: { color: 'rgba(0,0,0,.04)', headerColor: 'rgba(0,0,0,.06)', level: 0 } },
+  fieldLabels: { columns: { visible: true } },
+}
+```
+
+| Key | Description |
+| --- | --- |
+| `headers[field]` | `visible`, `size` (px: height across columns, width down rows), `label` (`style`, `rotation`, `format` with `{value}`), `background` |
+| `dividers.columns` / `.rows` | `level`: a header level (it and every level outside it), `'all'` (every category too) or `'none'`; default every header level. `color`, `width`, `dashStyle`. `xAxis.groupLines` still works when this isn't set. |
+| `banding.columns` / `.rows` | Every other group of `level` (default the innermost header level) shaded in the panes (`color`) and its header cells (`headerColor`); `size` groups per band |
+| `fieldLabels.columns` / `.rows` | `visible`: the header fields' names beside their levels (`data-fv-kind="fieldLabel"`) |
+
+Horizontal bars (`chart.type: 'bar'` or `inverted`) use `.rows`: the levels run
+down the left, the outer level farthest out.
 
 On a nested x-axis specifically, this also combines with a secondary y-axis
 (below) for a "combo chart with two differently-scaled measures" look:
@@ -1653,9 +1679,11 @@ open over canvas parts.
 | `axisTitle` | the axis's id                                 | The axis title                               |
 | `grid`      | the axis's id                                 | Its grid lines and alternate bands           |
 | `plotLine`, `plotBand` | the axis's id                      | Its reference lines and bands                |
-| `plotArea`  | `plotArea`                                    | The empty plot behind the marks              |
+| `plotArea`  | `plotArea`                                    | The empty plot behind the marks (one per pane on a nested axis, `instance` = the pane key) |
 | `title`, `subtitle` | `title`, `subtitle`                   | The chart titles                             |
 | `legend`    | `legend`                                      | The legend                                   |
+| `header`    | the header's field (with `path`)              | A header cell of a nested axis level         |
+| `fieldLabel` | the field                                    | A header field's name                         |
 
 **`CanvasObjectEvent`** (`ev`): `type` (`'click'` / `'dblclick'` /
 `'contextmenu'`), `kind`, `id`, `instance` (a small-multiples cell as

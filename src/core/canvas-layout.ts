@@ -33,6 +33,14 @@ export interface CanvasBands {
   gap?: { rows?: number; columns?: number };
   /** Share of the room each pane row / column takes; defaults as described above. */
   weights?: { rows?: number[]; columns?: number[] };
+  /**
+   * Where column header levels sit: above the panes (default) or below them.
+   * Either way the outermost level is farthest from the panes, beyond the
+   * axis band on that side.
+   */
+  columnHeaderSide?: "top" | "bottom";
+  /** Where row header levels sit: left of the panes (default) or right. */
+  rowHeaderSide?: "left" | "right";
 }
 
 export interface CanvasPlacedCell {
@@ -95,11 +103,13 @@ export function layoutCanvas(grid: CanvasGrid, outer: Rect, bands: CanvasBands =
   const headersW = rowHeaderW.reduce((a, b) => a + b, 0);
   const headersH = colHeaderH.reduce((a, b) => a + b, 0);
 
+  const colTop = (bands.columnHeaderSide ?? "top") === "top";
+  const rowLeft = (bands.rowHeaderSide ?? "left") === "left";
   // Same order of operations as the single-panel inset (x + left,
   // width - left - right), so a lone pane lands on exactly the same pixels.
   const plotArea: Rect = {
-    x: outer.x + headersW + left,
-    y: outer.y + headersH + top,
+    x: outer.x + (rowLeft ? headersW : 0) + left,
+    y: outer.y + (colTop ? headersH : 0) + top,
     width: outer.width - headersW - left - right,
     height: outer.height - headersH - top - bottom,
   };
@@ -116,9 +126,19 @@ export function layoutCanvas(grid: CanvasGrid, outer: Rect, bands: CanvasBands =
     rect: { x: columns[p.column].x, y: rows[p.row].y, width: columns[p.column].width, height: rows[p.row].height },
   }));
 
+  // Header levels from the outside in: level i starts past every level
+  // outside it (before it on the far side of the panes).
+  const sum = (list: number[], from: number, to: number) => list.slice(from, to).reduce((a, b) => a + b, 0);
+  const rowX = (i: number) => rowLeft
+    ? outer.x + sum(rowHeaderW, 0, i)
+    : plotArea.x + plotArea.width + right + sum(rowHeaderW, i + 1, rowHeaderW.length);
+  const colY = (i: number) => colTop
+    ? outer.y + sum(colHeaderH, 0, i)
+    : plotArea.y + plotArea.height + bottom + sum(colHeaderH, i + 1, colHeaderH.length);
+
   // A header cell runs from its first leaf's start to its last leaf's end.
   const rowHeaders = grid.rows.headers.map((level, i) => {
-    const x = outer.x + rowHeaderW.slice(0, i).reduce((a, b) => a + b, 0);
+    const x = rowX(i);
     return level.cells.map((cell) => {
       const first = rows[cell.start];
       const last = rows[cell.start + cell.span - 1];
@@ -126,7 +146,7 @@ export function layoutCanvas(grid: CanvasGrid, outer: Rect, bands: CanvasBands =
     });
   });
   const columnHeaders = grid.columns.headers.map((level, i) => {
-    const y = outer.y + colHeaderH.slice(0, i).reduce((a, b) => a + b, 0);
+    const y = colY(i);
     return level.cells.map((cell) => {
       const first = columns[cell.start];
       const last = columns[cell.start + cell.span - 1];

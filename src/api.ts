@@ -138,6 +138,11 @@ export type {
   FacetVizPointEvent,
   CanvasObjectEvent,
   CanvasObjectKind,
+  CanvasOptions,
+  CanvasHeaderOptions,
+  CanvasDividerOptions,
+  CanvasBandOptions,
+  CanvasFieldLabelOptions,
 } from "./core/options.js";
 
 export { resolveTheme, registerTheme, LIGHT_THEME } from "./core/theme.js";

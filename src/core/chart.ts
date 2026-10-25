@@ -27,13 +27,6 @@ import type {
 } from "./options.js";
 import { Renderer } from "./renderer.js";
 import { Axis, Rect, minorGridPositions } from "./axis.js";
-import {
-  NestedAxis,
-  nestedLevelWidths,
-  nestedInnerRotationExtent,
-  NESTED_SPLIT_TIER_GAP,
-  NESTED_SPLIT_TIER_PITCH,
-} from "./nested-axis.js";
 import { Tooltip } from "./tooltip.js";
 import {
   Legend,
@@ -63,7 +56,8 @@ import {
 import { downloadBlob, rasterizePNG, serializeSVG } from "./chart-export.js";
 import { computeStacks } from "./stacking.js";
 import { buildCanvasGrid } from "./canvas-grid.js";
-import { layoutCanvas } from "./canvas-layout.js";
+import { layoutCanvas, type CanvasLayout } from "./canvas-layout.js";
+import { HeaderTiers, categoryRotationExtent, tierWidths, SPLIT_TIER_GAP, SPLIT_TIER_PITCH, TIER_HEIGHT } from "./canvas-headers.js";
 import { captureSeriesState, restoreSeriesState } from "./series-state.js";
 import { enforceConfiguredValidation } from "./validation.js";
 import { paletteColor, alpha, shade } from "./colors.js";
@@ -1164,6 +1158,7 @@ export class FacetViz {
         kind: el.getAttribute("data-fv-kind") as CanvasObjectKind,
         id: el.getAttribute("data-fv-id") ?? "",
         instance: el.getAttribute("data-fv-instance") ?? undefined,
+        ...(el.hasAttribute("data-fv-path") ? { path: el.getAttribute("data-fv-path")!.split("\u001f") } : {}),
         domEvent: e,
       };
     };
@@ -1814,8 +1809,9 @@ export class FacetViz {
     // A couple of px of slack so edge markers aren't harshly cut.
     rect.setAttribute("x", String(plot.x - 2));
     rect.setAttribute("y", String(plot.y - 2));
-    rect.setAttribute("width", String(plot.width + 4));
-    rect.setAttribute("height", String(plot.height + 4));
+    // A plot squeezed out by its axes clips everything rather than erroring.
+    rect.setAttribute("width", String(Math.max(0, plot.width + 4)));
+    rect.setAttribute("height", String(Math.max(0, plot.height + 4)));
     cp.appendChild(rect);
     defs.appendChild(cp);
 
@@ -3379,6 +3375,13 @@ export class FacetViz {
 
   // -- Nested (hierarchical x-axis) ------------------------------
 
+  /**
+   * The nested x axis as a canvas: the outer `dimensions` are header levels
+   * and the innermost is a category axis inside each pane, one pane per
+   * outer group (`xAxis.dimensions` is this shelf's old spelling). Header
+   * levels sit below the panes, or above them with `opposite` (categories
+   * stay below); down the left (and right) for horizontal bars.
+   */
   private renderNestedPanel(
     outer: Rect,
     visible: BaseSeries[],
@@ -3396,10 +3399,8 @@ export class FacetViz {
     // Stacks are of the leaf points, built after the series' own were.
     computeStacks(aggSeries);
 
-    // Horizontal bars: category axis becomes vertical (left, or left+right
-    // when split), value axis horizontal (bottom) — the same role-swap
-    // `renderPanel`/the trellis table apply for `chart.type:'bar'` /
-    // `chart.inverted`. Inverted, the secondary value axis runs across the top.
+    // Horizontal bars: categories and header levels run down the left (the
+    // value axis along the bottom, a secondary one across the top).
     const inverted = this.isInverted(visible);
 
     const yOpts0 = axisAt(this.options.yAxis, 0);
@@ -3408,333 +3409,188 @@ export class FacetViz {
     const secondary = aggSeries.filter((s) => onAxis(s, 1));
     const hasSecondary = secondary.length > 0;
 
-    // Reserve axis space. In split mode (opposite) the innermost dimension is
-    // labelled nearest the plot while the outer grouping dimensions sit on
-    // the far side.
     const xOpts = firstAxis(this.options.xAxis) ?? {};
+    const canvas = this.options.canvas ?? {};
     const split = !!xOpts.opposite;
-    // Mirrors `axisReserve`'s `visible === false` short-circuit for the
-    // plain (non-nested) panel: no line/ticks/labels/dividers drawn, and no
-    // space reserved beyond the same minimal 6px sliver.
+    // Hidden, the axis draws nothing and keeps only a 6px sliver, as a
+    // plain hidden axis does.
     const catVisible = xOpts.visible !== false;
-    const rowH = 18;
-    const splitSeparatorExtra = split
-      ? Math.max(0, dims.length - 2) * NESTED_SPLIT_TIER_GAP
-      : 0;
-    const rotExtra = !inverted
-      ? nestedInnerRotationExtent(leaves, xOpts.labels?.rotation ?? 0)
-      : 0;
+    const levels = dims.length;
     const catLabelOffset = catVisible ? axisLabelOffset(xOpts) : 0;
-    const bottomSpacingScale = this.chromeSpacingScale("bottom");
-    const leftSpacingScale = this.chromeSpacingScale("left");
-    const rightSpacingScale = this.chromeSpacingScale("right");
+    const titleOn = !!(xOpts.title?.text && xOpts.title.enabled !== false);
+    const header = (l: number) => canvas.headers?.[dims[l]];
+    const shown = (l: number) => catVisible && header(l)?.visible !== false;
 
-    let plot: Rect;
-    let catScale: CategoryScale;
-    let valScale0: Scale;
-    let valScale1: Scale;
-    const axisLayer = this.renderer.group(
-      { class: "facet-axes" },
-      this.renderer.root,
-    );
-    let valAxis0: Axis;
-    let valAxis1: Axis | undefined;
+    const grid = buildCanvasGrid({
+      [inverted ? "rows" : "columns"]: [
+        ...dims.slice(0, -1).map((field) => ({ kind: "dim" as const, field })),
+        { kind: "category" as const, field: dims[levels - 1] },
+      ],
+      records: leaves.map((l) => Object.fromEntries(dims.map((d, i) => [d, l[i]]))),
+    });
 
+    let layout: CanvasLayout;
     if (!inverted) {
-      const leftReserve =
-        LAYOUT.tickLength +
-        8 +
-        axisLabelOffset(yOpts0) +
-        this.valueLabelWidth(
-          aggSeries.filter((s) => onAxis(s, 0)),
-          yOpts0,
-        ) +
-        (yOpts0.title?.text && yOpts0.title.enabled !== false
-          ? 18 +
-            ((yOpts0.title.margin ?? 8 * leftSpacingScale) - 8) +
-            Math.max(0, yOpts0.title.offset ?? 0)
+      const leftSpacingScale = this.chromeSpacingScale("left");
+      const rightSpacingScale = this.chromeSpacingScale("right");
+      const valueBand = (opts: AxisOptions, list: BaseSeries[], scale: number) =>
+        LAYOUT.tickLength + 8 + axisLabelOffset(opts) + this.valueLabelWidth(list, opts) +
+        (opts.title?.text && opts.title.enabled !== false
+          ? 18 + ((opts.title.margin ?? 8 * scale) - 8) + Math.max(0, opts.title.offset ?? 0)
           : 0);
-      const rightReserve = hasSecondary
-        ? LAYOUT.tickLength +
-          8 +
-          axisLabelOffset(yOpts1) +
-          this.valueLabelWidth(secondary, yOpts1) +
-          (yOpts1.title?.text && yOpts1.title.enabled !== false
-            ? 18 +
-              ((yOpts1.title.margin ?? 8 * rightSpacingScale) - 8) +
-              Math.max(0, yOpts1.title.offset ?? 0)
-            : 0)
-        : 8;
-      const bottomReserve = catVisible
-        ? LAYOUT.tickLength +
-          catLabelOffset +
-          (split ? 1 : dims.length) * rowH +
-          12 +
-          rotExtra +
-          splitSeparatorExtra +
-          (xOpts.title?.text && xOpts.title.enabled !== false
-            ? 30 +
-              ((xOpts.title.margin ??
-                LAYOUT.axisTitleGap * bottomSpacingScale) -
-                LAYOUT.axisTitleGap) +
-              Math.max(0, xOpts.title.offset ?? 0)
-            : 0)
-        : 6;
-      const topReserve =
-        catVisible && split
-          ? LAYOUT.tickLength +
-            catLabelOffset +
-            (dims.length - 1) * NESTED_SPLIT_TIER_PITCH +
-            8
-          : 6;
-      plot = {
-        x: outer.x + leftReserve,
-        y: outer.y + topReserve,
-        width: outer.width - leftReserve - rightReserve,
-        height: outer.height - topReserve - bottomReserve,
-      };
-      this.gateDataLabels(plot, visible);
-
-      catScale = new CategoryScale({
-        categories: keys,
-        range: [plot.x, plot.x + plot.width],
+      const rotExtra = categoryRotationExtent(leaves, xOpts.labels?.rotation ?? 0);
+      const sepExtra = split ? Math.max(0, levels - 2) * SPLIT_TIER_GAP : 0;
+      const titleBand = catVisible
+        ? 12 + sepExtra + (titleOn
+          ? 30 + ((xOpts.title!.margin ?? LAYOUT.axisTitleGap * this.chromeSpacingScale("bottom")) - LAYOUT.axisTitleGap) +
+            Math.max(0, xOpts.title!.offset ?? 0)
+          : 0)
+        : 0;
+      const topExtra = catVisible && split ? 8 : 0;
+      const area = { x: outer.x, y: outer.y + topExtra, width: outer.width, height: outer.height - topExtra - titleBand };
+      layout = layoutCanvas(grid, area, {
+        axes: {
+          left: valueBand(yOpts0, aggSeries.filter((s) => onAxis(s, 0)), leftSpacingScale),
+          right: hasSecondary ? valueBand(yOpts1, secondary, rightSpacingScale) : 8,
+          top: catVisible && split ? LAYOUT.tickLength + catLabelOffset : 6,
+          bottom: catVisible ? LAYOUT.tickLength + catLabelOffset + TIER_HEIGHT + rotExtra : 6,
+        },
+        columnHeaders: dims.slice(0, -1).map((_, l) =>
+          shown(l) ? header(l)?.size ?? (split ? SPLIT_TIER_PITCH : TIER_HEIGHT) : 0,
+        ),
+        columnHeaderSide: split ? "top" : "bottom",
       });
-      const range: [number, number] = [plot.y + plot.height, plot.y];
-      const scaleFor = (list: BaseSeries[], opts: AxisOptions) => {
-        const domainSeries = list.length ? list : aggSeries;
-        let [lo, hi] = this.valueDomain(domainSeries, opts);
-        const preserveZeroMin = this.hasNonNegativeZeroBasedSeries(
-          domainSeries,
-          lo,
-        );
-        if (opts.type !== "log") {
-          lo = Math.min(lo, 0);
-          hi = Math.max(hi, 0);
-        }
-        return this.valueScale(
-          opts,
-          [lo, hi],
-          range,
-          true,
-          preserveZeroMin,
-        );
-      };
-      valScale0 = scaleFor(
-        aggSeries.filter((s) => onAxis(s, 0)),
-        yOpts0,
-      );
-      valScale1 = hasSecondary ? scaleFor(secondary, yOpts1) : valScale0;
-
-      valAxis0 = new Axis({
-        renderer: this.renderer,
-        scale: valScale0,
-        position: "left",
-        spacingScale: this.chromeSpacingScale("left"),
-        plot,
-        cross: catScale,
-        options: yOpts0,
-        grid: true,
-        id: "yAxis[0]",
-      });
-      valAxis0.render(axisLayer);
-      this.drawPlotArea(axisLayer, plot);
-      if (hasSecondary) {
-        valAxis1 = new Axis({
-          renderer: this.renderer,
-          scale: valScale1,
-          position: "right",
-          spacingScale: this.chromeSpacingScale("right"),
-          plot,
-          cross: catScale,
-          options: yOpts1,
-          grid: false,
-          id: "yAxis[1]",
-        });
-        valAxis1.render(axisLayer);
-      }
-      if (catVisible) {
-        new NestedAxis({
-          id: xOpts.id ?? "xAxis[0]",
-          renderer: this.renderer,
-          scale: catScale,
-          plot,
-          leaves,
-          keys,
-          position: split ? "split" : "bottom",
-          groupLines: xOpts.groupLines,
-          spacingScale: this.chromeSpacingScale("bottom"),
-          labels: xOpts.labels,
-          title: xOpts.title,
-          lineColor: xOpts.lineColor,
-          lineWidth: xOpts.lineWidth,
-          gridLineColor: xOpts.gridLineColor,
-          gridLineWidth: xOpts.gridLineWidth,
-          alternateGridColor: xOpts.alternateGridColor,
-        }).render(axisLayer);
-      }
     } else {
-      // Vertical nested axis: left reserve fits the tier(s) nearest the plot
-      // (all tiers stacked when not split, just the innermost when split);
-      // the outer grouping tiers get a right reserve only when split.
-      const colWidths = nestedLevelWidths(leaves);
-      const innerW = colWidths[colWidths.length - 1] ?? 0;
-      const outerW = colWidths.slice(0, -1).reduce((a, b) => a + b, 0);
-      const totalW = colWidths.reduce((a, b) => a + b, 0);
-      const leftReserve = catVisible
-        ? LAYOUT.tickLength +
-          8 +
-          catLabelOffset +
-          (split ? innerW : totalW) +
-          (xOpts.title?.text && xOpts.title.enabled !== false
-            ? 22 +
-              ((xOpts.title.margin ?? 16 * leftSpacingScale) - 14) +
-              Math.max(0, xOpts.title.offset ?? 0)
-            : 0)
-        : 6;
-      const rightReserve =
-        catVisible && split
-          ? LAYOUT.tickLength + 8 + catLabelOffset + outerW
-          : 8;
-      const bottomReserve =
-        LAYOUT.defaultBottomAxisHeight +
-        axisLabelOffset(yOpts0) +
-        (yOpts0.title?.text && yOpts0.title.enabled !== false
-          ? 32 +
-            ((yOpts0.title.margin ??
-              LAYOUT.axisTitleGap * bottomSpacingScale) - 14) +
-            Math.max(0, yOpts0.title.offset ?? 0)
+      const bottomSpacingScale = this.chromeSpacingScale("bottom");
+      const valueBand = (opts: AxisOptions, scale: number) =>
+        LAYOUT.defaultBottomAxisHeight + axisLabelOffset(opts) +
+        (opts.title?.text && opts.title.enabled !== false
+          ? 32 + ((opts.title.margin ?? LAYOUT.axisTitleGap * scale) - 14) + Math.max(0, opts.title.offset ?? 0)
           : 0);
-      const topReserve = hasSecondary
-        ? LAYOUT.defaultBottomAxisHeight +
-          axisLabelOffset(yOpts1) +
-          (yOpts1.title?.text && yOpts1.title.enabled !== false
-            ? 32 +
-              ((yOpts1.title.margin ??
-                LAYOUT.axisTitleGap * this.chromeSpacingScale("top")) -
-                14) +
-              Math.max(0, yOpts1.title.offset ?? 0)
-            : 0)
-        : 6;
-      plot = {
-        x: outer.x + leftReserve,
-        y: outer.y + topReserve,
-        width: outer.width - leftReserve - rightReserve,
-        height: outer.height - topReserve - bottomReserve,
-      };
-      this.gateDataLabels(plot, visible);
-
-      catScale = new CategoryScale({
-        categories: keys,
-        range: [plot.y, plot.y + plot.height],
+      const widths = tierWidths(leaves);
+      const titleW = titleOn
+        ? 22 + ((xOpts.title!.margin ?? 16 * this.chromeSpacingScale("left")) - 14) + Math.max(0, xOpts.title!.offset ?? 0)
+        : 0;
+      const leftExtra = catVisible ? 8 + titleW : 0;
+      const rightExtra = catVisible && split ? 8 : 0;
+      const area = { x: outer.x + leftExtra, y: outer.y, width: outer.width - leftExtra - rightExtra, height: outer.height };
+      layout = layoutCanvas(grid, area, {
+        axes: {
+          left: catVisible ? LAYOUT.tickLength + catLabelOffset + widths[levels - 1] : 6,
+          right: catVisible && split ? LAYOUT.tickLength + catLabelOffset : 8,
+          top: hasSecondary ? valueBand(yOpts1, this.chromeSpacingScale("top")) : 6,
+          bottom: valueBand(yOpts0, bottomSpacingScale),
+        },
+        rowHeaders: dims.slice(0, -1).map((_, l) => (shown(l) ? header(l)?.size ?? widths[l] : 0)),
+        rowHeaderSide: split ? "right" : "left",
       });
-      const range: [number, number] = [plot.x, plot.x + plot.width];
-      const scaleFor = (list: BaseSeries[], opts: AxisOptions) => {
-        const domainSeries = list.length ? list : aggSeries;
-        let [lo, hi] = this.valueDomain(domainSeries, opts);
-        const preserveZeroMin = this.hasNonNegativeZeroBasedSeries(
-          domainSeries,
-          lo,
-        );
-        if (opts.type !== "log") {
-          lo = Math.min(lo, 0);
-          hi = Math.max(hi, 0);
-        }
-        return this.valueScale(opts, [lo, hi], range, true, preserveZeroMin);
-      };
-      valScale0 = scaleFor(
-        aggSeries.filter((s) => onAxis(s, 0)),
-        yOpts0,
-      );
-      valScale1 = hasSecondary ? scaleFor(secondary, yOpts1) : valScale0;
+    }
+    const plot = layout.plotArea;
+    this.gateDataLabels(plot, visible);
 
-      valAxis0 = new Axis({
+    // One category scale across every pane: the value axes' plot lines find
+    // their groups on it, and the header levels their category positions.
+    // Panes take shares by their number of categories, so each pane's own
+    // scale has this same step.
+    const catScale = new CategoryScale({
+      categories: keys,
+      range: inverted ? [plot.y, plot.y + plot.height] : [plot.x, plot.x + plot.width],
+    });
+    const valueRange: [number, number] = inverted ? [plot.x, plot.x + plot.width] : [plot.y + plot.height, plot.y];
+    const scaleFor = (list: BaseSeries[], opts: AxisOptions) => {
+      const domainSeries = list.length ? list : aggSeries;
+      let [lo, hi] = this.valueDomain(domainSeries, opts);
+      const preserveZeroMin = this.hasNonNegativeZeroBasedSeries(domainSeries, lo);
+      if (opts.type !== "log") {
+        lo = Math.min(lo, 0);
+        hi = Math.max(hi, 0);
+      }
+      return this.valueScale(opts, [lo, hi], valueRange, true, preserveZeroMin);
+    };
+    const valScale0 = scaleFor(aggSeries.filter((s) => onAxis(s, 0)), yOpts0);
+    const valScale1 = hasSecondary ? scaleFor(secondary, yOpts1) : valScale0;
+
+    const axisLayer = this.renderer.group({ class: "facet-axes" }, this.renderer.root);
+    const valAxis0 = new Axis({
+      renderer: this.renderer,
+      scale: valScale0,
+      position: inverted ? "bottom" : "left",
+      spacingScale: this.chromeSpacingScale(inverted ? "bottom" : "left"),
+      plot,
+      cross: catScale,
+      options: yOpts0,
+      grid: true,
+      id: "yAxis[0]",
+    });
+    valAxis0.render(axisLayer);
+    // Each goes in first, so draw the last pane first to keep pane order.
+    for (const pane of [...layout.panes].reverse())
+      this.drawPlotArea(axisLayer, pane.rect, layout.panes.length > 1 ? pane.key : undefined);
+    let valAxis1: Axis | undefined;
+    if (hasSecondary) {
+      valAxis1 = new Axis({
         renderer: this.renderer,
-        scale: valScale0,
-        position: "bottom",
-        spacingScale: this.chromeSpacingScale("bottom"),
+        scale: valScale1,
+        position: inverted ? "top" : "right",
+        spacingScale: this.chromeSpacingScale(inverted ? "top" : "right"),
         plot,
         cross: catScale,
-        options: yOpts0,
-        grid: true,
-        id: "yAxis[0]",
+        options: yOpts1,
+        grid: false,
+        id: "yAxis[1]",
       });
-      valAxis0.render(axisLayer);
-      this.drawPlotArea(axisLayer, plot);
-      if (hasSecondary) {
-        valAxis1 = new Axis({
-          renderer: this.renderer,
-          scale: valScale1,
-          position: "top",
-          spacingScale: this.chromeSpacingScale("top"),
-          plot,
-          cross: catScale,
-          options: yOpts1,
-          grid: false,
-          id: "yAxis[1]",
-        });
-        valAxis1.render(axisLayer);
-      }
-      if (catVisible) {
-        new NestedAxis({
-          id: xOpts.id ?? "xAxis[0]",
-          renderer: this.renderer,
-          scale: catScale,
-          plot,
-          leaves,
-          keys,
-          position: split ? "split" : "bottom",
-          groupLines: xOpts.groupLines,
-          vertical: true,
-          spacingScale: this.chromeSpacingScale("left"),
-          labels: xOpts.labels,
-          title: xOpts.title,
-          lineColor: xOpts.lineColor,
-          lineWidth: xOpts.lineWidth,
-          gridLineColor: xOpts.gridLineColor,
-          gridLineWidth: xOpts.gridLineWidth,
-          alternateGridColor: xOpts.alternateGridColor,
-        }).render(axisLayer);
-      }
+      valAxis1.render(axisLayer);
+    }
+    if (catVisible) {
+      new HeaderTiers({
+        renderer: this.renderer,
+        id: xOpts.id ?? "xAxis[0]",
+        layout,
+        cells: inverted ? layout.headers.rows : layout.headers.columns,
+        fields: dims,
+        leaves,
+        leafCenter: (i) => catScale.scale(keys[i]),
+        step: catScale.fullStep(),
+        plot,
+        vertical: inverted,
+        split,
+        axis: xOpts,
+        canvas,
+        spacingScale: this.chromeSpacingScale(inverted ? "left" : "bottom"),
+      }).render(axisLayer);
     }
 
+    // Each pane draws its own categories' points on its own category scale,
+    // so a line stops at its group's edge. Series by series, so marks keep
+    // their series order.
     const group = this.groupInfo(aggSeries);
-    const lineFamily = new Set([
-      "line",
-      "spline",
-      "step",
-      "area",
-      "areaspline",
-    ]);
+    const track = inverted ? grid.rows : grid.columns;
+    const panes = layout.panes.map((pane) => {
+      const leaf = track.leaves[inverted ? pane.row : pane.column];
+      const keys = (leaf.categories ?? []).map((c) => [...leaf.values, c].map((v) => v ?? "").join("\u0000"));
+      const r = pane.rect;
+      return {
+        rect: r,
+        keys: new Set(keys),
+        scale: new CategoryScale({ categories: keys, range: inverted ? [r.y, r.y + r.height] : [r.x, r.x + r.width] }),
+      };
+    });
     const existing = new Set(this.renderer.root.children);
     for (const s of aggSeries) {
       const valScale = onAxis(s, 1) ? valScale1 : valScale0;
-      const xScale = inverted ? valScale : catScale;
-      const yScale = inverted ? catScale : valScale;
-      const ctx = this.seriesContext(
-        s,
-        plot,
-        xScale,
-        yScale,
-        group,
-        inverted,
-        false,
-      );
-      if (lineFamily.has(s.type)) {
-        // Draw a separate line per first-dimension group so the line does not
-        // run continuously across group boundaries.
-        let segStart = 0;
-        for (let i = 1; i <= s.points.length; i++) {
-          const boundary =
-            i === s.points.length ||
-            leaves[s.points[i].index][0] !==
-              leaves[s.points[segStart].index][0];
-          if (boundary) {
-            s.withPoints(s.points.slice(segStart, i)).render(ctx);
-            segStart = i;
-          }
-        }
-      } else {
-        s.render(ctx);
+      for (const pane of panes) {
+        const points = s.points.filter((p) => pane.keys.has(String(p.x)));
+        if (!points.length) continue;
+        const ctx = this.seriesContext(
+          s,
+          pane.rect,
+          inverted ? valScale : pane.scale,
+          inverted ? pane.scale : valScale,
+          group,
+          inverted,
+          false,
+        );
+        s.withPoints(points).render(ctx);
       }
     }
     // Clip series content to the plot — a zero-anchored column's baseline is

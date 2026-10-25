@@ -682,6 +682,64 @@ export interface PlotOptions {
   [type: string]: Partial<SeriesOptions> | undefined;
 }
 
+/** One header level, set by its field name in `canvas.headers`. */
+export interface CanvasHeaderOptions {
+  /** Draw this level. Hidden, it takes no room. Default true. */
+  visible?: boolean;
+  /** Its band's thickness in px: height across columns, width down rows. */
+  size?: number;
+  label?: {
+    /** CSS-like text style, e.g. `{ fontWeight: '600', color: '#333' }`. */
+    style?: Record<string, string>;
+    /** Degrees; down rows a header cell's text runs along it at 90 / -90. */
+    rotation?: number;
+    /** `{value}` template, as on axis labels. */
+    format?: string;
+  };
+  /** Fill behind this level's cells. */
+  background?: string;
+}
+
+/** Lines between header groups, through the panes and the header levels. */
+export interface CanvasDividerOptions {
+  /**
+   * Which changes draw a line: a header `level` number (that level and every
+   * level outside it), `'all'` (every category too) or `'none'`. Default: every
+   * header level.
+   */
+  level?: number | "all" | "none";
+  color?: string;
+  width?: number;
+  dashStyle?: string;
+}
+
+/** Every other group shaded, across the panes and its header cells. */
+export interface CanvasBandOptions {
+  /** Pane fill of the shaded groups. */
+  color?: string;
+  /** Header cell fill of the shaded groups. Default none. */
+  headerColor?: string;
+  /** The header level whose groups alternate. Default the innermost. */
+  level?: number;
+  /** Groups per band. Default 1. */
+  size?: number;
+}
+
+/** The names of the header fields, beside their levels. */
+export interface CanvasFieldLabelOptions {
+  visible?: boolean;
+  style?: Record<string, string>;
+}
+
+export interface CanvasOptions {
+  /** Per header level, by field name. */
+  headers?: Record<string, CanvasHeaderOptions>;
+  /** Dividers between column groups / row groups. */
+  dividers?: { columns?: CanvasDividerOptions; rows?: CanvasDividerOptions };
+  banding?: { columns?: CanvasBandOptions; rows?: CanvasBandOptions };
+  fieldLabels?: { columns?: CanvasFieldLabelOptions; rows?: CanvasFieldLabelOptions };
+}
+
 /** Small-multiples configuration. */
 export interface TrellisOptions {
   /** Dimension used to split panels horizontally (columns of the grid). */
@@ -812,13 +870,17 @@ export type CanvasObjectKind =
   | "plotArea"
   | "title"
   | "subtitle"
-  | "legend";
+  | "legend"
+  | "header"
+  | "fieldLabel";
 
 export interface CanvasObjectEvent {
   type: "click" | "dblclick" | "contextmenu";
   kind: CanvasObjectKind;
-  /** The part's address: an axis's id, `plotArea`, `title`, `subtitle`, `legend`. */
+  /** The part's address: an axis's id, `plotArea`, `title`, `subtitle`, `legend`; a header's field. */
   id: string;
+  /** A header cell's value, outer levels first (`['East', 'Tech']`). */
+  path?: string[];
   /** Which copy of a repeated part, e.g. a small-multiples cell (`row:col`). */
   instance?: string;
   domEvent: MouseEvent;
@@ -1027,6 +1089,8 @@ export interface ChartOptions {
   series: SeriesOptions[];
   colors?: string[];
   trellis?: TrellisOptions;
+  /** Header levels, dividers, banding and field labels of a chart laid out as a canvas (the nested x axis). */
+  canvas?: CanvasOptions;
   /** Labels, callouts, and point highlights anchored to chart values. */
   annotations?: AnnotationOptions[];
   /** Text blocks positioned from the chart edges or centre. */
