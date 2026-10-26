@@ -37,6 +37,9 @@ export interface LinearScaleConfig {
   niceMin?: boolean;
   /** Override nicening for the upper bound independently. */
   niceMax?: boolean;
+  /** An un-niced end gets a tick of its own (default true); false leaves
+   * the ticks inside the domain as they are. */
+  endTicks?: boolean;
 }
 
 export class LinearScale implements Scale {
@@ -67,9 +70,10 @@ export class LinearScale implements Scale {
       if (niceMax) this.d1 = Math.max(this.d1, lastTick);
       else this.tickValues = this.tickValues.filter((v) => v <= this.d1);
 
-      if (!niceMin && !this.tickValues.includes(this.d0))
+      const ends = cfg.endTicks !== false;
+      if (ends && !niceMin && !this.tickValues.includes(this.d0))
         this.tickValues.unshift(this.d0);
-      if (!niceMax && !this.tickValues.includes(this.d1))
+      if (ends && !niceMax && !this.tickValues.includes(this.d1))
         this.tickValues.push(this.d1);
     }
   }

@@ -829,6 +829,14 @@ export interface TrellisOptions {
   columns?: string;
   /** Dimension used to split panels vertically (rows of the grid). */
   rows?: string;
+  /**
+   * The column panels' values in order (others after, as found). By default
+   * panels go in the order their values are first met in the points, which
+   * on a numeric x axis is the order of the x values.
+   */
+  columnOrder?: string[];
+  /** The row panels' values in order, as `columnOrder`. */
+  rowOrder?: string[];
   /** Gap in px between panels. */
   gap?: number;
   /** Share the y scale across all panels (default true). */

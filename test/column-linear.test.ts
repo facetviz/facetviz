@@ -57,4 +57,36 @@ describe('columns on a continuous x axis', () => {
     const title = el.querySelector('text[data-fv-kind="axisTitle"][data-fv-id="xAxis[0]"]');
     expect(num(title!, 'x')).toBeGreaterThan(8);
   });
+
+  it('keeps panels in the order given, the rest after as met', () => {
+    const data = [{ x: 4, y: 38, seg: 'Consumer' }, { x: 3, y: 23, seg: 'Corporate' }, { x: 2, y: 14, seg: 'Home' }];
+    const order = (el: HTMLElement) => [...el.querySelectorAll('[data-fv-kind="plotArea"]')].map((p) => p.getAttribute('data-fv-instance'));
+    // By default, as the points are met.
+    expect(order(render({ xAxis: { type: 'linear' }, series: [{ type: 'column', name: 'Sales', data }], trellis: { columns: 'seg' } }))).toEqual(['#seg=Consumer', '#seg=Corporate', '#seg=Home']);
+    document.body.innerHTML = '';
+    const el = render({ xAxis: { type: 'linear' }, series: [{ type: 'column', name: 'Sales', data }], trellis: { columns: 'seg', columnOrder: ['Home', 'Consumer'] } });
+    expect(order(el)).toEqual(['#seg=Home', '#seg=Consumer', '#seg=Corporate']);
+  });
+
+  it('runs from just below the smallest number to just above the largest, ticks inside', () => {
+    const el = render({
+      xAxis: { type: 'linear' },
+      series: [{ type: 'column', name: 'Sales', data: [{ x: -0.5, y: 5, seg: 'A' }, { x: 8.3, y: 4, seg: 'B' }] }],
+      trellis: { columns: 'seg' },
+    });
+    const labels = [...el.querySelectorAll('[data-fv-kind="axis"][data-fv-id="xAxis[0]"] text')].map((t) => Number(t.textContent));
+    // Not out to -2 or 10: the first tick is 0, the last 8 at most.
+    expect(Math.min(...labels)).toBeGreaterThanOrEqual(0);
+    expect(Math.max(...labels)).toBeLessThanOrEqual(8);
+  });
+
+  it('draws an x plot line at zero in every panel', () => {
+    const el = render({
+      xAxis: { type: 'linear', plotLines: [{ value: 0, color: '#999', width: 1, dashStyle: '2 3', zIndex: 'below' }] },
+      series: [{ type: 'column', name: 'Sales', data: [{ x: -0.5, y: 5, seg: 'A' }, { x: 8, y: 4, seg: 'B' }, { x: 3, y: 2, seg: 'C' }] }],
+      trellis: { columns: 'seg' },
+    });
+    const lines = [...el.querySelectorAll('line, path')].filter((n) => n.getAttribute('stroke-dasharray') === '2 3');
+    expect(lines.length).toBe(3);
+  });
 });

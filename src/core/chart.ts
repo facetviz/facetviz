@@ -44,6 +44,7 @@ import {
   merge,
   extent,
   niceDateTicks,
+  niceTicks,
   formatDate,
   formatString,
   decimateLine,
@@ -2409,8 +2410,8 @@ export class FacetViz {
       .flatMap((s) => s.points.map((p) => p.options as Record<string, unknown>))
       .filter((r) => (!rowDim || r[rowDim] != null) && (!colDim || r[colDim] != null));
     const grid = buildCanvasGrid({
-      rows: [...(rowDim ? [{ kind: "dim" as const, field: rowDim }] : []), ...(measured && !measuresAcross ? [measureItem] : [])],
-      columns: [...(colDim ? [{ kind: "dim" as const, field: colDim }] : []), ...(measuresAcross ? [measureItem] : [])],
+      rows: [...(rowDim ? [{ kind: "dim" as const, field: rowDim, ...(t.rowOrder ? { sort: t.rowOrder } : {}) }] : []), ...(measured && !measuresAcross ? [measureItem] : [])],
+      columns: [...(colDim ? [{ kind: "dim" as const, field: colDim, ...(t.columnOrder ? { sort: t.columnOrder } : {}) }] : []), ...(measuresAcross ? [measureItem] : [])],
       records,
     });
     const paneSeries = new Map(
@@ -4942,17 +4943,43 @@ export class FacetViz {
     if (xOpts.type === "linear") {
       // Up the side of a bar chart, values grow upwards.
       if (inverted) range = [range[1], range[0]];
-      const sc = this.valueScale(xOpts.tickCount != null || xOpts.tickInterval != null ? xOpts : { ...xOpts, tickCount: ticks }, domain, range, true, true);
+      const sc = this.linearX(xOpts.tickCount != null || xOpts.tickInterval != null ? xOpts : { ...xOpts, tickCount: ticks }, domain, range);
       // Panels side by side: a tick at a panel's right edge would run into
       // the next panel's first, so it's left out.
       if (!besideOthers || !(sc instanceof LinearScale)) return sc;
       const vals = sc.ticks() as number[];
       const last = vals[vals.length - 1];
-      return vals.length > 2 && last != null && Math.abs(range[1] - sc.scale(last)) < 24
+      return vals.length > 1 && last != null && Math.abs(range[1] - sc.scale(last)) < 14
         ? new LinearScale({ domain: sc.domain, range, ticks: vals.slice(0, -1), format: (sc as unknown as { format?: (v: number) => string }).format })
         : sc;
     }
     return new LinearScale({ domain, range, reversed: xOpts.reversed });
+  }
+
+  /** An explicitly linear x scale: it runs from just below its smallest
+   * value to just above its largest (room for half a column and a little
+   * more), not out to the next round tick, so marks use the width; its
+   * own min or max are kept, and so is zero when all values are on one
+   * side of it. Ticks are round values inside. */
+  private linearX(opts: AxisOptions, [lo, hi]: [number, number], range: [number, number]): Scale {
+    if (opts.type !== "linear" || positiveLog(opts)) return this.valueScale(opts, [lo, hi], range, true, true);
+    const px = Math.abs(range[1] - range[0]);
+    const column = Math.max(4, Math.min(24, px * 0.08));
+    const padPx = column / 2 + 6;
+    const span = hi - lo || Math.abs(hi) || 1;
+    const pad = (span * padPx) / Math.max(1, px - 2 * padPx);
+    let min = opts.min ?? lo - pad;
+    let max = opts.max ?? hi + pad;
+    if (opts.min === undefined && lo >= 0 && min < 0) min = Math.min(0, lo);
+    if (opts.max === undefined && hi <= 0 && max > 0) max = Math.max(0, hi);
+    if (max <= min) max = min + 1;
+    // Round ticks inside the range: a finer step when a coarse one leaves
+    // fewer than two (0..31 asked for two ticks steps by 50).
+    const inside = (count: number) => niceTicks(min, max, count).filter((v) => v >= min - 1e-9 && v <= max + 1e-9);
+    const want = opts.tickCount ?? 4;
+    let ticks = fixedTicks(opts, min, max) ?? inside(want);
+    for (let count = want + 1; ticks.length < 2 && count <= want + 4; count++) ticks = inside(count);
+    return new LinearScale({ domain: [min, max], range, reversed: opts.reversed, ticks, niceMin: false, niceMax: false, endTicks: false });
   }
 
   private xNumericDomain(visible: BaseSeries[]): [number, number] {
