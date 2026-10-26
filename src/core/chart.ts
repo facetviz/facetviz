@@ -2461,6 +2461,10 @@ export class FacetViz {
     };
     const lastRow = grid.rows.leaves.length - 1;
     const lastColumn = grid.columns.leaves.length - 1;
+    // With several pane rows the left axis's title is drawn once down them
+    // all, as the bottom one is across the columns: in every row it would
+    // be longer than the row and overlap the next.
+    const leftOnce = lastRow > 0;
 
     // On the canvas past the boost threshold, counting every panel's points
     // together; one hover for all of them.
@@ -2509,7 +2513,7 @@ export class FacetViz {
         plot: cell,
         grid: !!xOpts.gridLineWidth,
         options: catLabelled
-          ? { ...xOpts, ticks: false, ...(inverted ? {} : { title: undefined }) }
+          ? { ...xOpts, ticks: false, ...(inverted && !leftOnce ? {} : { title: undefined }) }
           : { ...bare, ticks: false },
         id: xOpts.id ?? "xAxis[0]",
         instance: pane.key,
@@ -2523,7 +2527,7 @@ export class FacetViz {
         plot: cell,
         grid: true,
         cross: catScale,
-        options: valLabelled ? (inverted ? { ...yOpts0, title: undefined } : yOpts0) : bare,
+        options: valLabelled ? (inverted || leftOnce ? { ...yOpts0, title: undefined } : yOpts0) : bare,
         id: yOpts0.id ?? "yAxis[0]",
         instance: pane.key,
       });
@@ -2560,6 +2564,23 @@ export class FacetViz {
     }
 
     if (hits.length) this.installBoostHover(rectAround(layout.panes.map((p) => p.rect)), hits);
+
+    // The left axis's title, once, centred down the pane rows.
+    const leftTitle = leftOpts.title?.text && leftOpts.title.enabled !== false ? leftOpts.title : undefined;
+    if (leftOnce && leftTitle?.text) {
+      const p = layout.plotArea;
+      const x = p.x - leftBand + 12 - Math.max(0, leftTitle.offset ?? 0);
+      const y = p.y + p.height / 2;
+      const el = this.renderer.text(
+        leftTitle.text,
+        x,
+        y,
+        { "text-anchor": "middle", transform: `rotate(-90 ${x} ${y})`, ...FONTS.axisTitle, ...sanitizeStyle(leftTitle.style) },
+        this.renderer.root,
+      );
+      el.setAttribute("data-fv-kind", "axisTitle");
+      el.setAttribute("data-fv-id", (inverted ? xOpts.id : yOpts0.id) ?? (inverted ? "xAxis[0]" : "yAxis[0]"));
+    }
 
     // The bottom axis's title, once, centred under the panes.
     if (bottomTitle?.text) {
