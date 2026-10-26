@@ -308,8 +308,13 @@ export class ColumnSeries extends BaseSeries {
     const catScale = (horizontal ? ctx.yScale : ctx.xScale) as CategoryScale;
     const valScale: Scale = horizontal ? ctx.xScale : ctx.yScale;
 
-    const band =
-      this.options.groupPadding != null && typeof catScale.fullStep === "function"
+    // On a continuous axis (columns placed at numbers) there are no bands:
+    // each column is a share of the plot's width, 4 to 24px.
+    const continuous = catScale.bandwidth() === 0 && typeof catScale.fullStep !== "function";
+    const span = Math.abs(catScale.range()[1] - catScale.range()[0]);
+    const band = continuous
+      ? Math.max(4, Math.min(24, span * 0.08)) * groupCount
+      : this.options.groupPadding != null && typeof catScale.fullStep === "function"
         ? Math.abs(catScale.fullStep()) * (1 - clampPadding(this.options.groupPadding, 0.2))
         : catScale.bandwidth();
     const subWidth = band / groupCount;

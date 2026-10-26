@@ -1470,7 +1470,11 @@ export class FacetViz {
 
   /** Estimated px width of the widest value-axis label. */
   private valueLabelWidth(visible: BaseSeries[], valOpts: AxisOptions): number {
-    const [dmin, dmax] = this.valueDomain(visible, valOpts);
+    return this.numberLabelWidth(this.valueDomain(visible, valOpts), valOpts);
+  }
+
+  /** How wide an axis's number labels over `domain` are. */
+  private numberLabelWidth([dmin, dmax]: [number, number], valOpts: AxisOptions): number {
     const fmt = (v: number) => {
       if (valOpts.labels?.formatter) return String(valOpts.labels.formatter(v));
       const r = Math.abs(v) >= 100 ? Math.round(v) : Math.round(v * 100) / 100;
@@ -2500,7 +2504,12 @@ export class FacetViz {
     const nameLeft = measured && !measuresAcross ? this.paneNameWidth(measureNames) : 0;
     const nameTop = measuresAcross ? PANE_NAME_HEIGHT : 0;
     const leftBand = (leftOpts.size ?? LAYOUT.tickLength + 8 + axisLabelOffset(leftOpts) +
-      (inverted ? this.catLabelWidth(allVisible) : this.valueLabelWidth(primaryVisible, yOpts0)) + titleRoom(leftOpts)) + nameLeft;
+      (!inverted
+        ? this.valueLabelWidth(primaryVisible, yOpts0)
+        : categories
+          ? this.catLabelWidth(allVisible)
+          // Bars placed at numbers: those numbers up the side.
+          : this.numberLabelWidth(this.xNumericDomain(allVisible), xOpts)) + titleRoom(leftOpts)) + nameLeft;
     const rightBand = hasSecondary && yOpts1
       ? yOpts1.size ?? LAYOUT.tickLength + 8 + axisLabelOffset(yOpts1) + this.valueLabelWidth(secondaryVisible, yOpts1) + titleRoom(yOpts1)
       : 0;
@@ -2580,17 +2589,20 @@ export class FacetViz {
       const catRange: [number, number] = inverted ? [cell.y, cell.y + cell.height] : [cell.x, cell.x + cell.width];
       const catScale = categories
         ? new CategoryScale({ categories, range: catRange })
-        : new LinearScale({
-            domain: this.xNumericDomain(t.sharedX === false && cellSeries.length ? cellSeries : allVisible),
-            range: catRange,
-          });
+        : this.continuousX(xOpts, this.xNumericDomain(t.sharedX === false && cellSeries.length ? cellSeries : allVisible), catRange, !inverted && lastColumn > 0, inverted);
       const valRange: [number, number] = inverted ? [cell.x, cell.x + cell.width] : [cell.y + cell.height, cell.y];
       const measureId = measureOfPane.get(pane.key) ?? 0;
       // Short panes still get a few ticks to read values by: about one per
-      // 28px of the pane (one more where the top tick is dropped below).
+      // 28px of the pane (one more where the top tick is dropped below), or
+      // across a bar chart's, one per 70px.
       const paneSpan = inverted ? cell.width : cell.height;
       const ticksFor = (o: AxisOptions): AxisOptions =>
-        o.tickCount != null || o.tickInterval != null ? o : { ...o, tickCount: Math.max(3, Math.min(6, Math.round(paneSpan / 28))) + (repeat || gap > 0 ? 0 : 1) };
+        o.tickCount != null || o.tickInterval != null
+          ? o
+          : inverted
+            // Across a narrow pane, labels need more room than up a short one.
+            ? { ...o, tickCount: Math.max(2, Math.min(6, Math.round(paneSpan / 70))) }
+            : { ...o, tickCount: Math.max(3, Math.min(6, Math.round(paneSpan / 28))) + (repeat || gap > 0 ? 0 : 1) };
       const valOpts = ticksFor(measured ? measureAxis(measureId) : yOpts0);
       const valScale = dropLastTick(
         this.valueScale(valOpts, measured ? measureRange(measureId) : valueRange(row, column), valRange, true, preserveZeroMin),
@@ -2902,7 +2914,7 @@ export class FacetViz {
       const catRange: [number, number] = inverted ? [r.y, r.y + r.height] : [r.x, r.x + r.width];
       const catScale: Scale = categories
         ? new CategoryScale({ categories, range: catRange, reversed: xOpts.reversed })
-        : new LinearScale({ domain: this.xNumericDomain(visible), range: catRange, reversed: xOpts.reversed });
+        : this.continuousX(xOpts, this.xNumericDomain(visible), catRange, false, inverted);
       let [lo, hi] = this.valueDomain(list, opts);
       const preserveZeroMin = this.hasNonNegativeZeroBasedSeries(list, lo);
       if (!positiveLog(opts) && reachesZero(opts, list.some((s) => zeroTypes.includes(s.type)))) {
@@ -4920,6 +4932,29 @@ export class FacetViz {
     );
   }
 
+  /** A continuous x scale on the canvas: an explicitly linear axis is
+   * scaled as a value axis is (its min and max, nice ticks by its width,
+   * room at the ends); otherwise its points' extent. Beside other panels,
+   * a tick at its right edge is left out. */
+  private continuousX(xOpts: AxisOptions, domain: [number, number], range: [number, number], besideOthers = false, inverted = false): Scale {
+    // About one tick per 70px, so narrow panels' labels don't run together.
+    const ticks = Math.max(2, Math.min(8, Math.round(Math.abs(range[1] - range[0]) / 70)));
+    if (xOpts.type === "linear") {
+      // Up the side of a bar chart, values grow upwards.
+      if (inverted) range = [range[1], range[0]];
+      const sc = this.valueScale(xOpts.tickCount != null || xOpts.tickInterval != null ? xOpts : { ...xOpts, tickCount: ticks }, domain, range, true, true);
+      // Panels side by side: a tick at a panel's right edge would run into
+      // the next panel's first, so it's left out.
+      if (!besideOthers || !(sc instanceof LinearScale)) return sc;
+      const vals = sc.ticks() as number[];
+      const last = vals[vals.length - 1];
+      return vals.length > 2 && last != null && Math.abs(range[1] - sc.scale(last)) < 24
+        ? new LinearScale({ domain: sc.domain, range, ticks: vals.slice(0, -1), format: (sc as unknown as { format?: (v: number) => string }).format })
+        : sc;
+    }
+    return new LinearScale({ domain, range, reversed: xOpts.reversed });
+  }
+
   private xNumericDomain(visible: BaseSeries[]): [number, number] {
     const xs: number[] = [];
     for (const s of visible)
@@ -4952,10 +4987,12 @@ export class FacetViz {
   ): string[] | undefined {
     const xAxis = axisAt(this.options.xAxis, axisIndex);
     if (xAxis?.categories) return xAxis.categories;
-    // A datetime/continuous x-axis stays numeric even for bar-family series.
+    // A datetime or linear x-axis stays numeric even for bar-family series
+    // (columns placed at numbers).
     const banded =
       xAxis?.type === "category" ||
       (xAxis?.type !== "datetime" &&
+        xAxis?.type !== "linear" &&
         visible.some((s) => FacetViz.BANDED.has(s.type)));
     const allNumeric = visible.every((s) =>
       s.points.every((p) => typeof p.x === "number"),
