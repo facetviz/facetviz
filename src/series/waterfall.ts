@@ -12,6 +12,7 @@
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
 import { CategoryScale } from '../core/scale.js';
 import { drawDataLabel, labelString, type LabelPlacement } from './data-label.js';
+import type { LabelContext } from '../core/options.js';
 
 /** Waterfall's point-level fields. */
 export interface WaterfallPointOptions {
@@ -108,10 +109,11 @@ export class WaterfallSeries extends BaseSeries {
 
       if (labels) {
         const value = isSum ? cum : (p.y ?? 0);
-        const text = labelString(dl!, {
+        const labelCtx: LabelContext = {
           x: p.x, y: value, point: p.options, series: this.name,
           name: p.name ?? p.x, index: p.index, color,
-        });
+        };
+        const text = labelString(dl!, labelCtx);
         // Falls hang below their bar; rises and sums sit on top.
         const down = to < from;
         const d = dl!.distance ?? 0;
@@ -121,7 +123,7 @@ export class WaterfallSeries extends BaseSeries {
         else if (pos === 'inside') place = down ? { x: cx, y: yBot - 5 - d, anchor: 'middle' } : { x: cx, y: yTop + 12 + d, anchor: 'middle', side: 'down' };
         else if (pos === 'base') place = down ? { x: cx, y: yTop + 12 + d, anchor: 'middle', side: 'down' } : { x: cx, y: yBot - 5 - d, anchor: 'middle' };
         else place = down ? { x: cx, y: yBot + 4 + d, anchor: 'middle', verticalAlign: 'hanging' } : { x: cx, y: yTop - 4 - d, anchor: 'middle' };
-        drawDataLabel(renderer, g, text, place, dl!);
+        drawDataLabel(renderer, g, text, place, dl!, labelCtx);
       }
 
       prevEndX = x0 + barW;

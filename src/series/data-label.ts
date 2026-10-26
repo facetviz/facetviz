@@ -116,6 +116,8 @@ export function drawDataLabel(
   text: string,
   place: LabelPlacement,
   dl: DataLabelOptions,
+  /** The point the label is for, for `dl.colorOf`. */
+  ctx?: LabelContext,
 ): void {
   if (!text) return;
   if (dl.offsetX || dl.offsetY)
@@ -131,7 +133,7 @@ export function drawDataLabel(
   const attrs: Record<string, string | number> = {
     'text-anchor': anchor,
     ...FONTS.dataLabel,
-    fill: dl.color ?? FONTS.dataLabel.fill,
+    fill: (ctx && dl.colorOf?.(ctx)) || (dl.color ?? FONTS.dataLabel.fill),
     'font-size': dataLabelFontSize(dl),
   };
   if (place.verticalAlign) attrs['dominant-baseline'] = place.verticalAlign;
@@ -168,11 +170,12 @@ export function drawPointLabels(
   const total = data.reduce((sum, { p }) => sum + (p.y ?? 0), 0);
   for (const { pt, p } of data) {
     if (!labelEvery(dl, p.index)) continue;
-    const text = labelString(dl, {
+    const ctx: LabelContext = {
       x: p.x, y: p.y, point: p.options, series: seriesName,
       name: p.name ?? p.x, index: p.index, color: p.color ?? seriesColor,
       total, percentage: total ? ((p.y ?? 0) / total) * 100 : undefined,
-    });
+    };
+    const text = labelString(dl, ctx);
     let place: LabelPlacement;
     switch (pos) {
       // Rotated, a label below the point hangs from just under it.
@@ -186,6 +189,6 @@ export function drawPointLabels(
       case 'right': place = { x: pt.x + 8 + d, y: pt.y + 4, anchor: 'start', side: 'right' }; break;
       default: place = { x: pt.x, y: pt.y - 8 - d, anchor: 'middle' }; // top
     }
-    drawDataLabel(renderer, parent, text, place, dl);
+    drawDataLabel(renderer, parent, text, place, dl, ctx);
   }
 }

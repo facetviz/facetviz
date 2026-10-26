@@ -7,6 +7,7 @@
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from "./base.js";
 import { CategoryScale, Scale } from "../core/scale.js";
 import type { Point } from "../core/point.js";
+import type { LabelContext } from "../core/options.js";
 import {
   dataLabelFontSize,
   dataLabelTextAttrs,
@@ -415,7 +416,7 @@ export class ColumnSeries extends BaseSeries {
     const dl = this.options.dataLabels;
     if (!dl?.enabled || !labelEvery(dl, p.index)) return;
     const total = this.points.reduce((s, pt) => s + (pt.y ?? 0), 0);
-    const text = labelString(dl, {
+    const labelCtx: LabelContext = {
       x: p.x,
       y: p.y,
       point: p.options,
@@ -425,7 +426,8 @@ export class ColumnSeries extends BaseSeries {
       color: p.color ?? this.color,
       total,
       percentage: total ? ((p.y ?? 0) / total) * 100 : undefined,
-    });
+    };
+    const text = labelString(dl, labelCtx);
     const d = dl.distance ?? 0;
     // 'outside' only makes sense for a lone bar or the topmost stacked
     // segment — for any earlier segment it sits inside the segment stacked
@@ -485,7 +487,7 @@ export class ColumnSeries extends BaseSeries {
     // would spill over the segment's edges onto its neighbours.
     if (p.stackHigh !== undefined && pos !== "outside" && !labelFits(ctx, text, dl, rect))
       return;
-    drawDataLabel(ctx.renderer, parent, text, place, dl);
+    drawDataLabel(ctx.renderer, parent, text, place, dl, labelCtx);
   }
 }
 

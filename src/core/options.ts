@@ -273,6 +273,10 @@ export interface DataLabelOptions {
   format?: string; // e.g. '{y}' or '{point.name}: {y}'
   formatter?: (ctx: LabelContext) => string;
   color?: string;
+  /** A label's own color from its point (e.g. red below zero); what it
+   * returns wins over `color`, nothing returned keeps `color`. Column,
+   * bar, line, area, scatter, bubble and waterfall labels. */
+  colorOf?: (ctx: LabelContext) => string | null | undefined;
   fontSize?: string;
   fontWeight?: string;
   /** `italic` slants the label. */

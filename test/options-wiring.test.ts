@@ -106,6 +106,20 @@ describe('configuration option wiring', () => {
     }
   });
 
+  it('colors each data label by its point with colorOf, over color', () => {
+    for (const type of ['column', 'line', 'waterfall'] as const) {
+      const el = container();
+      new FacetViz(el, {
+        chart: { ...baseChart, type },
+        xAxis: { categories: ['a', 'b'] },
+        series: [{ type, data: [5, -3], dataLabels: { enabled: true, color: '#111111', colorOf: (c) => ((c.y ?? 0) < 0 ? '#cc0000' : null) } }],
+      });
+      const fill = (text: string) => [...el.querySelectorAll<SVGTextElement>('.facet-series text')].find((t) => t.textContent === text)?.getAttribute('fill');
+      expect(fill('5')).toBe('#111111');
+      expect(fill('-3')).toBe('#cc0000');
+    }
+  });
+
   it('nudges heatmap, funnel and treemap labels by offsetX and offsetY', () => {
     const at = (type: 'heatmap' | 'funnel' | 'treemap', offsets: { offsetX?: number; offsetY?: number } = {}) => {
       const el = container();
