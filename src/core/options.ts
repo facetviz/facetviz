@@ -349,7 +349,14 @@ export interface TitleOptions {
   /** Render the title. Default `true` when text is present. */
   enabled?: boolean;
   align?: "left" | "center" | "right";
-  /** Space below the title block in pixels. */
+  /** What `align` lines up with: the whole chart (default) or the plot
+   * area, past the axis labels. Set on the title, it applies to the
+   * subtitle too. */
+  alignTo?: "chart" | "plot";
+  /** Above the plot (default) or under everything else. Set on the title,
+   * it applies to the subtitle too. */
+  verticalAlign?: "top" | "bottom";
+  /** Space below the title block in pixels (above it, at the bottom). */
   margin?: number;
   /** Additional vertical offset applied to the rendered title. */
   offsetY?: number;

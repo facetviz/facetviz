@@ -546,7 +546,20 @@ export class FacetViz {
 
     const spacing = this.resolveSpacing();
     let top = spacing[0];
-    top += this.renderTitles(top);
+    // Titles at the bottom are drawn as at the top, then moved down, the
+    // margin that would follow them put between them and the chart.
+    const titles = this.renderer.group({}, this.renderer.root);
+    const titleTexts: Array<[SVGTextElement, string | undefined]> = [];
+    const titlesUsed = this.renderTitles(top, titles, titleTexts);
+    const titlesBottom = this.options.title?.verticalAlign === "bottom";
+    if (titlesBottom) {
+      const sub = this.options.subtitle;
+      const margin = sub?.text && sub.enabled !== false ? (sub.margin ?? SUBTITLE_DEFAULT_MARGIN) : (this.options.title?.margin ?? TITLE_DEFAULT_MARGIN);
+      titles.setAttribute("transform", `translate(0, ${this.height - spacing[2] - top - titlesUsed + margin})`);
+    } else {
+      top += titlesUsed;
+    }
+    const plotBefore = this.plotCtx;
 
     // Legend placement: top / bottom (horizontal strip) or left / right
     // (vertical column). Space is reserved on the chosen side.
@@ -584,7 +597,7 @@ export class FacetViz {
       x: spacing[3] + (legendPlace === "left" ? legendReserveW : 0),
       y: top + (legendPlace === "top" ? legendReserveH : 0),
       width: this.width - spacing[1] - spacing[3] - legendReserveW,
-      height: this.height - top - spacing[2] - legendReserveH,
+      height: this.height - top - spacing[2] - legendReserveH - (titlesBottom ? titlesUsed : 0),
     };
 
     // Nested (hierarchical x-axis) takes precedence over trellis grids.
@@ -679,6 +692,15 @@ export class FacetViz {
         layout: legendVertical ? "vertical" : "horizontal",
         onToggle: (i) => this.toggleSeries(i),
       }).render(this.renderer.group({}, this.renderer.root));
+    }
+
+    // Titles lined up with the plot area, once it's known (a chart with
+    // no cartesian plot keeps them on the chart).
+    const plot = this.plotCtx !== plotBefore ? this.plotCtx?.plot : undefined;
+    if (this.options.title?.alignTo === "plot" && plot) {
+      for (const [el, align] of titleTexts) {
+        el.setAttribute("x", String(align === "left" ? plot.x : align === "right" ? plot.x + plot.width : plot.x + plot.width / 2));
+      }
     }
 
     renderChartTexts({
@@ -1114,7 +1136,7 @@ export class FacetViz {
     ) as [number, number, number, number];
   }
 
-  private renderTitles(top: number): number {
+  private renderTitles(top: number, parent: SVGElement, texts: Array<[SVGTextElement, string | undefined]>): number {
     let used = 0;
     const title = this.options.title;
     if (title?.text && title.enabled !== false) {
@@ -1125,16 +1147,19 @@ export class FacetViz {
       };
       const fontSize = parseFloat(style["font-size"] ?? "18") || 18;
       const baseline = fontSize + 2;
-      this.renderer.text(
-        title.text,
-        x,
-        top + baseline + (title.offsetY ?? 0),
-        {
-          "text-anchor": this.anchor(title.align),
-          ...style,
-        },
-        this.renderer.root,
-      );
+      texts.push([
+        this.renderer.text(
+          title.text,
+          x,
+          top + baseline + (title.offsetY ?? 0),
+          {
+            "text-anchor": this.anchor(title.align),
+            ...style,
+          },
+          parent,
+        ),
+        title.align,
+      ]);
       used +=
         baseline +
         (title.margin ?? TITLE_DEFAULT_MARGIN) +
@@ -1154,16 +1179,19 @@ export class FacetViz {
       const lines = this.wrapText(sub.text, this.width - spacing[1] - spacing[3], style);
       const lineHeight = fontSize + 4;
       lines.forEach((line, i) =>
-        this.renderer.text(
-          line,
-          x,
-          top + used + baseline + i * lineHeight + (sub.offsetY ?? 0),
-          {
-            "text-anchor": this.anchor(sub.align),
-            ...style,
-          },
-          this.renderer.root,
-        ),
+        texts.push([
+          this.renderer.text(
+            line,
+            x,
+            top + used + baseline + i * lineHeight + (sub.offsetY ?? 0),
+            {
+              "text-anchor": this.anchor(sub.align),
+              ...style,
+            },
+            parent,
+          ),
+          sub.align,
+        ]),
       );
       used +=
         baseline +
