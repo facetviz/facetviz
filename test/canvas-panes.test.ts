@@ -139,5 +139,11 @@ describe('series in panes', () => {
     // No other title on the value axes.
     expect(el.querySelectorAll('[data-fv-kind="axisTitle"][data-fv-id="yAxis[0]"]')).toHaveLength(2);
   });
+
+  it('keeps an empty value axis title hidden in every pane, rather than naming the series', () => {
+    const el = render({ yAxis: { title: { text: '' } } });
+    const titles = [...el.querySelectorAll('[data-fv-kind="axisTitle"][data-fv-id="yAxis[0]"]')].map((t) => t.textContent);
+    expect(titles.filter(Boolean)).toEqual([]);
+  });
 });
 

@@ -2812,7 +2812,10 @@ export class FacetViz {
     const axisOf = (id: number): AxisOptions => {
       const own = paneOpts[id]?.yAxis ?? {};
       const merged: AxisOptions = { ...yOpts0, ...own };
-      if (!own.title && !yOpts0.title?.text) merged.title = cross ? undefined : { ...yOpts0.title, text: nameOf(id) };
+      // Titled by its series only when no title is given at all: an empty
+      // one keeps the title hidden.
+      if (own.title?.text === undefined && yOpts0.title?.text === undefined) merged.title = cross ? undefined : { ...yOpts0.title, ...own.title, text: nameOf(id) };
+      else if (cross && own.title?.text === undefined) merged.title = undefined;
       return merged;
     };
     const categories = this.currentCategories(visible);
