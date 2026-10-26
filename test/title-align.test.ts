@@ -33,6 +33,24 @@ describe('title alignTo and verticalAlign', () => {
     expect(plot).toBeCloseTo(plotLeft(el2), 0);
   });
 
+  it('lines up with the plot area on the canvas too (panes, small multiples)', () => {
+    const panes = container(400, 300);
+    new FacetViz(panes, {
+      chart: { type: 'column', animation: false },
+      title: { text: 'Sales', align: 'left', alignTo: 'plot' },
+      series: [{ type: 'column', name: 'S', data, pane: 0 }, { type: 'column', name: 'T', data, pane: 1 }],
+    });
+    expect(Number(title(panes).getAttribute('x'))).toBeCloseTo(plotLeft(panes), 0);
+    const panels = container(400, 300);
+    new FacetViz(panels, {
+      chart: { type: 'column', animation: false },
+      title: { text: 'Sales', align: 'left', alignTo: 'plot' },
+      series: [{ type: 'column', name: 'S', data: data.map(([x, y]) => ({ x, y, seg: 'P' })) }],
+      trellis: { columns: 'seg' },
+    });
+    expect(Number(title(panels).getAttribute('x'))).toBeCloseTo(plotLeft(panels), 0);
+  });
+
   it('sits under the chart at the bottom, which then starts higher', () => {
     const el = container(400, 300);
     new FacetViz(el, { chart: { type: 'column', animation: false }, title: { text: 'Sales', verticalAlign: 'bottom' }, series: [{ type: 'column', name: 'S', data }] });

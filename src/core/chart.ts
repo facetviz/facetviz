@@ -190,6 +190,9 @@ export class FacetViz {
   /** Scales + plot captured for drag-zoom. */
   private zoomState?: { plot: Rect; xScale: Scale; yScale: Scale };
   /** Plot + scales of the last cartesian panel (for crosshair). */
+  /** The plot area a canvas layout (panes, small multiples) drew in, for
+   * titles lined up with the plot (`title.alignTo: 'plot'`). */
+  private canvasPlot?: Rect;
   private plotCtx?: {
     plot: Rect;
     xScale: Scale;
@@ -581,6 +584,7 @@ export class FacetViz {
       top += titlesUsed;
     }
     const plotBefore = this.plotCtx;
+    this.canvasPlot = undefined;
 
     // Legend placement: top / bottom (horizontal strip) or left / right
     // (vertical column). Space is reserved on the chosen side.
@@ -702,7 +706,7 @@ export class FacetViz {
 
     // Titles lined up with the plot area, once it's known (a chart with
     // no cartesian plot keeps them on the chart).
-    const plot = this.plotCtx !== plotBefore ? this.plotCtx?.plot : undefined;
+    const plot = this.plotCtx !== plotBefore ? this.plotCtx?.plot : this.canvasPlot;
     if (this.options.title?.alignTo === "plot" && plot) {
       for (const [el, align] of titleTexts) {
         el.setAttribute("x", String(align === "left" ? plot.x : align === "right" ? plot.x + plot.width : plot.x + plot.width / 2));
@@ -2582,6 +2586,7 @@ export class FacetViz {
         rows: gap + (repeat || (cross && inverted) ? bottomBand : 0),
       },
     });
+    this.canvasPlot = layout.plotArea;
     this.noteCanvas(layout, area);
     this.noteCanvasBands(layout, {
       left: leftOpts,
@@ -2938,6 +2943,7 @@ export class FacetViz {
       gap: across ? { columns: gap } : { rows: gap + nameTop },
       weights: across ? { columns: weights } : { rows: weights },
     });
+    this.canvasPlot = layout.plotArea;
     if (cross) this.drawPaneNames(layout, names, across ? "top" : "left", (i) => axisOf(paneIds[i]).id ?? "yAxis[0]", paneIds.map((id) => `pane:${id}`));
     this.noteCanvas(layout, outer);
     this.noteCanvasBands(
