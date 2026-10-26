@@ -1248,8 +1248,11 @@ Before returning generated chart code, verify:
 - Library changes that touch rendering, layout, point normalization, or boost
   preserve the automated budgets: 1,200 SVG points, 100k boosted points, and a
   100k live update must each complete under one second in the browser suite;
-  boosted cases must remain below 200 DOM nodes. The bundled library must stay
-  below 280 kB raw and 70 kB gzip.
+  boosted cases must remain below 200 DOM nodes. The large-data cases
+  (test/performance/large-data.performance.spec.ts: up to 60,000 columns,
+  bars, lines and stacked areas) run in Chromium and WebKit with per-browser
+  budgets of a few hundred ms. The bundled library must stay below 280 kB raw
+  and 70 kB gzip.
 
 ## Common mistakes to avoid
 

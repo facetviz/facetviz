@@ -18,14 +18,14 @@ interface LargeCase {
 
 const cases: LargeCase[] = [
   { name: 'columns at the default limit (500 x 12)', query: 'type=column&categories=500&series=12', points: 6_000, budget: { chromium: 300, webkit: 600 }, maxNodes: 7_000 },
-  { name: '5,000 columns', query: 'type=column&categories=5000', points: 5_000, budget: { chromium: 300, webkit: 500 }, maxNodes: 6_000 },
-  { name: '5,000 bars', query: 'type=bar&categories=5000', points: 5_000, budget: { chromium: 300, webkit: 600 }, maxNodes: 11_000 },
+  { name: '5,000 columns', query: 'type=column&categories=5000', points: 5_000, budget: { chromium: 300, webkit: 400 }, maxNodes: 300 },
+  { name: '5,000 bars', query: 'type=bar&categories=5000', points: 5_000, budget: { chromium: 300, webkit: 400 }, maxNodes: 300 },
   { name: 'a line over 50,000 categories', query: 'type=line&categories=50000', points: 50_000, budget: { chromium: 300, webkit: 400 }, maxNodes: 300 },
   { name: '12 lines over 5,000 categories', query: 'type=line&categories=5000&series=12', points: 60_000, budget: { chromium: 300, webkit: 400 }, maxNodes: 300 },
-  // Columns and stacked areas still draw one SVG element per point; the
-  // canvas path for them should bring these under 1,000 ms in WebKit.
-  { name: '60,000 columns (5,000 x 12)', query: 'type=column&categories=5000&series=12', points: 60_000, budget: { chromium: 2_000, webkit: 5_000 }, maxNodes: 61_000 },
-  { name: 'a 60,000-point stacked area (5,000 x 12)', query: 'type=area&categories=5000&series=12&stacked=1', points: 60_000, budget: { chromium: 2_000, webkit: 5_000 }, maxNodes: 61_000 },
+  { name: '60,000 columns (5,000 x 12)', query: 'type=column&categories=5000&series=12', points: 60_000, budget: { chromium: 300, webkit: 400 }, maxNodes: 300 },
+  { name: '60,000 stacked columns (5,000 x 12)', query: 'type=column&categories=5000&series=12&stacked=1', points: 60_000, budget: { chromium: 300, webkit: 400 }, maxNodes: 300 },
+  { name: '50,000 bars', query: 'type=bar&categories=50000', points: 50_000, budget: { chromium: 300, webkit: 400 }, maxNodes: 300 },
+  { name: 'a 60,000-point stacked area (5,000 x 12)', query: 'type=area&categories=5000&series=12&stacked=1', points: 60_000, budget: { chromium: 300, webkit: 400 }, maxNodes: 300 },
 ];
 
 for (const c of cases) {
@@ -40,3 +40,17 @@ for (const c of cases) {
     expect(metrics.domNodes).toBeLessThan(c.maxNodes);
   });
 }
+
+test('a column drawn on the canvas shows its tooltip on hover', async ({ page }) => {
+  await page.goto('/test/performance/fixtures.html?scenario=large&type=column&categories=5000');
+  await page.waitForSelector('body[data-ready="true"]');
+  const canvas = page.locator('#chart canvas');
+  await expect(canvas).toHaveCount(1);
+  // Category 79 is near the top of the sine, so the bars around it run
+  // from the baseline most of the way up. Five categories share a pixel
+  // here, so any one near it may answer.
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.move(box.x + ((79 + 0.5) / 5000) * box.width, box.y + box.height - 20);
+  await expect(page.locator('.facet-tooltip')).toBeVisible();
+  await expect(page.locator('.facet-tooltip')).toContainText(/Category (6\d|7\d|8\d|9\d)\b/);
+});

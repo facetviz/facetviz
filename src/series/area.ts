@@ -5,7 +5,7 @@
  */
 
 import { LineSeries } from './line.js';
-import { SeriesRenderContext } from './base.js';
+import { CanvasHit, SeriesRenderContext } from './base.js';
 import { alpha } from '../core/colors.js';
 import { linePath, splinePath, Pt } from './paths.js';
 import type { Point } from '../core/point.js';
@@ -137,5 +137,62 @@ export class AreaSeries extends LineSeries {
 
     this.renderMarkers(ctx, g, hover);
     drawPointLabels(ctx.renderer, g, this.options.dataLabels, this.name, hover, this.color);
+  }
+
+  /**
+   * A stacked area painted on the canvas, for thousands of points: the same
+   * outline paths as {@link render} (straight or smooth, through `Path2D`),
+   * fill, line, width and dashes. Unstacked areas take the chart's own
+   * canvas path. Null with markers, data labels, a fill color of its own
+   * (it may be a gradient) or on a polar chart: those stay in SVG.
+   */
+  override renderCanvas(ctx: SeriesRenderContext, c: CanvasRenderingContext2D): CanvasHit[] | null {
+    if (
+      !this.options.stacking ||
+      ctx.polar ||
+      this.options.fillColor !== undefined ||
+      this.options.marker?.enabled === true ||
+      this.options.dataLabels?.enabled
+    ) {
+      return null;
+    }
+    const catScale = ctx.inverted ? ctx.yScale : ctx.xScale;
+    const valScale = ctx.inverted ? ctx.xScale : ctx.yScale;
+    const at = (cat: number, v: number): Pt => (ctx.inverted ? { x: v, y: cat } : { x: cat, y: v });
+    const line = this.smooth() ? splinePath : linePath;
+    const fill = alpha(this.color, this.options.fillOpacity ?? 0.35);
+    const hits: CanvasHit[] = [];
+    let top: Pt[] = [];
+    let bottom: Pt[] = [];
+    const drawSegment = () => {
+      if (!top.length) return;
+      const topD = line(top);
+      const bottomD = line([...bottom].reverse()).replace(/^M/, 'L');
+      c.fillStyle = fill;
+      c.fill(new Path2D(`${topD} ${bottomD} Z`));
+      c.strokeStyle = this.color;
+      c.lineWidth = this.options.lineWidth ?? this.options.size ?? 2;
+      c.lineJoin = 'round';
+      c.setLineDash(this.options.dashStyle ? this.options.dashStyle.split(/[\s,]+/).map(Number) : []);
+      c.stroke(new Path2D(topD));
+      c.setLineDash([]);
+      top = [];
+      bottom = [];
+    };
+    for (const p of this.points) {
+      const hi = p.stackHigh !== undefined ? p.stackHigh : p.y;
+      if (hi === undefined) {
+        drawSegment();
+        continue;
+      }
+      const lo = p.stackLow !== undefined ? p.stackLow : 0;
+      const catPx = catScale.scale(p.x);
+      const topPt = at(catPx, valScale.scale(hi));
+      top.push(topPt);
+      bottom.push(at(catPx, valScale.scale(lo)));
+      hits.push({ point: p, x: topPt.x, y: topPt.y });
+    }
+    drawSegment();
+    return hits;
   }
 }

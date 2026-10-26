@@ -1834,7 +1834,7 @@ export class FacetViz {
         : xScale2 && onSecondaryX(s)
           ? xScale2
           : xScale;
-    const boost = !inverted && this.boostEnabled(visible);
+    const boost = this.boostEnabled(visible, inverted);
     const cctx = boost ? this.createBoostCanvas(axisPlot) : null;
     const hits: BoostHit[] = [];
     renderAnnotations({
@@ -1852,7 +1852,16 @@ export class FacetViz {
     for (const s of visible) {
       const sx = xScaleFor(s);
       const sy = yScaleFor(s);
-      if (cctx && this.isBoostable(s)) {
+      const ownCanvas =
+        !!cctx &&
+        this.isBoostable(s, inverted) &&
+        (FacetViz.OWN_CANVAS.has(s.type) || !!s.options.stacking);
+      const drawn = ownCanvas
+        ? s.renderCanvas(this.seriesContext(s, axisPlot, sx, sy, group, inverted, false), cctx!)
+        : null;
+      if (drawn) {
+        for (const h of drawn) hits.push({ ...h, series: s });
+      } else if (cctx && !ownCanvas && this.isBoostable(s, inverted)) {
         this.drawBoostSeries(s, cctx, sx, sy, hits);
       } else {
         const ctx = this.seriesContext(
@@ -1941,22 +1950,37 @@ export class FacetViz {
     "step",
     "area",
     "areaspline",
+    "column",
+    "bar",
   ]);
 
-  private isBoostable(s: BaseSeries): boolean {
-    // Stacked series need a per-point baseline that the canvas fast path does
-    // not model; keep those on the SVG renderer for correctness.
-    return !s.options.stacking && FacetViz.BOOSTABLE.has(s.type);
+  /** Series that paint themselves on the canvas (`renderCanvas`): bars
+   *  always, and every stacked series (`STACKED_CANVAS`). The rest use
+   *  `drawBoostSeries`. */
+  private static readonly OWN_CANVAS = new Set(["column", "bar"]);
+  private static readonly STACKED_CANVAS = new Set(["column", "bar", "area", "areaspline"]);
+
+  private isBoostable(s: BaseSeries, inverted = false): boolean {
+    if (!FacetViz.BOOSTABLE.has(s.type)) return false;
+    // Stacked series need a per-point baseline: only those that paint
+    // themselves model it. Inverted, only bars know which way they run.
+    if (s.options.stacking && !FacetViz.STACKED_CANVAS.has(s.type)) return false;
+    if (inverted && !FacetViz.OWN_CANVAS.has(s.type)) return false;
+    return true;
   }
 
-  private boostEnabled(visible: BaseSeries[]): boolean {
+  private boostEnabled(visible: BaseSeries[], inverted = false): boolean {
     const b = this.options.chart?.boost;
     if (b === false) return false;
     const enabled = typeof b === "object" ? b.enabled : b;
     if (enabled) return true;
     const threshold = (typeof b === "object" && b.threshold) || 1500;
-    return visible.some(
-      (s) => this.isBoostable(s) && s.points.length > threshold,
+    // One long series, or many shorter ones adding up (5,000 categories in
+    // 12 colors is 60,000 bars though each series has 5,000).
+    const boostable = visible.filter((s) => this.isBoostable(s, inverted));
+    return (
+      boostable.some((s) => s.points.length > threshold) ||
+      boostable.reduce((n, s) => n + s.points.length, 0) > threshold * 10
     );
   }
 
@@ -2175,7 +2199,17 @@ export class FacetViz {
       }
       let best: BoostHit | null = null,
         bd = 400; // 20px radius²
-      for (const h of hits) {
+      // A bar is hovered with the pointer in it (the last drawn, on top,
+      // wins); other marks by the nearest within 20px.
+      for (let i = hits.length - 1; i >= 0; i--) {
+        const r = hits[i].rect;
+        if (r && mx >= r.x && mx <= r.x + r.width && my >= r.y && my <= r.y + r.height) {
+          best = hits[i];
+          break;
+        }
+      }
+      if (!best) for (const h of hits) {
+        if (h.rect) continue;
         const dx = h.x - mx,
           dy = h.y - my,
           d = dx * dx + dy * dy;
@@ -2199,19 +2233,31 @@ export class FacetViz {
         this.handlePointEvent("mouseOver", best.series, best.point, e);
         active = best;
       }
-      marker = this.renderer.create(
-        "circle",
-        {
-          cx: best.x,
-          cy: best.y,
-          r: 5,
-          fill: "none",
-          stroke: best.series.color,
-          "stroke-width": 2,
-          "pointer-events": "none",
-        },
-        root,
-      );
+      marker = best.rect
+        ? this.renderer.create(
+            "rect",
+            {
+              ...best.rect,
+              fill: "none",
+              stroke: best.series.color,
+              "stroke-width": 2,
+              "pointer-events": "none",
+            },
+            root,
+          )
+        : this.renderer.create(
+            "circle",
+            {
+              cx: best.x,
+              cy: best.y,
+              r: 5,
+              fill: "none",
+              stroke: best.series.color,
+              "stroke-width": 2,
+              "pointer-events": "none",
+            },
+            root,
+          );
       const p = best.point,
         s = best.series;
       this.tooltip!.show(
@@ -5592,6 +5638,8 @@ interface BoostHit {
   y: number;
   point: Point;
   series: BaseSeries;
+  /** A bar's rectangle: hovered with the pointer inside it. */
+  rect?: Rect;
 }
 
 /** An invisible hit area (a line's hover target, say): no hover border on it. */

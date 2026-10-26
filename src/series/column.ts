@@ -4,7 +4,7 @@
  * live in their own module (`range.ts`).
  */
 
-import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from "./base.js";
+import { BaseSeries, CanvasHit, SeriesCapabilities, SeriesRenderContext } from "./base.js";
 import { CategoryScale, Scale } from "../core/scale.js";
 import type { Point } from "../core/point.js";
 import {
@@ -103,7 +103,19 @@ function roundedBarPath(
   }
 }
 
+/** One bar as drawn: its point, rectangle, fill and rounded corners. */
+interface Bar {
+  p: Point;
+  rect: { x: number; y: number; width: number; height: number };
+  fill: string;
+  borderRadius: number;
+  side: "all" | "top" | "bottom" | "left" | "right";
+}
+
 export class ColumnSeries extends BaseSeries {
+  /** The series' total for data labels' percentage, worked out once a render. */
+  private labelTotal: number | undefined;
+
   override capabilities(): SeriesCapabilities {
     return { grouped: true, cartesian: true, stackable: true };
   }
@@ -142,16 +154,89 @@ export class ColumnSeries extends BaseSeries {
       this.renderPolar(ctx);
       return;
     }
-    const { renderer, groupCount, groupIndex } = ctx;
+    const g = ctx.renderer.group({
+      class: `facet-series facet-column ${this.name}`,
+    });
+    this.labelTotal = undefined;
+    for (const { p, rect, fill, borderRadius, side } of this.bars(ctx)) {
+      let el: SVGElement;
+      if (borderRadius > 0) {
+        el = ctx.renderer.create(
+          "path",
+          {
+            d: roundedBarPath(rect, borderRadius, side),
+            fill,
+            ...this.fillOpacityAttr(),
+            ...this.borderAttr(fill),
+            class: "facet-point",
+          },
+          g,
+        );
+      } else {
+        el = ctx.renderer.create(
+          "rect",
+          { ...rect, rx: 1, fill, ...this.fillOpacityAttr(), ...this.borderAttr(fill), class: "facet-point" },
+          g,
+        );
+      }
+      ctx.registerHover(el, p);
+      this.wireEvents(el, p, ctx);
+
+      this.drawDataLabel(ctx, p, rect, g);
+    }
+  }
+
+  /**
+   * The bars painted on a canvas instead of one SVG element each, for
+   * thousands of them: the same rectangles, fills, opacity, outlines and
+   * rounded ends as {@link render}, data labels still in SVG. Null when a
+   * fill is a gradient or pattern (`url(…)`), which a canvas can't take.
+   */
+  override renderCanvas(ctx: SeriesRenderContext, c: CanvasRenderingContext2D): CanvasHit[] | null {
+    if (ctx.polar) return null;
+    const bars = this.bars(ctx);
+    if (bars.some((b) => b.fill.startsWith("url("))) return null;
+    const g = this.options.dataLabels?.enabled
+      ? ctx.renderer.group({ class: `facet-series facet-column ${this.name}` })
+      : null;
+    const opacity = this.fillOpacityAttr()["fill-opacity"] ?? 1;
+    const hits: CanvasHit[] = [];
+    this.labelTotal = undefined;
+    for (const { p, rect, fill, borderRadius, side } of bars) {
+      // As the SVG rect's `rx: 1`, where a bar is wide and tall enough.
+      let shape: Path2D | null = null;
+      if (borderRadius > 0) shape = new Path2D(roundedBarPath(rect, borderRadius, side));
+      else if (rect.width >= 2 && rect.height >= 2 && typeof Path2D.prototype.roundRect === "function") {
+        shape = new Path2D();
+        shape.roundRect(rect.x, rect.y, rect.width, rect.height, 1);
+      }
+      c.globalAlpha = opacity;
+      c.fillStyle = fill;
+      if (shape) c.fill(shape);
+      else c.fillRect(rect.x, rect.y, rect.width, rect.height);
+      c.globalAlpha = 1;
+      const border = this.borderAttr(fill);
+      if (border.stroke) {
+        c.strokeStyle = border.stroke;
+        c.lineWidth = border["stroke-width"] ?? 1;
+        if (shape) c.stroke(shape);
+        else c.strokeRect(rect.x, rect.y, rect.width, rect.height);
+      }
+      hits.push({ point: p, x: rect.x + rect.width / 2, y: rect.y, rect });
+      if (g) this.drawDataLabel(ctx, p, rect, g);
+    }
+    return hits;
+  }
+
+  /** Each bar's rectangle, fill and rounded corners, in drawing order. */
+  private bars(ctx: SeriesRenderContext): Bar[] {
+    const { groupCount, groupIndex } = ctx;
     // `type: 'bar'` always means horizontal; `chart.inverted: true` swaps a
     // 'column' the same way (the caller already pre-swapped ctx.xScale/
     // ctx.yScale to match, same convention `ctx.inverted` uses elsewhere).
     const horizontal = this.type === "bar" || ctx.inverted;
     const catScale = (horizontal ? ctx.yScale : ctx.xScale) as CategoryScale;
     const valScale: Scale = horizontal ? ctx.xScale : ctx.yScale;
-    const g = renderer.group({
-      class: `facet-series facet-column ${this.name}`,
-    });
 
     const band =
       this.options.groupPadding != null && typeof catScale.fullStep === "function"
@@ -159,6 +244,7 @@ export class ColumnSeries extends BaseSeries {
         : catScale.bandwidth();
     const subWidth = band / groupCount;
     const pointPadding = clampPadding(this.options.pointPadding, 0.1);
+    const bars: Bar[] = [];
 
     for (const p of this.points) {
       const [loVal, hiVal] = this.valuePair(p);
@@ -213,45 +299,22 @@ export class ColumnSeries extends BaseSeries {
 
       const borderRadius =
         p.options.borderRadius ?? this.options.borderRadius ?? 0;
-      const fill = p.color ?? this.color;
-      let el: SVGElement;
-      if (borderRadius > 0) {
-        // Round only the corners at the far/value end -- the near end stays
-        // flush against the baseline/axis, whichever pixel side that is --
-        // unless the series rounds both ends.
-        const ends = p.options.borderRadiusEnds ?? this.options.borderRadiusEnds;
-        const side = ends === "both"
-          ? "all"
-          : horizontal
-          ? vHi >= vLo
-            ? "right"
-            : "left"
-          : vHi <= vLo
-            ? "top"
-            : "bottom";
-        el = renderer.create(
-          "path",
-          {
-            d: roundedBarPath(rect, borderRadius, side),
-            fill,
-            ...this.fillOpacityAttr(),
-            ...this.borderAttr(fill),
-            class: "facet-point",
-          },
-          g,
-        );
-      } else {
-        el = renderer.create(
-          "rect",
-          { ...rect, rx: 1, fill, ...this.fillOpacityAttr(), ...this.borderAttr(fill), class: "facet-point" },
-          g,
-        );
-      }
-      ctx.registerHover(el, p);
-      this.wireEvents(el, p, ctx);
-
-      this.drawDataLabel(ctx, p, rect, g);
+      // Round only the corners at the far/value end -- the near end stays
+      // flush against the baseline/axis, whichever pixel side that is --
+      // unless the series rounds both ends.
+      const ends = p.options.borderRadiusEnds ?? this.options.borderRadiusEnds;
+      const side: Bar["side"] = ends === "both"
+        ? "all"
+        : horizontal
+        ? vHi >= vLo
+          ? "right"
+          : "left"
+        : vHi <= vLo
+          ? "top"
+          : "bottom";
+      bars.push({ p, rect, fill: p.color ?? this.color, borderRadius, side });
     }
+    return bars;
   }
 
   /** Each bar's outline, when the series sets `borderColor` or
@@ -429,7 +492,7 @@ export class ColumnSeries extends BaseSeries {
   ): void {
     const dl = this.options.dataLabels;
     if (!dl?.enabled || !labelEvery(dl, p.index)) return;
-    const total = this.points.reduce((s, pt) => s + (pt.y ?? 0), 0);
+    const total = (this.labelTotal ??= this.points.reduce((s, pt) => s + (pt.y ?? 0), 0));
     const text = labelString(dl, {
       x: p.x,
       y: p.y,

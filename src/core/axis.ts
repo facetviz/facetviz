@@ -243,6 +243,15 @@ export class Axis {
       }
     }
 
+    // Down a vertical category axis (horizontal bars) labels closer than
+    // their letters are tall (about 80% of the font size) sit on one
+    // another: draw every Nth instead.
+    if (isCategory && labelsEnabled && !this.horizontal && options.labels?.step === undefined) {
+      const spacing = Math.abs((scale as CategoryScale).fullStep());
+      const tall = 0.8 * (parseFloat(this.labelStyle()["font-size"] ?? "11") || 11);
+      if (spacing > 0 && spacing < tall) labelStep = Math.ceil(tall / spacing);
+    }
+
     // Minor grid lines sit below the major grid. They are deliberately opt-in
     // via `minorTickInterval` and only apply to continuous scales.
     const minorGridWidth = options.minorGridLineWidth ?? 1;

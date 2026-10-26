@@ -1014,7 +1014,7 @@ export interface ZoomOptions {
 /** High-volume canvas "boost" rendering. */
 export interface BoostOptions {
   enabled?: boolean;
-  /** Auto-enable boost once a boostable series exceeds this many points (default 1500). */
+  /** Auto-enable boost once a boostable series exceeds this many points, or all of them together ten times it (default 1500). */
   threshold?: number;
 }
 
@@ -1157,9 +1157,10 @@ export interface ChartOptions {
      */
     autoSpaceTexts?: boolean;
     /**
-     * High-volume "boost" rendering. Cartesian point/line series with more than
-     * `threshold` points are drawn to a single canvas overlay instead of one SVG
-     * node per point, and lines are min/max-decimated to the pixel resolution.
+     * High-volume "boost" rendering. Cartesian point, line, column and bar
+     * series (bars grouped or stacked, and stacked areas) past `threshold`
+     * points are drawn to a single canvas overlay instead of one SVG node
+     * per point, and lines are min/max-decimated to the pixel resolution.
      * `true` forces it on; `false` disables it; the default auto-enables it past
      * the threshold. See {@link BoostOptions}.
      */
