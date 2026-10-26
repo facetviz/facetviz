@@ -25,6 +25,9 @@ const cases: LargeCase[] = [
   { name: '60,000 columns (5,000 x 12)', query: 'type=column&categories=5000&series=12', points: 60_000, budget: { chromium: 300, webkit: 400 }, maxNodes: 300 },
   { name: '60,000 stacked columns (5,000 x 12)', query: 'type=column&categories=5000&series=12&stacked=1', points: 60_000, budget: { chromium: 300, webkit: 400 }, maxNodes: 300 },
   { name: '50,000 bars', query: 'type=bar&categories=50000', points: 50_000, budget: { chromium: 300, webkit: 400 }, maxNodes: 300 },
+  // Bars thinner than a pixel are merged per pixel: 200,000 (the most the
+  // app sends) cost about what a few thousand do.
+  { name: '200,000 columns (50,000 x 4)', query: 'type=column&categories=50000&series=4', points: 200_000, budget: { chromium: 300, webkit: 400 }, maxNodes: 300 },
   { name: 'a 60,000-point stacked area (5,000 x 12)', query: 'type=area&categories=5000&series=12&stacked=1', points: 60_000, budget: { chromium: 300, webkit: 400 }, maxNodes: 300 },
 ];
 

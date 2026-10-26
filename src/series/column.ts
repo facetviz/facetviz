@@ -202,6 +202,13 @@ export class ColumnSeries extends BaseSeries {
     const opacity = this.fillOpacityAttr()["fill-opacity"] ?? 1;
     const hits: CanvasHit[] = [];
     this.labelTotal = undefined;
+    const horizontal = this.type === "bar" || ctx.inverted;
+    const catScale = (horizontal ? ctx.yScale : ctx.xScale) as CategoryScale;
+    if (typeof catScale.fullStep === "function" && Math.abs(catScale.fullStep()) < 1) {
+      this.paintMerged(c, bars, horizontal, opacity, hits);
+      if (g) for (const { p, rect } of bars) this.drawDataLabel(ctx, p, rect, g);
+      return hits;
+    }
     for (const { p, rect, fill, borderRadius, side } of bars) {
       // As the SVG rect's `rx: 1`, where a bar is wide and tall enough.
       let shape: Path2D | null = null;
@@ -226,6 +233,69 @@ export class ColumnSeries extends BaseSeries {
       if (g) this.drawDataLabel(ctx, p, rect, g);
     }
     return hits;
+  }
+
+  /**
+   * Bars closer than a pixel apart: one bar per device pixel (and fill),
+   * from the lowest to the highest edge of the bars starting in it, so
+   * peaks and dips all show while thousands of overlapping bars become a
+   * few hundred. Bucketed and drawn in the canvas's own pixels (from its
+   * transform), so neighbours meet without half-covered, lighter edges.
+   * Hover answers with the pixel's tallest bar. Borders and rounded ends
+   * don't show at that size and are left out.
+   */
+  private paintMerged(
+    c: CanvasRenderingContext2D,
+    bars: Bar[],
+    horizontal: boolean,
+    opacity: number,
+    hits: CanvasHit[],
+  ): void {
+    // Chart units to device pixels: a scale and a shift on each axis.
+    const m = c.getTransform();
+    const [scale, shift, vScale, vShift] = horizontal ? [m.d, m.f, m.a, m.e] : [m.a, m.e, m.d, m.f];
+    const cells = new Map<string, { at: number; lo: number; hi: number; fill: string; tallest: Bar; size: number }>();
+    for (const bar of bars) {
+      const { rect, fill } = bar;
+      const start = horizontal ? rect.x : rect.y;
+      const size = horizontal ? rect.width : rect.height;
+      const lo = start * vScale + vShift;
+      const hi = (start + size) * vScale + vShift;
+      // Every device pixel the bar's thickness touches, as a separate bar
+      // at a fractional position would color.
+      const from = (horizontal ? rect.y : rect.x) * scale + shift;
+      const to = from + (horizontal ? rect.height : rect.width) * scale;
+      for (let at = Math.floor(from); at < Math.max(Math.ceil(to), Math.floor(from) + 1); at++) {
+        const key = `${at}\u0000${fill}`;
+        const cell = cells.get(key);
+        if (!cell) cells.set(key, { at, lo, hi, fill, tallest: bar, size });
+        else {
+          cell.lo = Math.min(cell.lo, lo);
+          cell.hi = Math.max(cell.hi, hi);
+          if (size > cell.size) (cell.tallest = bar), (cell.size = size);
+          // Painted in the order fills last appear, as separate bars would
+          // leave the last one on top.
+          cells.delete(key);
+          cells.set(key, cell);
+        }
+      }
+    }
+    c.save();
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.globalAlpha = opacity;
+    for (const { at, lo, hi, fill, tallest } of cells.values()) {
+      c.fillStyle = fill;
+      if (horizontal) c.fillRect(lo, at, hi - lo, 1);
+      else c.fillRect(at, lo, 1, hi - lo);
+      // Back in chart units for hover.
+      const across = { start: (at - shift) / scale, size: 1 / scale };
+      const along = { start: (lo - vShift) / vScale, size: (hi - lo) / vScale };
+      const rect = horizontal
+        ? { x: along.start, y: across.start, width: along.size, height: across.size }
+        : { x: across.start, y: along.start, width: across.size, height: along.size };
+      hits.push({ point: tallest.p, x: rect.x + rect.width / 2, y: rect.y, rect });
+    }
+    c.restore();
   }
 
   /** Each bar's rectangle, fill and rounded corners, in drawing order. */
