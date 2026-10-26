@@ -463,6 +463,11 @@ export interface AxisOptions {
   minorGridLineColor?: string;
   /** SVG dash array for minor grid lines. Default `'2 2'`. */
   minorGridLineDashStyle?: string;
+  /** Tick marks' length in px (default 5; outside, at most 8, to leave the
+   * labels clear), color (default the axis line's), and side. */
+  tickLength?: number;
+  tickColor?: string;
+  tickPosition?: "outside" | "inside";
   /** A dotted line across the plot at zero, when the axis's range runs
    * through it (continuous axes); an object sets its color, width and dash. */
   zeroLine?: boolean | { color?: string; width?: number; dashStyle?: string };

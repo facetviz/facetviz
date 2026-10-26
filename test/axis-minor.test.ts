@@ -49,4 +49,24 @@ describe('minor ticks and grid lines', () => {
     const data = ['R1', 'R2'].flatMap((reg) => ['A', 'B'].map((x, i) => ({ x, y: i ? 2 : -1, reg })));
     expect(zeroLines(render({ xAxis: { categories: ['A', 'B'] }, yAxis: { zeroLine: true }, series: [{ type: 'column', name: 'S', data }], trellis: { rows: 'reg' } }))).toBe(2);
   });
+
+  it('draws tick marks at their length and color, outside or inside the plot', () => {
+    const tick = (y: Record<string, unknown>) => {
+      const el = render({ xAxis: { categories: ['A', 'B', 'C'] }, yAxis: y, series });
+      const t = [...el.querySelectorAll('[data-fv-id="yAxis[0]"] line:not(.facet-gridline):not(.facet-minor-gridline)')].find((l) => l.getAttribute('y1') === l.getAttribute('y2'))!;
+      return { len: Number(t.getAttribute('x2')) - Number(t.getAttribute('x1')), color: t.getAttribute('stroke') };
+    };
+    expect(tick({}).len).toBe(5);
+    expect(tick({ tickLength: 8, tickColor: '#ff0000' })).toEqual({ len: 8, color: '#ff0000' });
+    // Outside, never so long it reaches the labels.
+    expect(tick({ tickLength: 30 }).len).toBe(8);
+    // Inside: into the plot, from the axis line.
+    expect(tick({ tickPosition: 'inside', tickLength: 6 }).len).toBe(-6);
+  });
+
+  it('keeps every other category band filled in panels without labels', () => {
+    const data = ['R1', 'R2'].flatMap((reg) => ['A', 'B', 'C'].map((x, i) => ({ x, y: i + 1, reg })));
+    const el = render({ xAxis: { categories: ['A', 'B', 'C'], alternateGridColor: '#eeeeee' }, series: [{ type: 'column', name: 'S', data }], trellis: { rows: 'reg' } });
+    expect(el.querySelectorAll('.facet-alternate-grid-band').length).toBe(2);
+  });
 });

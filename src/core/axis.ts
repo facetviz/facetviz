@@ -278,7 +278,7 @@ export class Axis {
     // (with `minorTicks`, on the axis even without minor grid lines).
     if (!isCategory && options.minorTicks && options.ticks !== false && options.minorTickInterval !== undefined) {
       for (const pos of minorGridPositions(scale, options.minorTickInterval)) {
-        this.drawTick(group, pos, axisColor, Math.max(2, LAYOUT.tickLength / 2));
+        this.drawTick(group, pos, axisColor, 2.5);
       }
     }
 
@@ -644,20 +644,26 @@ export class Axis {
     }
   }
 
-  private drawTick(g: SVGGElement, pos: number, color: string, len = LAYOUT.tickLength): void {
-    const { renderer, plot, position } = this.cfg;
+  private drawTick(g: SVGGElement, pos: number, color: string, len?: number): void {
+    const { renderer, plot, position, options } = this.cfg;
+    // Its length (no longer than leaves the labels clear, outside), color,
+    // and side: outside the plot (default) or inside it.
+    const full = Math.min(Math.max(options.tickLength ?? LAYOUT.tickLength, 1), options.tickPosition === 'inside' ? 20 : LAYOUT.tickLength + 3);
+    const l = len == null ? full : Math.max(1, Math.min(len, full / 2));
+    const d = options.tickPosition === 'inside' ? -l : l;
+    const attrs = { stroke: options.tickColor ?? color };
     switch (position) {
       case 'bottom':
-        renderer.create('line', { x1: pos, y1: plot.y + plot.height, x2: pos, y2: plot.y + plot.height + len, stroke: color }, g);
+        renderer.create('line', { x1: pos, y1: plot.y + plot.height, x2: pos, y2: plot.y + plot.height + d, ...attrs }, g);
         break;
       case 'top':
-        renderer.create('line', { x1: pos, y1: plot.y, x2: pos, y2: plot.y - len, stroke: color }, g);
+        renderer.create('line', { x1: pos, y1: plot.y, x2: pos, y2: plot.y - d, ...attrs }, g);
         break;
       case 'left':
-        renderer.create('line', { x1: plot.x - len, y1: pos, x2: plot.x, y2: pos, stroke: color }, g);
+        renderer.create('line', { x1: plot.x - d, y1: pos, x2: plot.x, y2: pos, ...attrs }, g);
         break;
       case 'right':
-        renderer.create('line', { x1: plot.x + plot.width, y1: pos, x2: plot.x + plot.width + len, y2: pos, stroke: color }, g);
+        renderer.create('line', { x1: plot.x + plot.width, y1: pos, x2: plot.x + plot.width + d, y2: pos, ...attrs }, g);
         break;
     }
   }

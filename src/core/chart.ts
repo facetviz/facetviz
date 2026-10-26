@@ -2642,6 +2642,7 @@ export class FacetViz {
         plotLines: o?.plotLines,
         plotBands: o?.plotBands,
         zeroLine: o?.zeroLine,
+        alternateGridColor: o?.alternateGridColor,
       });
 
       // Category axis: labelled along the bottom row (down the left column

@@ -787,6 +787,9 @@ Applies to both `xAxis` and `yAxis`. A **category axis** is used when
 | `gridLinePlacement` | `'on' \| 'between'` | `'on'` | On a category axis: grid lines through each category, or between neighbouring categories (none before the first). |
 | `zeroLine` | `boolean \| { color, width, dashStyle }` | — | A dotted line across the plot at zero when a continuous axis's range runs through it; drawn in every panel of small multiples. |
 | `minorTicks` | `boolean` | — | Short tick marks at the minor intervals (with `minorTickInterval`; `minorGridLineWidth: 0` keeps the ticks without the minor grid lines). |
+| `tickLength` | `number` | `5` | Tick marks' length in px (outside, at most 8, leaving the labels clear; inside, up to 20). |
+| `tickColor` | `string` | axis line's | Tick marks' color. |
+| `tickPosition` | `'outside' \| 'inside'` | `'outside'` | Tick marks outside the plot or into it from the axis line. |
 | `gridLineColor`          | `string`                                        | `'#e6e6e6'`  | Major grid line colour.                                                                                                                            |
 | `gridLineDashStyle`      | `string`                                        | –            | Major-grid SVG dash array, for example `'6 3'`.                                                                                                    |
 | `alternateGridColor`     | `string`                                        | –            | On a category axis, shade the second, fourth, etc. category bands across the plot with this colour.                                                |
