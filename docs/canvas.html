@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FacetViz Canvas Parts</title>
+  <script src="./docs-theme.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f6fb; --panel: #ffffff; --border: #e7e8f0; --text: #16181d;
+      --muted: #5b6270; --accent: #6366f1;
+      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-docs-theme]) { color-scheme: dark; --bg:#0b0e16; --panel:#141926; --border:#232a3b; --text:#e7ecf6; --muted:#a3abbf; }
+    }
+    :root[data-docs-theme="dark"] { color-scheme: dark; --bg:#0b0e16; --panel:#141926; --border:#232a3b; --text:#e7ecf6; --muted:#a3abbf; }
+    :root[data-docs-theme="light"] { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: var(--sans); background: var(--bg); color: var(--text); }
+    main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; display: flex; flex-direction: column; gap: 16px; }
+    h1 { margin: 0; font-size: 22px; }
+    p { margin: 0; color: var(--muted); line-height: 1.5; }
+    .row { display: flex; gap: 16px; flex-wrap: wrap; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+    .chart { flex: 999 1 560px; min-width: 0; height: 420px; }
+    .log { flex: 1 1 260px; font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap; min-height: 120px; }
+    /* What a host might draw on the selected part. */
+    .chart [data-fv-selected] { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .chart line[data-fv-selected] { stroke: var(--accent); stroke-width: 2; }
+    /* The plot area lies under grid lines and axes: tint it rather than outline it. */
+    .chart rect[data-fv-kind="plotArea"][data-fv-selected] { fill: color-mix(in srgb, var(--accent) 10%, transparent); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Canvas parts</h1>
+  <p>Every axis, axis title, grid, plot area, title and legend says what it is. Click, double-click or right-click one: the event reports its kind and id. Clicks on bars stay point events.</p>
+  <div class="row">
+    <div class="card chart" id="chart"></div>
+    <div class="card log" id="log" aria-live="polite">Click a part of the chart.</div>
+  </div>
+  <div class="row">
+    <div class="card chart" id="trellis"></div>
+  </div>
+  <p>A nested axis: Region and Category are header levels, each its own object (click one), with Region banding, dividers at every level and field labels. Each Region / Category group is its own pane.</p>
+  <div class="row">
+    <div class="card chart" id="nested"></div>
+  </div>
+  <div class="row">
+    <div class="card chart" id="nestedBars"></div>
+  </div>
+  <p>Axis objects: each axis set by its address. Left: a symmetric log axis through zero, ticks every power. Right: a synchronised dual axis (one range, same ticks) with a title subtitle and a fixed tick interval.</p>
+  <div class="row">
+    <div class="card chart" id="symlog" style="flex: 1 1 360px"></div>
+    <div class="card chart" id="sync" style="flex: 1 1 360px"></div>
+  </div>
+  <p>Small multiples with an independent value range: each row its own scale.</p>
+  <div class="row">
+    <div class="card chart" id="independent"></div>
+  </div>
+  <p>Fit "standard": every pane a fixed cell, the chart at its natural size, scrolling in its box. Drag the edge of an axis band or header level (where it meets the panes) to resize it.</p>
+  <div class="row">
+    <div class="card" id="fitBox" style="flex: 1 1 100%; height: 420px; overflow: auto; padding: 0"><div id="fit" style="width: 100%; height: 100%"></div></div>
+  </div>
+</main>
+<script type="module">
+  import { FacetViz } from "./lib/facetviz.js";
+
+  const log = document.getElementById("log");
+  const select = (host) => (ev) => {
+    host.querySelectorAll("[data-fv-selected]").forEach((el) => el.removeAttribute("data-fv-selected"));
+    const sel = `[data-fv-kind="${ev.kind}"][data-fv-id="${CSS.escape(ev.id)}"]` +
+      (ev.instance ? `[data-fv-instance="${ev.instance}"]` : "");
+    host.querySelectorAll(sel).forEach((el) => el.setAttribute("data-fv-selected", ""));
+    const { domEvent, ...rest } = ev;
+    log.textContent = JSON.stringify(rest, null, 2);
+  };
+  const events = (host) => ({ canvasClick: select(host), canvasDoubleClick: select(host), canvasContextMenu: select(host) });
+
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
+  const chartEl = document.getElementById("chart");
+  new FacetViz(chartEl, {
+    chart: { events: events(chartEl) },
+    title: { text: "Sales and profit" },
+    subtitle: { text: "First half" },
+    xAxis: { categories: months, title: { text: "Month" } },
+    yAxis: [
+      { id: "sales@rows", title: { text: "Sales" }, plotLines: [{ value: 40, label: { text: "Target" } }] },
+      { id: "profit@rows:dual", title: { text: "Profit" } },
+    ],
+    series: [
+      { type: "column", name: "Sales", data: [32, 41, 38, 45, 50, 47] },
+      { type: "line", name: "Profit", data: [6, 9, 7, 11, 12, 10], yAxis: 1 },
+    ],
+  });
+
+  const trellisEl = document.getElementById("trellis");
+  const data = [];
+  for (const region of ["East", "West", "Central"])
+    months.forEach((m, i) => data.push({ x: m, y: 10 + ((i * 7 + region.length * 3) % 20), region }));
+  new FacetViz(trellisEl, {
+    chart: { events: events(trellisEl) },
+    title: { text: "Small multiples: each cell is its own instance" },
+    xAxis: { categories: months },
+    trellis: { columns: "region", gap: 16 },
+    series: [{ type: "column", name: "Sales", data }],
+  });
+
+  const nestedData = [];
+  for (const [region, cats] of [["East", ["Tech", "Office"]], ["West", ["Tech", "Furniture", "Office"]]])
+    for (const cat of cats)
+      for (const q of ["Q1", "Q2", "Q3"])
+        nestedData.push({ y: 5 + ((region.length * 7 + cat.length * 3 + q.charCodeAt(1)) % 17), region, cat, q });
+  const canvas = {
+    headers: { region: { label: { style: { fontWeight: "700" } } } },
+    banding: { columns: { color: "rgba(99,102,241,0.06)", headerColor: "rgba(99,102,241,0.10)", level: 0 } },
+    fieldLabels: { columns: { visible: true } },
+  };
+  const nestedEl = document.getElementById("nested");
+  new FacetViz(nestedEl, {
+    chart: { events: events(nestedEl) },
+    title: { text: "Sales by region, category and quarter" },
+    xAxis: { dimensions: ["region", "cat", "q"], title: { text: "Region / Category / Quarter" } },
+    canvas,
+    series: [
+      { type: "column", name: "Sales", data: nestedData },
+      { type: "line", name: "Trend", data: nestedData.map((p) => ({ ...p, y: p.y * 0.8 })), marker: { enabled: true } },
+    ],
+  });
+  const barsEl = document.getElementById("nestedBars");
+  new FacetViz(barsEl, {
+    chart: { type: "bar", events: events(barsEl) },
+    title: { text: "The same as horizontal bars: header levels down the left" },
+    xAxis: { dimensions: ["region", "cat"] },
+    canvas: { banding: { rows: { color: "rgba(99,102,241,0.06)", level: 0 } } },
+    series: [{ name: "Sales", data: nestedData.filter((p) => p.q === "Q1") }],
+  });
+
+  const symEl = document.getElementById("symlog");
+  new FacetViz(symEl, {
+    chart: { type: "column", events: events(symEl) },
+    title: { text: "Profit and loss, symmetric log" },
+    xAxis: { categories: ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6"] },
+    canvas: { axes: { "yAxis[0]": { type: "log", log: { mode: "symmetric" }, title: { text: "Profit", subtitle: "symmetric log" } } } },
+    series: [{ name: "Profit", data: [-4200, -60, 8, 140, 2600, 31000] }],
+  });
+  const syncEl = document.getElementById("sync");
+  new FacetViz(syncEl, {
+    chart: { events: events(syncEl) },
+    title: { text: "Sales against target, synchronised" },
+    xAxis: { categories: months },
+    yAxis: [
+      { id: "sales@rows", title: { text: "Sales", subtitle: "in $K" }, tickInterval: 25 },
+      { id: "target@rows:dual", opposite: true, sync: true, title: { text: "Target" } },
+    ],
+    series: [
+      { type: "column", name: "Sales", data: [42, 61, 55, 78, 90, 84] },
+      { type: "line", name: "Target", yAxis: 1, data: [50, 55, 60, 70, 80, 110], marker: { enabled: true } },
+    ],
+  });
+  const indEl = document.getElementById("independent");
+  const indData = [];
+  for (const [seg, k] of [["Consumer", 1], ["Enterprise", 40]])
+    for (const region of ["East", "West"])
+      months.forEach((m, i) => indData.push({ x: m, y: k * (5 + ((i * 3 + region.length) % 7)), region, seg }));
+  new FacetViz(indEl, {
+    chart: { type: "column", events: events(indEl) },
+    xAxis: { categories: months },
+    yAxis: { range: { mode: "independent" } },
+    trellis: { columns: "region", rows: "seg" },
+    series: [{ name: "Orders", data: indData }],
+  });
+
+  // The host keeps the sizes a drag reports and redraws with them.
+  const fitEl = document.getElementById("fit");
+  const sizes = { axes: {}, headers: {} };
+  const fitOptions = () => ({
+    chart: { events: { ...events(fitEl), canvasResize: onResize } },
+    xAxis: { categories: months },
+    yAxis: { range: { mode: "independent" } },
+    trellis: { columns: "region", rows: "seg" },
+    canvas: { fit: "standard", cell: { width: 360, height: 220 }, axes: sizes.axes, headers: sizes.headers },
+    series: [{ name: "Orders", data: indData }],
+  });
+  function onResize(ev) {
+    log.textContent = JSON.stringify(ev, null, 2);
+    if (ev.phase !== "end") return;
+    (ev.kind === "axis" ? sizes.axes : sizes.headers)[ev.id] = { size: ev.size };
+    fitChart.update(fitOptions());
+  }
+  const fitChart = new FacetViz(fitEl, fitOptions());
+</script>
+</body>
+</html>

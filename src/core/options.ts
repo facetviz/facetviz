@@ -175,6 +175,12 @@ export interface SeriesOptions
   /** Which axis (by index) this series binds to. Enables combo charts. */
   xAxis?: 0 | 1;
   yAxis?: 0 | 1;
+  /**
+   * The pane it's drawn in, stacked down from 0 (side by side for horizontal
+   * bars): with series in more than one pane, each pane has its own value
+   * axis and scale and they share the category axis. See `panes`.
+   */
+  pane?: number;
   visible?: boolean;
   /** Whether this series contributes an item to the chart legend. */
   showInLegend?: boolean;
@@ -380,6 +386,9 @@ export interface AxisTitleOptions {
   /** Polar x-axis placement. Ignored by Cartesian axes. */
   position?: "outer" | "center";
   style?: Record<string, string>;
+  /** A second, smaller line beyond the title. */
+  subtitle?: string;
+  subtitleStyle?: Record<string, string>;
 }
 
 export interface AxisLabelOptions {
@@ -399,6 +408,11 @@ export interface AxisLabelOptions {
   /** What to do when a label exceeds `maxWidth`. Default `'ellipsis'`. */
   overflow?: "ellipsis" | "hide";
   /**
+   * Unrotated labels along the bottom that don't fit their slot break onto
+   * a second line at a space (both lines fitting) before being cut short.
+   */
+  wrap?: boolean;
+  /**
    * Polar x-axis placement. `inner` curves category labels around the centre
    * hole; ignored by Cartesian axes.
    */
@@ -414,6 +428,11 @@ export interface AxisLabelOptions {
 }
 
 export interface AxisOptions {
+  /**
+   * This axis's canvas address, reported in canvas events (`data-fv-id` on
+   * its elements). Defaults to `xAxis[0]`, `xAxis[1]`, `yAxis[0]`, `yAxis[1]`.
+   */
+  id?: string;
   /** Render the axis at all. When false, no line/ticks/labels/grid are drawn
    *  and no space is reserved for it. */
   visible?: boolean;
@@ -433,6 +452,9 @@ export interface AxisOptions {
   labels?: AxisLabelOptions;
   /** SVG dash array for major grid lines, for example `'6 3'`. */
   gridLineDashStyle?: string;
+  /** On a category axis: grid lines through each category ('on', the
+   * default) or between neighbouring categories ('between'). */
+  gridLinePlacement?: 'on' | 'between';
   gridLineWidth?: number;
   gridLineColor?: string;
   /**
@@ -452,6 +474,17 @@ export interface AxisOptions {
   minorGridLineColor?: string;
   /** SVG dash array for minor grid lines. Default `'2 2'`. */
   minorGridLineDashStyle?: string;
+  /** Tick marks' length in px (default 5; outside, at most 8, to leave the
+   * labels clear), color (default the axis line's), and side. */
+  tickLength?: number;
+  tickColor?: string;
+  tickPosition?: "outside" | "inside";
+  /** A dotted line across the plot at zero, when the axis's range runs
+   * through it (continuous axes); an object sets its color, width and dash. */
+  zeroLine?: boolean | { color?: string; width?: number; dashStyle?: string };
+  /** Short tick marks at the minor intervals (with `minorTickInterval`;
+   * `minorGridLineWidth: 0` keeps the ticks without the grid lines). */
+  minorTicks?: boolean;
   lineColor?: string;
   lineWidth?: number;
   /** Draw the small tick marks between the axis line and its labels. Default true. */
@@ -462,8 +495,37 @@ export interface AxisOptions {
   plotBands?: PlotBandOptions[];
   /** Reverse the axis direction. */
   reversed?: boolean;
-  /** Set on a value axis to start at zero regardless of data. */
+  /**
+   * `true`: the axis always reaches zero. `false`: it never forces zero, not
+   * even under columns and areas (which reach zero by default).
+   */
   startOnZero?: boolean;
+  /**
+   * The axis's range. `fixed` takes `start` / `end` (a number, or `'auto'`
+   * for that end); `uniform` gives a repeated axis one range across every
+   * pane row (or column) it spans, `independent` each its own; `auto` is
+   * uniform. `includeZero` is `startOnZero`.
+   */
+  range?: {
+    mode?: "auto" | "uniform" | "independent" | "fixed";
+    start?: number | "auto";
+    end?: number | "auto";
+    includeZero?: boolean;
+  };
+  /**
+   * With `type: 'log'`: `positive` (default) skips values at or below zero;
+   * `symmetric` runs through zero, logarithmic either side of it. `base`
+   * sets which powers the ticks fall on (default 10).
+   */
+  log?: { mode?: "positive" | "symmetric"; base?: number };
+  /** Major ticks every `tickInterval` (data units) from `tickOrigin`; `'none'` draws no ticks, labels or grid lines. */
+  tickInterval?: number | "none";
+  /** Where fixed ticks start counting from. Default 0. */
+  tickOrigin?: number;
+  /** The axis band's thickness in px (width beside the plot, height below or above). Default measured. */
+  size?: number;
+  /** On a second value axis: the first axis's range and ticks, so both read on one scale. */
+  sync?: boolean;
   /**
    * Dimension splitting: bind this axis to a data dimension so the chart
    * is broken into a grid of panels (small multiples). See `trellis`.
@@ -688,12 +750,118 @@ export interface PlotOptions {
   [type: string]: Partial<SeriesOptions> | undefined;
 }
 
+/** One header level, set by its field name in `canvas.headers`. */
+export interface CanvasHeaderOptions {
+  /** Draw this level. Hidden, it takes no room. Default true. */
+  visible?: boolean;
+  /** Its band's thickness in px: height across columns, width down rows. */
+  size?: number;
+  label?: {
+    /** CSS-like text style, e.g. `{ fontWeight: '600', color: '#333' }`. */
+    style?: Record<string, string>;
+    /** Degrees; down rows a header cell's text runs along it at 90 / -90. */
+    rotation?: number;
+    /** `{value}` template, as on axis labels. */
+    format?: string;
+  };
+  /** Fill behind this level's cells. */
+  background?: string;
+}
+
+/** Lines between header groups, through the panes and the header levels. */
+export interface CanvasDividerOptions {
+  /**
+   * Which changes draw a line: a header `level` number (that level and every
+   * level outside it), `'all'` (every category too) or `'none'`. Default: every
+   * header level.
+   */
+  level?: number | "all" | "none";
+  color?: string;
+  width?: number;
+  dashStyle?: string;
+}
+
+/** Every other group shaded, across the panes and its header cells. */
+export interface CanvasBandOptions {
+  /** Pane fill of the shaded groups. */
+  color?: string;
+  /** Header cell fill of the shaded groups. Default none. */
+  headerColor?: string;
+  /** The header level whose groups alternate. Default the innermost. */
+  level?: number;
+  /** Groups per band. Default 1. */
+  size?: number;
+}
+
+/** The names of the header fields, beside their levels. */
+export interface CanvasFieldLabelOptions {
+  visible?: boolean;
+  /** Text in place of the field's name, e.g. `Region / Segment` naming
+   * the field along the axis inside the panels too. */
+  text?: string;
+  style?: Record<string, string>;
+}
+
+export interface CanvasOptions {
+  /** Px between panes of a chart with series in several panes. Default 16. */
+  paneGap?: number;
+  /**
+   * Series in panes (`series.pane`): stacked down as rows, or side by side
+   * as columns. Default rows, columns for horizontal bars (along the value
+   * axis, sharing the category axis). The other way each pane has its own
+   * value axis and category labels. Inside small multiples the panes are
+   * the innermost rows or columns, a value scale per pane shared across
+   * the panels.
+   */
+  paneLayout?: "rows" | "columns";
+  /**
+   * How panes take the chart's room: `entire` (default) fills it both ways;
+   * `width` fits pane columns to the width with fixed-height pane rows,
+   * `height` the other way round, `standard` fixes both. With a fixed
+   * direction the chart grows (or shrinks) to the canvas's natural size,
+   * so a host can scroll it.
+   */
+  fit?: "entire" | "width" | "height" | "standard";
+  /**
+   * Fixed pane sizes in px: `width` per pane column (per category on a
+   * nested axis), `height` per pane row. Defaults 200 / 160 (40 / 24 per category).
+   */
+  cell?: { width?: number; height?: number };
+  /**
+   * Axis settings by canvas address (`xAxis[0]`, `yAxis[1]`, or an axis's own
+   * `id`), laid over that axis's options.
+   */
+  axes?: Record<string, AxisOptions>;
+  /** Per header level, by field name. */
+  headers?: Record<string, CanvasHeaderOptions>;
+  /** Dividers between column groups / row groups. */
+  dividers?: { columns?: CanvasDividerOptions; rows?: CanvasDividerOptions };
+  banding?: { columns?: CanvasBandOptions; rows?: CanvasBandOptions };
+  fieldLabels?: { columns?: CanvasFieldLabelOptions; rows?: CanvasFieldLabelOptions };
+}
+
+/** One pane of a chart with series in several panes. */
+export interface PaneOptions {
+  /** Its value axis: laid over the chart's `yAxis`. */
+  yAxis?: AxisOptions;
+  /** Its share of the room, against the others' (default 1). */
+  weight?: number;
+}
+
 /** Small-multiples configuration. */
 export interface TrellisOptions {
   /** Dimension used to split panels horizontally (columns of the grid). */
   columns?: string;
   /** Dimension used to split panels vertically (rows of the grid). */
   rows?: string;
+  /**
+   * The column panels' values in order (others after, as found). By default
+   * panels go in the order their values are first met in the points, which
+   * on a numeric x axis is the order of the x values.
+   */
+  columnOrder?: string[];
+  /** The row panels' values in order, as `columnOrder`. */
+  rowOrder?: string[];
   /** Gap in px between panels. */
   gap?: number;
   /** Share the y scale across all panels (default true). */
@@ -793,6 +961,65 @@ export interface ChartEvents {
   load?: (chart: unknown) => void;
   render?: (chart: unknown) => void;
   click?: (ev: FacetVizPointEvent) => void;
+  /** A part of the canvas (an axis, axis title, the plot area, a title…) clicked. */
+  canvasClick?: (ev: CanvasObjectEvent) => void;
+  /** A part of the canvas double-clicked. */
+  canvasDoubleClick?: (ev: CanvasObjectEvent) => void;
+  /**
+   * An axis band or header level dragged to a new thickness. Setting this
+   * puts a resize handle on each band's edge facing the panes. `phase` is
+   * `move` while dragging and `end` on release; facetviz only reports it —
+   * store `size` in `canvas.axes[id].size` / `canvas.headers[id].size`.
+   */
+  canvasResize?: (ev: CanvasResizeEvent) => void;
+  /** With a fixed `canvas.fit`: the size the chart took to hold its canvas. */
+  canvasNaturalSize?: (size: { width: number; height: number }) => void;
+  /**
+   * A part of the canvas right-clicked. When set, the browser's own context
+   * menu doesn't open over canvas parts.
+   */
+  canvasContextMenu?: (ev: CanvasObjectEvent) => void;
+}
+
+/**
+ * The kinds of canvas part a canvas event can report. `grid` is an axis's
+ * grid lines or alternate bands, `plotLine` / `plotBand` its reference
+ * lines and bands; each carries the axis's id.
+ */
+export type CanvasObjectKind =
+  | "axis"
+  | "axisTitle"
+  | "grid"
+  | "plotLine"
+  | "plotBand"
+  | "plotArea"
+  | "title"
+  | "subtitle"
+  | "legend"
+  | "header"
+  | "fieldLabel";
+
+export interface CanvasResizeEvent {
+  phase: "move" | "end";
+  kind: "axis" | "header";
+  /** The axis's canvas id, or the header's field. */
+  id: string;
+  /** The new thickness in px. */
+  size: number;
+  /** Which side of the panes the band is on. */
+  side: "left" | "right" | "top" | "bottom";
+}
+
+export interface CanvasObjectEvent {
+  type: "click" | "dblclick" | "contextmenu";
+  kind: CanvasObjectKind;
+  /** The part's address: an axis's id, `plotArea`, `title`, `subtitle`, `legend`; a header's field. */
+  id: string;
+  /** A header cell's value, outer levels first (`['East', 'Tech']`). */
+  path?: string[];
+  /** Which copy of a repeated part, e.g. a small-multiples cell (`row:col`). */
+  instance?: string;
+  domEvent: MouseEvent;
 }
 
 export interface SeriesEvents {
@@ -837,7 +1064,7 @@ export interface ZoomOptions {
 /** High-volume canvas "boost" rendering. */
 export interface BoostOptions {
   enabled?: boolean;
-  /** Auto-enable boost once a boostable series exceeds this many points (default 1500). */
+  /** Auto-enable boost once a boostable series exceeds this many points, or all of them together ten times it (default 1500). */
   threshold?: number;
 }
 
@@ -980,9 +1207,10 @@ export interface ChartOptions {
      */
     autoSpaceTexts?: boolean;
     /**
-     * High-volume "boost" rendering. Cartesian point/line series with more than
-     * `threshold` points are drawn to a single canvas overlay instead of one SVG
-     * node per point, and lines are min/max-decimated to the pixel resolution.
+     * High-volume "boost" rendering. Cartesian point, line, column and bar
+     * series (bars grouped or stacked, and stacked areas) past `threshold`
+     * points are drawn to a single canvas overlay instead of one SVG node
+     * per point, and lines are min/max-decimated to the pixel resolution.
      * `true` forces it on; `false` disables it; the default auto-enables it past
      * the threshold. See {@link BoostOptions}.
      */
@@ -998,6 +1226,14 @@ export interface ChartOptions {
   series: SeriesOptions[];
   colors?: string[];
   trellis?: TrellisOptions;
+  /** Header levels, dividers, banding and field labels of a chart laid out as a canvas (the nested x axis). */
+  canvas?: CanvasOptions;
+  /**
+   * With series in several panes (`series.pane`): each pane's settings, by
+   * pane number — its value axis (laid over `yAxis`; its title defaults to
+   * its series' names) and its share of the height.
+   */
+  panes?: PaneOptions[];
   /** Labels, callouts, and point highlights anchored to chart values. */
   annotations?: AnnotationOptions[];
   /** Text blocks positioned from the chart edges or centre. */

@@ -4,7 +4,7 @@
  * live in their own module (`range.ts`).
  */
 
-import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from "./base.js";
+import { BaseSeries, CanvasHit, SeriesCapabilities, SeriesRenderContext } from "./base.js";
 import { CategoryScale, Scale } from "../core/scale.js";
 import type { Point } from "../core/point.js";
 import type { LabelContext } from "../core/options.js";
@@ -49,6 +49,9 @@ export interface ColumnOptions {
    * Fraction (0..0.95) of each category's width left empty between
    * neighbouring categories (default 0.2). Cartesian columns and bars only.
    */
+  /** On a continuous axis (a timeline): each column fills the step to its
+   * nearest neighbour, less `groupPadding` (default 0.1), not 4–24px. */
+  fillGap?: boolean;
   groupPadding?: number;
   /**
    * Fraction (0..0.95) of each bar's slot within its category left empty,
@@ -104,7 +107,19 @@ function roundedBarPath(
   }
 }
 
+/** One bar as drawn: its point, rectangle, fill and rounded corners. */
+interface Bar {
+  p: Point;
+  rect: { x: number; y: number; width: number; height: number };
+  fill: string;
+  borderRadius: number;
+  side: "all" | "top" | "bottom" | "left" | "right";
+}
+
 export class ColumnSeries extends BaseSeries {
+  /** The series' total for data labels' percentage, worked out once a render. */
+  private labelTotal: number | undefined;
+
   override capabilities(): SeriesCapabilities {
     return { grouped: true, cartesian: true, stackable: true };
   }
@@ -123,28 +138,208 @@ export class ColumnSeries extends BaseSeries {
     return [0, p.y]; // include baseline so columns anchor at zero
   }
 
+  /** Tops of the columns (and stack segment bottoms off the baseline), no zero. */
+  override dataExtent(): [number, number] {
+    let min = Infinity;
+    let max = -Infinity;
+    for (const p of this.points) {
+      const vals = p.stackHigh !== undefined ? [p.stackHigh, p.stackLow === 0 ? undefined : p.stackLow] : [p.y];
+      for (const v of vals) {
+        if (v == null) continue;
+        if (v < min) min = v;
+        if (v > max) max = v;
+      }
+    }
+    return min === Infinity ? [0, 1] : [min, max];
+  }
+
   override render(ctx: SeriesRenderContext): void {
     if (ctx.polar) {
       this.renderPolar(ctx);
       return;
     }
-    const { renderer, groupCount, groupIndex } = ctx;
+    const g = ctx.renderer.group({
+      class: `facet-series facet-column ${this.name}`,
+    });
+    this.labelTotal = undefined;
+    for (const { p, rect, fill, borderRadius, side } of this.bars(ctx)) {
+      let el: SVGElement;
+      if (borderRadius > 0) {
+        el = ctx.renderer.create(
+          "path",
+          {
+            d: roundedBarPath(rect, borderRadius, side),
+            fill,
+            ...this.fillOpacityAttr(),
+            ...this.borderAttr(fill),
+            class: "facet-point",
+          },
+          g,
+        );
+      } else {
+        el = ctx.renderer.create(
+          "rect",
+          { ...rect, rx: 1, fill, ...this.fillOpacityAttr(), ...this.borderAttr(fill), class: "facet-point" },
+          g,
+        );
+      }
+      ctx.registerHover(el, p);
+      this.wireEvents(el, p, ctx);
+
+      this.drawDataLabel(ctx, p, rect, g);
+    }
+  }
+
+  /**
+   * The bars painted on a canvas instead of one SVG element each, for
+   * thousands of them: the same rectangles, fills, opacity, outlines and
+   * rounded ends as {@link render}, data labels still in SVG. Null when a
+   * fill is a gradient or pattern (`url(…)`), which a canvas can't take.
+   */
+  override renderCanvas(ctx: SeriesRenderContext, c: CanvasRenderingContext2D): CanvasHit[] | null {
+    if (ctx.polar) return null;
+    const bars = this.bars(ctx);
+    if (bars.some((b) => b.fill.startsWith("url("))) return null;
+    const g = this.options.dataLabels?.enabled
+      ? ctx.renderer.group({ class: `facet-series facet-column ${this.name}` })
+      : null;
+    const opacity = this.fillOpacityAttr()["fill-opacity"] ?? 1;
+    const hits: CanvasHit[] = [];
+    this.labelTotal = undefined;
+    const horizontal = this.type === "bar" || ctx.inverted;
+    const catScale = (horizontal ? ctx.yScale : ctx.xScale) as CategoryScale;
+    if (typeof catScale.fullStep === "function" && Math.abs(catScale.fullStep()) < 1) {
+      this.paintMerged(c, bars, horizontal, opacity, hits);
+      if (g) for (const { p, rect } of bars) this.drawDataLabel(ctx, p, rect, g);
+      return hits;
+    }
+    for (const { p, rect, fill, borderRadius, side } of bars) {
+      // As the SVG rect's `rx: 1`, where a bar is wide and tall enough.
+      let shape: Path2D | null = null;
+      if (borderRadius > 0) shape = new Path2D(roundedBarPath(rect, borderRadius, side));
+      else if (rect.width >= 2 && rect.height >= 2 && typeof Path2D.prototype.roundRect === "function") {
+        shape = new Path2D();
+        shape.roundRect(rect.x, rect.y, rect.width, rect.height, 1);
+      }
+      c.globalAlpha = opacity;
+      c.fillStyle = fill;
+      if (shape) c.fill(shape);
+      else c.fillRect(rect.x, rect.y, rect.width, rect.height);
+      c.globalAlpha = 1;
+      const border = this.borderAttr(fill);
+      if (border.stroke) {
+        c.strokeStyle = border.stroke;
+        c.lineWidth = border["stroke-width"] ?? 1;
+        if (shape) c.stroke(shape);
+        else c.strokeRect(rect.x, rect.y, rect.width, rect.height);
+      }
+      hits.push({ point: p, x: rect.x + rect.width / 2, y: rect.y, rect });
+      if (g) this.drawDataLabel(ctx, p, rect, g);
+    }
+    return hits;
+  }
+
+  /**
+   * Bars closer than a pixel apart: one bar per device pixel (and fill),
+   * from the lowest to the highest edge of the bars starting in it, so
+   * peaks and dips all show while thousands of overlapping bars become a
+   * few hundred. Bucketed and drawn in the canvas's own pixels (from its
+   * transform), so neighbours meet without half-covered, lighter edges.
+   * Hover answers with the pixel's tallest bar. Borders and rounded ends
+   * don't show at that size and are left out.
+   */
+  private paintMerged(
+    c: CanvasRenderingContext2D,
+    bars: Bar[],
+    horizontal: boolean,
+    opacity: number,
+    hits: CanvasHit[],
+  ): void {
+    // Chart units to device pixels: a scale and a shift on each axis.
+    const m = c.getTransform();
+    const [scale, shift, vScale, vShift] = horizontal ? [m.d, m.f, m.a, m.e] : [m.a, m.e, m.d, m.f];
+    const cells = new Map<string, { at: number; lo: number; hi: number; fill: string; tallest: Bar; size: number }>();
+    for (const bar of bars) {
+      const { rect, fill } = bar;
+      const start = horizontal ? rect.x : rect.y;
+      const size = horizontal ? rect.width : rect.height;
+      const lo = start * vScale + vShift;
+      const hi = (start + size) * vScale + vShift;
+      // Every device pixel the bar's thickness touches, as a separate bar
+      // at a fractional position would color.
+      const from = (horizontal ? rect.y : rect.x) * scale + shift;
+      const to = from + (horizontal ? rect.height : rect.width) * scale;
+      for (let at = Math.floor(from); at < Math.max(Math.ceil(to), Math.floor(from) + 1); at++) {
+        const key = `${at}\u0000${fill}`;
+        const cell = cells.get(key);
+        if (!cell) cells.set(key, { at, lo, hi, fill, tallest: bar, size });
+        else {
+          cell.lo = Math.min(cell.lo, lo);
+          cell.hi = Math.max(cell.hi, hi);
+          if (size > cell.size) (cell.tallest = bar), (cell.size = size);
+          // Painted in the order fills last appear, as separate bars would
+          // leave the last one on top.
+          cells.delete(key);
+          cells.set(key, cell);
+        }
+      }
+    }
+    c.save();
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.globalAlpha = opacity;
+    for (const { at, lo, hi, fill, tallest } of cells.values()) {
+      c.fillStyle = fill;
+      if (horizontal) c.fillRect(lo, at, hi - lo, 1);
+      else c.fillRect(at, lo, 1, hi - lo);
+      // Back in chart units for hover.
+      const across = { start: (at - shift) / scale, size: 1 / scale };
+      const along = { start: (lo - vShift) / vScale, size: (hi - lo) / vScale };
+      const rect = horizontal
+        ? { x: along.start, y: across.start, width: along.size, height: across.size }
+        : { x: across.start, y: along.start, width: across.size, height: along.size };
+      hits.push({ point: tallest.p, x: rect.x + rect.width / 2, y: rect.y, rect });
+    }
+    c.restore();
+  }
+
+  /** The smallest px step between neighbouring x values of the points. */
+  private minGapPx(scale: Scale): number {
+    const xs = [...new Set(this.points.map((p) => p.x).filter((x): x is number => typeof x === "number"))].sort((a, b) => a - b);
+    let gap = 0;
+    for (let i = 1; i < xs.length; i++) {
+      const d = Math.abs(scale.scale(xs[i]) - scale.scale(xs[i - 1]));
+      if (d > 0 && (!gap || d < gap)) gap = d;
+    }
+    return gap;
+  }
+
+  /** Each bar's rectangle, fill and rounded corners, in drawing order. */
+  private bars(ctx: SeriesRenderContext): Bar[] {
+    const { groupCount, groupIndex } = ctx;
     // `type: 'bar'` always means horizontal; `chart.inverted: true` swaps a
     // 'column' the same way (the caller already pre-swapped ctx.xScale/
     // ctx.yScale to match, same convention `ctx.inverted` uses elsewhere).
     const horizontal = this.type === "bar" || ctx.inverted;
     const catScale = (horizontal ? ctx.yScale : ctx.xScale) as CategoryScale;
     const valScale: Scale = horizontal ? ctx.xScale : ctx.yScale;
-    const g = renderer.group({
-      class: `facet-series facet-column ${this.name}`,
-    });
 
-    const band =
-      this.options.groupPadding != null && typeof catScale.fullStep === "function"
+    // On a continuous axis (columns placed at numbers) there are no bands:
+    // each column is a share of the plot's width, 4 to 24px.
+    const continuous = catScale.bandwidth() === 0 && typeof catScale.fullStep !== "function";
+    const span = Math.abs(catScale.range()[1] - catScale.range()[0]);
+    // With `fillGap` (a timeline), a column fills most of the step to its
+    // nearest neighbour, as bars along time touch; else 4 to 24px.
+    const gapPx = continuous && this.options.fillGap ? this.minGapPx(catScale) : 0;
+    const band = continuous
+      ? gapPx > 0
+        ? gapPx * (1 - clampPadding(this.options.groupPadding, 0.1))
+        : Math.max(4, Math.min(24, span * 0.08)) * groupCount
+      : this.options.groupPadding != null && typeof catScale.fullStep === "function"
         ? Math.abs(catScale.fullStep()) * (1 - clampPadding(this.options.groupPadding, 0.2))
         : catScale.bandwidth();
     const subWidth = band / groupCount;
     const pointPadding = clampPadding(this.options.pointPadding, 0.1);
+    const bars: Bar[] = [];
 
     for (const p of this.points) {
       const [loVal, hiVal] = this.valuePair(p);
@@ -199,45 +394,22 @@ export class ColumnSeries extends BaseSeries {
 
       const borderRadius =
         p.options.borderRadius ?? this.options.borderRadius ?? 0;
-      const fill = p.color ?? this.color;
-      let el: SVGElement;
-      if (borderRadius > 0) {
-        // Round only the corners at the far/value end -- the near end stays
-        // flush against the baseline/axis, whichever pixel side that is --
-        // unless the series rounds both ends.
-        const ends = p.options.borderRadiusEnds ?? this.options.borderRadiusEnds;
-        const side = ends === "both"
-          ? "all"
-          : horizontal
-          ? vHi >= vLo
-            ? "right"
-            : "left"
-          : vHi <= vLo
-            ? "top"
-            : "bottom";
-        el = renderer.create(
-          "path",
-          {
-            d: roundedBarPath(rect, borderRadius, side),
-            fill,
-            ...this.fillOpacityAttr(),
-            ...this.borderAttr(fill),
-            class: "facet-point",
-          },
-          g,
-        );
-      } else {
-        el = renderer.create(
-          "rect",
-          { ...rect, rx: 1, fill, ...this.fillOpacityAttr(), ...this.borderAttr(fill), class: "facet-point" },
-          g,
-        );
-      }
-      ctx.registerHover(el, p);
-      this.wireEvents(el, p, ctx);
-
-      this.drawDataLabel(ctx, p, rect, g);
+      // Round only the corners at the far/value end -- the near end stays
+      // flush against the baseline/axis, whichever pixel side that is --
+      // unless the series rounds both ends.
+      const ends = p.options.borderRadiusEnds ?? this.options.borderRadiusEnds;
+      const side: Bar["side"] = ends === "both"
+        ? "all"
+        : horizontal
+        ? vHi >= vLo
+          ? "right"
+          : "left"
+        : vHi <= vLo
+          ? "top"
+          : "bottom";
+      bars.push({ p, rect, fill: p.color ?? this.color, borderRadius, side });
     }
+    return bars;
   }
 
   /** Each bar's outline, when the series sets `borderColor` or
@@ -415,7 +587,7 @@ export class ColumnSeries extends BaseSeries {
   ): void {
     const dl = this.options.dataLabels;
     if (!dl?.enabled || !labelEvery(dl, p.index)) return;
-    const total = this.points.reduce((s, pt) => s + (pt.y ?? 0), 0);
+    const total = (this.labelTotal ??= this.points.reduce((s, pt) => s + (pt.y ?? 0), 0));
     const labelCtx: LabelContext = {
       x: p.x,
       y: p.y,

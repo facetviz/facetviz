@@ -58,6 +58,18 @@ export interface SeriesRenderContext {
   suppressDataLabels: boolean;
 }
 
+/**
+ * A mark drawn on the canvas rather than as an SVG element, for hover: its
+ * point, an anchor (where the hover ring goes), and for a bar the rectangle
+ * the pointer has to be in.
+ */
+export interface CanvasHit {
+  point: Point;
+  x: number;
+  y: number;
+  rect?: { x: number; y: number; width: number; height: number };
+}
+
 /** Metadata used by the chart's layout engine. */
 export interface SeriesCapabilities {
   /** Participates in categorical grouping (side-by-side bars). */
@@ -133,6 +145,14 @@ export abstract class BaseSeries {
   }
 
   /**
+   * The values' extent without any baseline the marks grow from (a column's
+   * zero): for an axis told not to reach zero. Most series have none.
+   */
+  dataExtent(): [number, number] {
+    return this.valueExtent();
+  }
+
+  /**
    * Like {@link valueExtent} but only over strictly positive values, for a
    * logarithmic value axis (where a column's zero baseline has no position).
    * Returns undefined when the series has no positive values.
@@ -157,6 +177,15 @@ export abstract class BaseSeries {
   }
 
   abstract render(ctx: SeriesRenderContext): void;
+
+  /**
+   * Draw on the chart's canvas instead of in SVG, for series with thousands
+   * of points; returns the marks for hover. Null (the default) when the
+   * series can't, or can't look the same there: it's drawn in SVG.
+   */
+  renderCanvas(_ctx: SeriesRenderContext, _c: CanvasRenderingContext2D): CanvasHit[] | null {
+    return null;
+  }
 
   /**
    * Optional custom legend items (e.g. a multi-level pie whose legend lists the

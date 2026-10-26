@@ -19,19 +19,17 @@ import type {
   TitleOptions,
   TooltipContext,
   TrellisOptions,
+  CanvasOptions,
+  CanvasBandOptions,
+  CanvasDividerOptions,
+  CanvasObjectEvent,
+  CanvasObjectKind,
   AppendDataOptions,
   MarkerOptions,
   DataLabelOptions,
 } from "./options.js";
 import { Renderer } from "./renderer.js";
-import { Axis, Rect, minorGridPositions } from "./axis.js";
-import {
-  NestedAxis,
-  nestedLevelWidths,
-  nestedInnerRotationExtent,
-  NESTED_SPLIT_TIER_GAP,
-  NESTED_SPLIT_TIER_PITCH,
-} from "./nested-axis.js";
+import { Axis, Rect, minorGridPositions, SUBTITLE_LINE, widestText } from "./axis.js";
 import { Tooltip } from "./tooltip.js";
 import {
   Legend,
@@ -40,12 +38,13 @@ import {
   legendMargin,
 } from "./legend.js";
 import { EventEmitter } from "./events.js";
-import { LinearScale, LogScale, CategoryScale, Scale } from "./scale.js";
+import { LinearScale, LogScale, SymLogScale, CategoryScale, Scale, intervalTicks } from "./scale.js";
 import { LAYOUT, FONTS } from "./defaults.js";
 import {
   merge,
   extent,
   niceDateTicks,
+  niceTicks,
   formatDate,
   formatString,
   decimateLine,
@@ -60,6 +59,9 @@ import {
 } from "./chart-options.js";
 import { downloadBlob, rasterizePNG, serializeSVG } from "./chart-export.js";
 import { computeStacks } from "./stacking.js";
+import { buildCanvasGrid } from "./canvas-grid.js";
+import { layoutCanvas, type CanvasLayout, type CanvasPlacedCell, type CanvasFit } from "./canvas-layout.js";
+import { HeaderTiers, categoryRotationExtent, tierWidths, SPLIT_TIER_GAP, SPLIT_TIER_PITCH, TIER_HEIGHT } from "./canvas-headers.js";
 import { captureSeriesState, restoreSeriesState } from "./series-state.js";
 import { enforceConfiguredValidation } from "./validation.js";
 import { paletteColor, alpha, shade } from "./colors.js";
@@ -172,6 +174,16 @@ export class FacetViz {
   private initialReflowFrame?: number;
   private resizeFrame?: number;
   private destroyed = false;
+  /** How much a fixed `canvas.fit` wants the chart to grow, from this render's layouts. */
+  private naturalDelta?: { dw: number; dh: number };
+  /** Inside the render pass at the canvas's natural size. */
+  private fitting = false;
+  /** While a fixed `canvas.fit` renders at the canvas's natural size: the
+   * size it was given, which text keeps scaling by (a larger canvas
+   * scrolls; its text doesn't grow). */
+  private fontBasis?: { width: number; height: number };
+  /** Axis bands and header levels drawn this render, for resize handles. */
+  private resizeBands: ResizeBand[] = [];
   private boostHoverCleanups: Array<() => void> = [];
   /** Play the enter animation on the next render (first render + data updates). */
   private animateNext = true;
@@ -187,6 +199,11 @@ export class FacetViz {
   };
   private crosshairEl?: SVGElement;
   /** Rendered SVG data marks in keyboard-navigation order. */
+  /** The points given a focus stop, per series: a quick check for a second
+   * hover target of a point already exposed. */
+  private accessibleBySeries = new Map<BaseSeries, Set<Point>>();
+  /** Each series' total of y, for tooltips' percentage; worked out once. */
+  private seriesTotals = new Map<BaseSeries, number>();
   private accessiblePoints: Array<{
     el: SVGElement;
     series: BaseSeries;
@@ -493,11 +510,15 @@ export class FacetViz {
 
   render(): void {
     if (this.destroyed) return;
+    this.naturalDelta = undefined;
+    this.resizeBands = [];
     const restoreResponsive = this.applyResponsiveOverrides();
     try {
     this.boostHoverCleanups.forEach((cleanup) => cleanup());
     this.boostHoverCleanups = [];
     this.accessiblePoints = [];
+    this.accessibleBySeries = new Map();
+    this.seriesTotals = new Map();
     if (!this.renderer) {
       this.renderer = new Renderer(this.width, this.height);
       this.renderer.mount(this.container);
@@ -517,7 +538,7 @@ export class FacetViz {
       this.theme,
       this.options.chart?.responsive === false
         ? 1
-        : chartFontScale(this.width, this.height),
+        : chartFontScale(this.fontBasis?.width ?? this.width, this.fontBasis?.height ?? this.height),
       this.options.chart?.scaleFonts !== false,
     );
 
@@ -617,33 +638,13 @@ export class FacetViz {
         this.series.filter((s) => s.visible && s.points.length),
         nestedDims,
       );
-    } else if (
-      t &&
-      (t.columns || t.rows) &&
-      t.table !== false &&
-      t.sharedX !== false &&
-      t.sharedY !== false
-    ) {
-      // Cross-tab table: shared axes, dimension names as row/column headers.
-      this.renderTrellisTable(outer, t);
+    } else if (t && (t.columns || t.rows)) {
+      this.renderSmallMultiples(outer, t);
+    } else if (this.paneIds().length > 1) {
+      const panes = this.paneIds();
+      this.renderPanes(outer, vis().filter((s) => s.capabilities().cartesian), panes);
     } else {
-      // Independent small-multiple panels (or a single panel when no trellis).
-      const panels = this.computePanels(outer);
-      const sharedSeries =
-        t && (t.columns || t.rows)
-          ? this.series.filter((s) => s.visible && s.points.length)
-          : undefined;
-      for (const panel of panels) {
-        this.renderPanel(
-          panel,
-          sharedSeries
-            ? {
-                x: t?.sharedX === false ? undefined : sharedSeries,
-                y: t?.sharedY === false ? undefined : sharedSeries,
-              }
-            : undefined,
-        );
-      }
+      this.renderPanel({ rect: outer, series: this.series });
     }
 
     // Draw the legend in its reserved area. For `bottom`, anchor to the
@@ -691,7 +692,12 @@ export class FacetViz {
         height: lh,
         layout: legendVertical ? "vertical" : "horizontal",
         onToggle: (i) => this.toggleSeries(i),
-      }).render(this.renderer.group({}, this.renderer.root));
+      }).render(
+        this.renderer.group(
+          { "data-fv-kind": "legend", "data-fv-id": "legend" },
+          this.renderer.root,
+        ),
+      );
     }
 
     // Titles lined up with the plot area, once it's known (a chart with
@@ -712,6 +718,8 @@ export class FacetViz {
     });
 
     this.applyAccessibility();
+    this.installCanvasEvents();
+    this.installResizeHandles();
     this.installZoom(outer);
     this.drawDrillUp(outer);
     if (this.animateNext) this.animateEnter();
@@ -722,6 +730,38 @@ export class FacetViz {
     } finally {
       restoreResponsive();
     }
+    this.fitToCanvas();
+  }
+
+  /**
+   * A fixed `canvas.fit`: render once more at the size the canvas needs
+   * (its fixed directions only), and let the SVG keep that size rather than
+   * shrinking into its container, so the host can scroll it.
+   */
+  private fitToCanvas(): void {
+    const fit = this.options.canvas?.fit;
+    const fixed = !!fit && fit !== "entire";
+    this.renderer.root.style.maxWidth = fixed ? "none" : "100%";
+    if (!fixed || !this.naturalDelta || this.fitting) return;
+    const w = fit === "width" ? this.width : Math.max(1, Math.round(this.width + this.naturalDelta.dw));
+    const h = fit === "height" ? this.height : Math.max(1, Math.round(this.height + this.naturalDelta.dh));
+    if (Math.abs(w - this.width) < 1 && Math.abs(h - this.height) < 1) return;
+    this.fontBasis = { width: this.width, height: this.height };
+    this.width = w;
+    this.height = h;
+    this.fitting = true;
+    try {
+      this.render();
+    } finally {
+      this.fitting = false;
+      this.fontBasis = undefined;
+    }
+    this.options.chart?.events?.canvasNaturalSize?.({ width: this.width, height: this.height });
+  }
+
+  /** The chart's current size: with a fixed `canvas.fit`, its canvas's natural size. */
+  get size(): { width: number; height: number } {
+    return { width: this.width, height: this.height };
   }
 
   /** Set chart-level semantics after all point marks have been registered. */
@@ -1136,6 +1176,206 @@ export class FacetViz {
     ) as [number, number, number, number];
   }
 
+  /**
+   * An invisible rect over `plot`, first in `layer` so grid lines, series and
+   * labels stay on top: what a click on the empty plot lands on.
+   */
+  private drawPlotArea(layer: SVGGElement, plot: Rect, instance?: string): void {
+    const rect = this.renderer.create("rect", {
+      x: plot.x,
+      y: plot.y,
+      width: Math.max(0, plot.width),
+      height: Math.max(0, plot.height),
+      fill: "transparent",
+      class: "facet-plot-area",
+      "data-fv-kind": "plotArea",
+      "data-fv-id": "plotArea",
+      "data-fv-instance": instance,
+    });
+    layer.insertBefore(rect, layer.firstChild);
+  }
+
+  /**
+   * Reports clicks, double-clicks and right-clicks on canvas parts (anything
+   * carrying `data-fv-kind`) through `chart.events.canvas*`. Points keep
+   * their own events: a click on a mark is never a canvas event.
+   */
+  private installCanvasEvents(): void {
+    const events = this.options.chart?.events;
+    if (!events?.canvasClick && !events?.canvasDoubleClick && !events?.canvasContextMenu) return;
+    const root = this.renderer!.root;
+    const target = (e: MouseEvent): Omit<CanvasObjectEvent, "type"> | null => {
+      const from = e.target as Element | null;
+      if (!from || from.closest(".facet-point, .facet-point-hit, .facet-resize-handle")) return null;
+      let el = from.closest("[data-fv-kind]");
+      // The drag-zoom overlay lies over the plot area.
+      if (!el && from.classList?.contains("facet-zoom-overlay"))
+        el = root.querySelector('[data-fv-kind="plotArea"]');
+      if (!el) return null;
+      return {
+        kind: el.getAttribute("data-fv-kind") as CanvasObjectKind,
+        id: el.getAttribute("data-fv-id") ?? "",
+        instance: el.getAttribute("data-fv-instance") ?? undefined,
+        ...(el.hasAttribute("data-fv-path") ? { path: el.getAttribute("data-fv-path")!.split("\u001f") } : {}),
+        domEvent: e,
+      };
+    };
+    const on = (
+      dom: "click" | "dblclick" | "contextmenu",
+      handler: ((ev: CanvasObjectEvent) => void) | undefined,
+    ) => {
+      if (!handler) return;
+      root.addEventListener(dom, (e) => {
+        const t = target(e);
+        if (!t) return;
+        if (dom === "contextmenu") e.preventDefault();
+        handler({ type: dom, ...t });
+      });
+    };
+    on("click", events.canvasClick);
+    on("dblclick", events.canvasDoubleClick);
+    on("contextmenu", events.canvasContextMenu);
+  }
+
+  private noteBand(kind: ResizeBand["kind"], id: string, side: ResizeBand["side"], rect: Rect, size: number): void {
+    if (size > 0 && rect.width >= 0 && rect.height >= 0) this.resizeBands.push({ kind, id, side, rect, size });
+  }
+
+  /**
+   * A multi-pane canvas's resizable bands: each side's axis band (across
+   * the whole plot area) and each header level (across all its cells).
+   */
+  private noteCanvasBands(
+    layout: CanvasLayout,
+    axes: Partial<Record<ResizeBand["side"], AxisOptions>>,
+    ids: Record<ResizeBand["side"], string>,
+  ): void {
+    const p = layout.plotArea;
+    const b = layout.axisBands;
+    const span = (rects: Rect[]): Rect | undefined => {
+      if (!rects.length) return undefined;
+      const x = Math.min(...rects.map((r) => r.x));
+      const y = Math.min(...rects.map((r) => r.y));
+      return {
+        x,
+        y,
+        width: Math.max(...rects.map((r) => r.x + r.width)) - x,
+        height: Math.max(...rects.map((r) => r.y + r.height)) - y,
+      };
+    };
+    for (const side of ["left", "right", "top", "bottom"] as const) {
+      const opts = axes[side];
+      const rect = span(b[side]);
+      if (!opts || opts.visible === false || !rect) continue;
+      const size = side === "left" || side === "right" ? rect.width : rect.height;
+      this.noteBand("axis", opts.id ?? ids[side], side, rect, size);
+    }
+    // Header levels: across columns their band is a row, down rows a column;
+    // which side follows where they sit relative to the plot area.
+    const level = (cells: CanvasPlacedCell[], across: boolean) => {
+      const rect = span(cells.map((c) => c.rect));
+      const field = cells[0]?.field;
+      if (!rect || !field) return;
+      const side: ResizeBand["side"] = across
+        ? (rect.y + rect.height <= p.y + 0.5 ? "top" : "bottom")
+        : (rect.x + rect.width <= p.x + 0.5 ? "left" : "right");
+      this.noteBand("header", field, side, rect, across ? rect.height : rect.width);
+    };
+    layout.headers.columns.forEach((cells) => level(cells, true));
+    layout.headers.rows.forEach((cells) => level(cells, false));
+  }
+
+  /**
+   * Resize handles on every noted band's edge facing the panes, when the
+   * host listens for `canvasResize`: dragging one draws a guide and reports
+   * the band's new size (phase `move`, then `end`).
+   */
+  private installResizeHandles(): void {
+    const onResize = this.options.chart?.events?.canvasResize;
+    if (!onResize || !this.resizeBands.length) return;
+    const root = this.renderer.root;
+    const g = this.renderer.group({ class: "facet-resize-handles" }, root);
+    const toSvg = (e: MouseEvent): { x: number; y: number } => {
+      const box = root.getBoundingClientRect();
+      const kx = box.width ? this.width / box.width : 1;
+      const ky = box.height ? this.height / box.height : 1;
+      return { x: (e.clientX - box.left) * kx, y: (e.clientY - box.top) * ky };
+    };
+    for (const band of this.resizeBands) {
+      const { rect, side } = band;
+      const vertical = side === "left" || side === "right";
+      // The edge facing the panes, and which way across it grows the band.
+      const edge = side === "left" ? rect.x + rect.width : side === "right" ? rect.x : side === "top" ? rect.y + rect.height : rect.y;
+      const grow = side === "left" || side === "top" ? 1 : -1;
+      const handle = this.renderer.create("rect", vertical
+        ? { x: edge - 3, y: rect.y, width: 6, height: rect.height }
+        : { x: rect.x, y: edge - 3, width: rect.width, height: 6 }, g);
+      handle.setAttribute("fill", "transparent");
+      handle.setAttribute("class", "facet-resize-handle");
+      handle.setAttribute("data-fv-resize", `${band.kind}:${band.id}`);
+      handle.style.cursor = vertical ? "col-resize" : "row-resize";
+      handle.addEventListener("pointerdown", (down) => {
+        down.preventDefault();
+        down.stopPropagation();
+        const start = toSvg(down);
+        handle.setPointerCapture?.(down.pointerId);
+        let guide: SVGLineElement | undefined;
+        const sizeAt = (e: MouseEvent) => {
+          const p = toSvg(e);
+          const moved = vertical ? p.x - start.x : p.y - start.y;
+          return Math.max(0, Math.round(band.size + grow * moved));
+        };
+        const report = (e: MouseEvent, phase: "move" | "end") => {
+          const size = sizeAt(e);
+          const at = edge + grow * (size - band.size);
+          guide?.remove();
+          guide = phase === "move"
+            ? this.renderer.create("line", vertical
+              ? { x1: at, y1: 0, x2: at, y2: this.height, class: "facet-resize-guide", stroke: THEME.axis.lineColor, "stroke-dasharray": "4 3" }
+              : { x1: 0, y1: at, x2: this.width, y2: at, class: "facet-resize-guide", stroke: THEME.axis.lineColor, "stroke-dasharray": "4 3" }, g)
+            : undefined;
+          onResize({ phase, kind: band.kind, id: band.id, size, side });
+        };
+        const move = (e: PointerEvent) => report(e, "move");
+        const up = (e: PointerEvent) => {
+          handle.removeEventListener("pointermove", move);
+          handle.removeEventListener("pointerup", up);
+          report(e, "end");
+        };
+        handle.addEventListener("pointermove", move);
+        handle.addEventListener("pointerup", up);
+      });
+    }
+  }
+
+  /** The panes visible cartesian series are in (`series.pane`), in order. */
+  private paneIds(): number[] {
+    if (this.options.chart?.polar) return [];
+    const ids = new Set<number>();
+    for (const s of this.series) {
+      if (!s.visible || !s.points.length || !s.capabilities().cartesian) continue;
+      ids.add(Math.max(0, Math.floor(s.options.pane ?? 0)));
+    }
+    return [...ids].sort((a, b) => a - b);
+  }
+
+  /** `canvas.fit` and `canvas.cell` for {@link layoutCanvas}. */
+  private fitBands(): { fit?: CanvasFit; cell?: { width?: number; height?: number } } {
+    const c = this.options.canvas;
+    return c?.fit && c.fit !== "entire" ? { fit: c.fit, cell: c.cell } : {};
+  }
+
+  /**
+   * Remembers how much bigger (or smaller) than `area` a laid-out canvas
+   * needs to be, for a fixed `canvas.fit` to size the chart after it.
+   */
+  private noteCanvas(layout: CanvasLayout, area: Rect): void {
+    const dw = layout.natural.width - area.width;
+    const dh = layout.natural.height - area.height;
+    const d = this.naturalDelta;
+    this.naturalDelta = d ? { dw: Math.max(d.dw, dw), dh: Math.max(d.dh, dh) } : { dw, dh };
+  }
+
   private renderTitles(top: number, parent: SVGElement, texts: Array<[SVGTextElement, string | undefined]>): number {
     let used = 0;
     const title = this.options.title;
@@ -1155,6 +1395,8 @@ export class FacetViz {
           {
             "text-anchor": this.anchor(title.align),
             ...style,
+            "data-fv-kind": "title",
+            "data-fv-id": "title",
           },
           parent,
         ),
@@ -1187,6 +1429,8 @@ export class FacetViz {
             {
               "text-anchor": this.anchor(sub.align),
               ...style,
+              "data-fv-kind": "subtitle",
+              "data-fv-id": "subtitle",
             },
             parent,
           ),
@@ -1230,56 +1474,6 @@ export class FacetViz {
     return align === "left" ? "start" : align === "right" ? "end" : "middle";
   }
 
-  // -- Panels (trellis) --------------------------------------------------
-
-  private computePanels(outer: Rect): PanelSpec[] {
-    const t = this.options.trellis;
-    const colDim = t?.columns;
-    const rowDim = t?.rows;
-    if (!colDim && !rowDim) {
-      return [{ rect: outer, series: this.series, title: undefined }];
-    }
-    // Split each series' points by the trellis dimension(s) into panel keys.
-    const colVals = colDim ? this.dimensionValues(colDim) : [undefined];
-    const rowVals = rowDim ? this.dimensionValues(rowDim) : [undefined];
-    const gap = t?.gap ?? 24; // Trellis gap in px between panels (default 0).
-    const pw = (outer.width - gap * (colVals.length - 1)) / colVals.length;
-    const ph = (outer.height - gap * (rowVals.length - 1)) / rowVals.length;
-
-    const panels: PanelSpec[] = [];
-    rowVals.forEach((rv, ri) => {
-      colVals.forEach((cv, ci) => {
-        const rect: Rect = {
-          x: outer.x + ci * (pw + gap),
-          y: outer.y + ri * (ph + gap),
-          width: pw,
-          height: ph,
-        };
-        const series = this.series.map((s) =>
-          s.filterByDimensions({ [colDim ?? ""]: cv, [rowDim ?? ""]: rv }),
-        );
-        const title = [cv, rv].filter((v) => v !== undefined).join(" · ");
-        panels.push({ rect, series, title });
-      });
-    });
-    return panels;
-  }
-
-  private dimensionValues(dim: string): Array<string | number> {
-    const seen = new Set<string>();
-    const out: Array<string | number> = [];
-    for (const s of this.series) {
-      for (const p of s.points) {
-        const v = p.options[dim];
-        if (v !== undefined && !seen.has(String(v))) {
-          seen.add(String(v));
-          out.push(v as string | number);
-        }
-      }
-    }
-    return out;
-  }
-
   /** Estimated px width of the widest category-axis label. */
   private catLabelWidth(
     visible: BaseSeries[],
@@ -1297,14 +1491,7 @@ export class FacetViz {
       ...FONTS.axisLabel,
       ...sanitizeStyle(opts.labels?.style),
     };
-    const measured = cats.reduce(
-      (max, category) =>
-        Math.max(
-          max,
-          this.renderer.measureText(label(String(category)), style).width,
-        ),
-      0,
-    );
+    const measured = widestText(this.renderer, cats.map((category) => label(String(category))), style);
     return opts.labels?.maxWidth
       ? Math.min(measured, opts.labels.maxWidth)
       : measured;
@@ -1312,7 +1499,11 @@ export class FacetViz {
 
   /** Estimated px width of the widest value-axis label. */
   private valueLabelWidth(visible: BaseSeries[], valOpts: AxisOptions): number {
-    const [dmin, dmax] = this.valueDomain(visible, valOpts);
+    return this.numberLabelWidth(this.valueDomain(visible, valOpts), valOpts);
+  }
+
+  /** How wide an axis's number labels over `domain` are. */
+  private numberLabelWidth([dmin, dmax]: [number, number], valOpts: AxisOptions): number {
     const fmt = (v: number) => {
       if (valOpts.labels?.formatter) return String(valOpts.labels.formatter(v));
       const r = Math.abs(v) >= 100 ? Math.round(v) : Math.round(v * 100) / 100;
@@ -1375,21 +1566,27 @@ export class FacetViz {
     labelW: number,
   ): number {
     if (opts.visible === false) return this.plotPadding(side) ?? 6;
+    // A set band size wins over measuring.
+    if (typeof opts.size === "number") return Math.max(0, opts.size);
     const title = opts.title?.text && opts.title.enabled !== false ? 1 : 0;
+    // A subtitle line beyond the title.
+    const subtitle = title && opts.title?.subtitle ? SUBTITLE_LINE : 0;
     const titleMargin = opts.title?.margin ??
       (side === "top" || side === "bottom" ? LAYOUT.axisTitleGap : 8) *
         this.chromeSpacingScale(side);
     const titleExtra = title
       ? 10 +
         titleMargin +
-        Math.max(0, opts.title?.offset ?? 0)
+        Math.max(0, opts.title?.offset ?? 0) +
+        subtitle
       : 0;
     // `14` is the title margin already represented by the fixed baseline
     // reserve. Let the delta be negative too: responsive compaction should
     // return that saved space to the plot, not leave an invisible reserve.
     const horizontalTitleDelta = title
       ? titleMargin - 14 +
-        Math.max(0, opts.title?.offset ?? 0)
+        Math.max(0, opts.title?.offset ?? 0) +
+        subtitle
       : 0;
     const labelsOn = opts.labels?.enabled !== false;
     const labelOffset = axisLabelOffset(opts);
@@ -1441,32 +1638,14 @@ export class FacetViz {
     );
   }
 
-  private renderPanel(
-    panel: PanelSpec,
-    shared?: { x?: BaseSeries[]; y?: BaseSeries[] },
-  ): void {
+  private renderPanel(panel: PanelSpec): void {
     const visible = panel.series.filter((s) => s.visible && (s.points.length || s.drawsWithoutPoints()));
     if (!visible.length) return;
 
     const cartesian = visible.some((s) => s.capabilities().cartesian);
     const inverted = this.isInverted(visible);
 
-    // Panel title (trellis).
-    let plot = panel.rect;
-    if (panel.title) {
-      this.renderer.text(
-        panel.title,
-        plot.x + plot.width / 2,
-        plot.y + 12,
-        {
-          "text-anchor": "middle",
-          ...FONTS.subtitle,
-          "font-weight": "600",
-        },
-        this.renderer.root,
-      );
-      plot = { ...plot, y: plot.y + 20, height: plot.height - 20 };
-    }
+    const plot = panel.rect;
 
     if (cartesian && this.options.chart?.polar) {
       this.renderCartesianPolarPanel(plot, visible);
@@ -1571,12 +1750,17 @@ export class FacetViz {
         ),
       );
     }
-    const axisPlot: Rect = {
-      x: plot.x + pad.left,
-      y: plot.y + pad.top,
-      width: plot.width - pad.left - pad.right,
-      height: plot.height - pad.top - pad.bottom,
+    // One pane: the canvas layout places it inside the measured axis bands.
+    const single = layoutCanvas(SINGLE_PANE, plot, { axes: pad, ...this.fitBands() });
+    this.noteCanvas(single, plot);
+    const axisPlot: Rect = single.panes[0].rect;
+    const band = (opts: AxisOptions, id: string, side: "left" | "right" | "top" | "bottom") => {
+      if (opts.visible !== false) this.noteBand("axis", opts.id ?? id, side, single.axisBands[side][0], pad[side]);
     };
+    band(catOpts, "xAxis[0]", catSide);
+    band(valOpts, "yAxis[0]", valSide);
+    if (renderSecondaryX) band(catOpts2, "xAxis[1]", secondaryXSide);
+    if (renderSecondary && valOpts2) band(valOpts2, "yAxis[1]", secondaryYSide);
 
     this.gateDataLabels(axisPlot, visible, true);
     computeStacks(visible);
@@ -1584,7 +1768,6 @@ export class FacetViz {
       visible,
       axisPlot,
       inverted,
-      shared,
     );
     const group = this.groupInfo(visible);
     // Category scale is vertical (yScale) when inverted, else horizontal (xScale).
@@ -1596,6 +1779,7 @@ export class FacetViz {
       { class: "facet-axes" },
       this.renderer.root,
     );
+    this.drawPlotArea(axisLayer, axisPlot, panel.instance);
     // Slope charts read as a set of vertical category "rails" with the
     // slope lines strung across them, Tufte-style — no axis baseline and no
     // horizontal value gridlines, just a vertical line at each x-category
@@ -1620,6 +1804,8 @@ export class FacetViz {
       // explicit `gridLineWidth` — currently the only way to opt in, since
       // a category scale never gets "nice" numeric ticks to derive one from.
       grid: isSlope ? true : !!catOpts.gridLineWidth,
+      id: "xAxis[0]",
+      instance: panel.instance,
     });
     catAxis.render(axisLayer);
     let catAxis2: Axis | undefined;
@@ -1635,6 +1821,8 @@ export class FacetViz {
           opposite: secondaryXSide === "top",
         },
         grid: false,
+        id: "xAxis[1]",
+        instance: panel.instance,
       });
       catAxis2.render(axisLayer);
     }
@@ -1647,6 +1835,8 @@ export class FacetViz {
       cross: catScale,
       options: isSlope ? { ...valOpts, lineWidth: 0 } : valOpts,
       grid: !isSlope,
+      id: "yAxis[0]",
+      instance: panel.instance,
     });
     valAxis.render(axisLayer);
     let valAxis2: Axis | undefined;
@@ -1660,6 +1850,8 @@ export class FacetViz {
         cross: catScale,
         options: valOpts2,
         grid: false,
+        id: "yAxis[1]",
+        instance: panel.instance,
       });
       valAxis2.render(axisLayer);
     }
@@ -1681,7 +1873,7 @@ export class FacetViz {
         : xScale2 && onSecondaryX(s)
           ? xScale2
           : xScale;
-    const boost = !inverted && this.boostEnabled(visible);
+    const boost = this.boostEnabled(visible, inverted);
     const cctx = boost ? this.createBoostCanvas(axisPlot) : null;
     const hits: BoostHit[] = [];
     renderAnnotations({
@@ -1696,24 +1888,7 @@ export class FacetViz {
       layer: "below",
     });
     const existing = new Set(this.renderer.root.children);
-    for (const s of visible) {
-      const sx = xScaleFor(s);
-      const sy = yScaleFor(s);
-      if (cctx && this.isBoostable(s)) {
-        this.drawBoostSeries(s, cctx, sx, sy, hits);
-      } else {
-        const ctx = this.seriesContext(
-          s,
-          axisPlot,
-          sx,
-          sy,
-          group,
-          inverted,
-          false,
-        );
-        s.render(ctx);
-      }
-    }
+    this.drawSeries(visible, axisPlot, (s) => [xScaleFor(s), yScaleFor(s)], group, inverted, cctx, hits);
     // Clip series content to the plot so off-range data (e.g. after zoom) can't
     // spill past the axes.
     this.clipToPlot(axisPlot, existing);
@@ -1743,6 +1918,80 @@ export class FacetViz {
     valAxis2?.renderAbove(aboveLayer);
   }
 
+  /** How wide the names at the left of pane rows need to be: the widest
+   * (bold) name, up to `PANE_NAME_MAX`. */
+  private paneNameWidth(names: string[]): number {
+    const font = { ...FONTS.axisLabel, "font-weight": "600" };
+    return Math.min(PANE_NAME_MAX, Math.max(...names.map((n) => this.renderer.measureText(n, font).width)) + 12);
+  }
+
+  /**
+   * Names of measure panes, in place of their axis titles: centred above
+   * each pane column (in its top axis band) or at the left of each pane
+   * row (the left edge of its left band), cut short to fit. Each reads as
+   * its pane's value axis title for clicks.
+   */
+  private drawPaneNames(
+    layout: CanvasLayout,
+    names: string[],
+    side: "top" | "left",
+    axisId: (i: number) => string,
+    instances: Array<string | undefined>,
+  ): void {
+    const g = this.renderer.group({ class: "facet-pane-names" }, this.renderer.root);
+    const font = { ...FONTS.axisLabel, "font-weight": "600", fill: THEME.axis.labelColor };
+    const bands = side === "top" ? layout.axisBands.top : layout.axisBands.left;
+    names.forEach((name, i) => {
+      const band = bands[i];
+      if (!band) return;
+      const room = side === "top" ? band.width - 4 : PANE_NAME_MAX - 8;
+      let text = name;
+      while (text.length > 1 && this.renderer.measureText(text, font).width > room) text = text.slice(0, -2) + "…";
+      const el =
+        side === "top"
+          ? this.renderer.text(text, band.x + band.width / 2, band.y + band.height - 6, { "text-anchor": "middle", ...font }, g)
+          : this.renderer.text(text, band.x + 2, band.y + band.height / 2, { "text-anchor": "start", "dominant-baseline": "middle", ...font }, g);
+      if (text !== name) el.appendChild(Object.assign(document.createElementNS("http://www.w3.org/2000/svg", "title"), { textContent: name }));
+      el.setAttribute("data-fv-kind", "axisTitle");
+      el.setAttribute("data-fv-id", axisId(i));
+      const instance = instances[i];
+      if (instance) el.setAttribute("data-fv-instance", instance);
+    });
+  }
+
+  /**
+   * Draw series on one plot: those that can on the canvas `cctx` (bars,
+   * stacked series, points and lines past the boost threshold), their marks
+   * going into `hits` for hover, the rest in SVG. The single plot, every
+   * pane of a chart with series in panes and every small-multiple panel
+   * draw through here.
+   */
+  private drawSeries(
+    list: BaseSeries[],
+    plot: Rect,
+    scalesOf: (s: BaseSeries) => [Scale, Scale],
+    group: GroupInfo,
+    inverted: boolean,
+    cctx: CanvasRenderingContext2D | null,
+    hits: BoostHit[],
+  ): void {
+    for (const s of list) {
+      const [sx, sy] = scalesOf(s);
+      const boostable = !!cctx && this.isBoostable(s, inverted);
+      const ownCanvas = boostable && (FacetViz.OWN_CANVAS.has(s.type) || !!s.options.stacking);
+      const drawn = ownCanvas
+        ? s.renderCanvas(this.seriesContext(s, plot, sx, sy, group, inverted, false), cctx!)
+        : null;
+      if (drawn) {
+        for (const h of drawn) hits.push({ ...h, series: s });
+      } else if (boostable && !ownCanvas) {
+        this.drawBoostSeries(s, cctx!, sx, sy, hits);
+      } else {
+        s.render(this.seriesContext(s, plot, sx, sy, group, inverted, false));
+      }
+    }
+  }
+
   /** Clip the series groups added since `existing` was captured to the plot rect. */
   private clipToPlot(plot: Rect, existing: Set<Element>): void {
     const NS = "http://www.w3.org/2000/svg";
@@ -1763,8 +2012,9 @@ export class FacetViz {
     // A couple of px of slack so edge markers aren't harshly cut.
     rect.setAttribute("x", String(plot.x - 2));
     rect.setAttribute("y", String(plot.y - 2));
-    rect.setAttribute("width", String(plot.width + 4));
-    rect.setAttribute("height", String(plot.height + 4));
+    // A plot squeezed out by its axes clips everything rather than erroring.
+    rect.setAttribute("width", String(Math.max(0, plot.width + 4)));
+    rect.setAttribute("height", String(Math.max(0, plot.height + 4)));
     cp.appendChild(rect);
     defs.appendChild(cp);
 
@@ -1787,22 +2037,37 @@ export class FacetViz {
     "step",
     "area",
     "areaspline",
+    "column",
+    "bar",
   ]);
 
-  private isBoostable(s: BaseSeries): boolean {
-    // Stacked series need a per-point baseline that the canvas fast path does
-    // not model; keep those on the SVG renderer for correctness.
-    return !s.options.stacking && FacetViz.BOOSTABLE.has(s.type);
+  /** Series that paint themselves on the canvas (`renderCanvas`): bars
+   *  always, and every stacked series (`STACKED_CANVAS`). The rest use
+   *  `drawBoostSeries`. */
+  private static readonly OWN_CANVAS = new Set(["column", "bar"]);
+  private static readonly STACKED_CANVAS = new Set(["column", "bar", "area", "areaspline"]);
+
+  private isBoostable(s: BaseSeries, inverted = false): boolean {
+    if (!FacetViz.BOOSTABLE.has(s.type)) return false;
+    // Stacked series need a per-point baseline: only those that paint
+    // themselves model it. Inverted, only bars know which way they run.
+    if (s.options.stacking && !FacetViz.STACKED_CANVAS.has(s.type)) return false;
+    if (inverted && !FacetViz.OWN_CANVAS.has(s.type)) return false;
+    return true;
   }
 
-  private boostEnabled(visible: BaseSeries[]): boolean {
+  private boostEnabled(visible: BaseSeries[], inverted = false): boolean {
     const b = this.options.chart?.boost;
     if (b === false) return false;
     const enabled = typeof b === "object" ? b.enabled : b;
     if (enabled) return true;
     const threshold = (typeof b === "object" && b.threshold) || 1500;
-    return visible.some(
-      (s) => this.isBoostable(s) && s.points.length > threshold,
+    // One long series, or many shorter ones adding up (5,000 categories in
+    // 12 colors is 60,000 bars though each series has 5,000).
+    const boostable = visible.filter((s) => this.isBoostable(s, inverted));
+    return (
+      boostable.some((s) => s.points.length > threshold) ||
+      boostable.reduce((n, s) => n + s.points.length, 0) > threshold * 10
     );
   }
 
@@ -2021,7 +2286,17 @@ export class FacetViz {
       }
       let best: BoostHit | null = null,
         bd = 400; // 20px radius²
-      for (const h of hits) {
+      // A bar is hovered with the pointer in it (the last drawn, on top,
+      // wins); other marks by the nearest within 20px.
+      for (let i = hits.length - 1; i >= 0; i--) {
+        const r = hits[i].rect;
+        if (r && mx >= r.x && mx <= r.x + r.width && my >= r.y && my <= r.y + r.height) {
+          best = hits[i];
+          break;
+        }
+      }
+      if (!best) for (const h of hits) {
+        if (h.rect) continue;
         const dx = h.x - mx,
           dy = h.y - my,
           d = dx * dx + dy * dy;
@@ -2045,19 +2320,31 @@ export class FacetViz {
         this.handlePointEvent("mouseOver", best.series, best.point, e);
         active = best;
       }
-      marker = this.renderer.create(
-        "circle",
-        {
-          cx: best.x,
-          cy: best.y,
-          r: 5,
-          fill: "none",
-          stroke: best.series.color,
-          "stroke-width": 2,
-          "pointer-events": "none",
-        },
-        root,
-      );
+      marker = best.rect
+        ? this.renderer.create(
+            "rect",
+            {
+              ...best.rect,
+              fill: "none",
+              stroke: best.series.color,
+              "stroke-width": 2,
+              "pointer-events": "none",
+            },
+            root,
+          )
+        : this.renderer.create(
+            "circle",
+            {
+              cx: best.x,
+              cy: best.y,
+              r: 5,
+              fill: "none",
+              stroke: best.series.color,
+              "stroke-width": 2,
+              "pointer-events": "none",
+            },
+            root,
+          );
       const p = best.point,
         s = best.series;
       this.tooltip!.show(
@@ -2102,537 +2389,631 @@ export class FacetViz {
   }
 
   /**
-   * Cross-tab trellis table. All cells share one y-scale and one x-scale;
-   * the y-axis is labelled only on the leftmost column and the x-axis only on
-   * the bottom row. Dimension values become column headers (top) and row
-   * headers (right), with the dimension name shown once.
+   * Small multiples on the canvas: the `trellis` rows and columns fields are
+   * header levels (`trellis` is this shelf's old spelling) and every row ×
+   * column value pair is a pane holding its own copy of the chart, laid out
+   * by {@link layoutCanvas}. Value axes run down the left of each pane row
+   * (along the bottom of each pane column for horizontal bars), category
+   * axes along the bottom row; with `table: false` every pane has both.
+   * `sharedY: false` is the value axis's `range.mode: 'independent'`.
    */
-  private renderTrellisTable(outer: Rect, t: TrellisOptions): void {
+  private renderSmallMultiples(outer: Rect, t: TrellisOptions): void {
     const colDim = t.columns;
     const rowDim = t.rows;
-    const colVals = colDim ? this.dimensionValues(colDim) : [undefined];
-    const rowVals = rowDim ? this.dimensionValues(rowDim) : [undefined];
-    const gap = t.gap ?? 0;
-
     const allVisible = this.series.filter((s) => s.visible && s.points.length);
+    if (!allVisible.length) return;
     const categories = this.currentCategories(allVisible);
     const xOpts = firstAxis(this.options.xAxis) ?? {};
     const yOpts0 = axisAt(this.options.yAxis, 0);
-    // Horizontal bars: category axis becomes vertical (left), value axis
-    // horizontal (bottom) — the same swap `renderPanel` applies for
-    // `chart.type: 'bar'`/`chart.inverted`, reshuffling the pivot-table
-    // gutters (see leftReserve/bottomReserve below) to match.
+    const canvas = this.options.canvas ?? {};
+    // Horizontal bars: categories down the left of each pane, values along
+    // the bottom, the same swap `renderPanel` applies.
     const inverted = this.isInverted(allVisible);
 
-    // Dual axis: series bound via `series.yAxis: 1` get their own shared
-    // scale/axis (right side), same convention as the non-trellis panels.
-    // Only meaningful for the standard (non-inverted) layout.
+    // Dual axis: series on `yAxis: 1` read on their own scale down the right
+    // (not for horizontal bars).
     const onSecondary = (s: BaseSeries) => (s.options.yAxis ?? 0) === 1;
     const secondaryVisible = allVisible.filter(onSecondary);
     const hasSecondary = !inverted && secondaryVisible.length > 0;
-    const primaryVisible = hasSecondary
-      ? allVisible.filter((s) => !onSecondary(s))
-      : allVisible;
+    const primaryVisible = hasSecondary ? allVisible.filter((s) => !onSecondary(s)) : allVisible;
     const yOpts1 = hasSecondary ? axisAt(this.options.yAxis, 1) : undefined;
+    const synced = hasSecondary && yOpts1?.sync === true;
+    const repeat = t.table === false;
+    const independent = yOpts0.range?.mode === "independent" || t.sharedY === false;
 
-    // Series filtered down to one cell's (column, row) dimension values —
-    // shared by the pre-pass below and the actual per-cell render loop.
-    const cellSeriesFor = (
-      cv: string | number | undefined,
-      rv: string | number | undefined,
-    ): BaseSeries[] => {
-      const filter: Record<string, unknown> = {};
-      if (colDim) filter[colDim] = cv;
-      if (rowDim) filter[rowDim] = rv;
-      return this.series
-        .map((s) => s.filterByDimensions(filter))
-        .filter((s) => s.visible && s.points.length);
+    // Series in panes (`series.pane`): each pane a measure leaf, innermost
+    // on Rows or Columns (`canvas.paneLayout`; down for vertical charts,
+    // across for bars), its own value scale shared across the panels.
+    const paneIds = [...new Set(allVisible.map((s) => s.options.pane ?? 0))].sort((a, b) => a - b);
+    const measured = paneIds.length > 1;
+    const measuresAcross = measured && (canvas.paneLayout ? canvas.paneLayout === "columns" : inverted);
+    // Measures across the value axis's direction: each measure pane labels
+    // its own value axis, in a wider gap before it.
+    const cross = measured && measuresAcross !== inverted;
+    const measureItem = { kind: "axis" as const, measures: paneIds.map(String) };
+    const paneOf = (p: { rowMeasure?: string; columnMeasure?: string }) => Number(p.rowMeasure ?? p.columnMeasure ?? 0);
+
+    // Points without a value of a split field belong to no pane.
+    const records = allVisible
+      .flatMap((s) => s.points.map((p) => p.options as Record<string, unknown>))
+      .filter((r) => (!rowDim || r[rowDim] != null) && (!colDim || r[colDim] != null));
+    const grid = buildCanvasGrid({
+      rows: [...(rowDim ? [{ kind: "dim" as const, field: rowDim, ...(t.rowOrder ? { sort: t.rowOrder } : {}) }] : []), ...(measured && !measuresAcross ? [measureItem] : [])],
+      columns: [...(colDim ? [{ kind: "dim" as const, field: colDim, ...(t.columnOrder ? { sort: t.columnOrder } : {}) }] : []), ...(measuresAcross ? [measureItem] : [])],
+      records,
+    });
+    const paneSeries = new Map(
+      grid.panes.map((p) => {
+        const filter: Record<string, unknown> = {};
+        if (rowDim) filter[rowDim] = grid.rows.leaves[p.row].values[0];
+        if (colDim) filter[colDim] = grid.columns.leaves[p.column].values[0];
+        const id = paneOf(p);
+        return [
+          p.key,
+          this.series
+            .filter((s) => !measured || (s.options.pane ?? 0) === id)
+            .map((s) => s.filterByDimensions(filter))
+            .filter((s) => s.visible && s.points.length),
+        ];
+      }),
+    );
+    // Stack every pane before reading value ranges, so a stack's summed
+    // height is what the axis sees (panes never share points).
+    for (const list of paneSeries.values()) computeStacks(list);
+
+    // Value ranges: one for all panes, or one per pane row (column, for bars).
+    const zeroTypes = ["column", "bar", "area", "areaspline", "lollipop"];
+    const rangeOf = (list: BaseSeries[], opts: AxisOptions): [number, number] => {
+      let [lo, hi] = this.valueDomain(list, opts);
+      if (!positiveLog(opts) && reachesZero(opts, list.some((s) => zeroTypes.includes(s.type)))) {
+        lo = Math.min(lo, 0);
+        hi = Math.max(hi, 0);
+      }
+      return [lo, hi];
+    };
+    const primaryDomainSeries = primaryVisible.length && !synced ? primaryVisible : allVisible;
+    const preserveZeroMin = this.hasNonNegativeZeroBasedSeries(
+      primaryDomainSeries,
+      this.valueDomain(primaryDomainSeries, yOpts0)[0],
+    );
+    const shared = rangeOf(primaryDomainSeries, yOpts0);
+    // Independent: per pane when every pane has its own axes, else per row.
+    const trackRange = new Map<string, [number, number]>();
+    const valueRange = (row: number, column: number): [number, number] => {
+      if (!independent) return shared;
+      const inTrack = (p: { row: number; column: number }) =>
+        repeat ? p.row === row && p.column === column : inverted ? p.column === column : p.row === row;
+      const track = repeat ? `${row}:${column}` : String(inverted ? column : row);
+      let r = trackRange.get(track);
+      if (!r) {
+        const list = grid.panes
+          .filter(inTrack)
+          .flatMap((p) => paneSeries.get(p.key) ?? [])
+          .filter((s) => synced || !onSecondary(s));
+        r = list.length ? rangeOf(list, yOpts0) : shared;
+        trackRange.set(track, r);
+      }
+      return r;
+    };
+    // A measure pane's value axis: the chart's with the pane's own laid
+    // over it, untitled (a header names the measure); one range for the
+    // measure across every panel.
+    const paneOpts = this.options.panes ?? [];
+    const measureAxis = (id: number): AxisOptions => ({ ...yOpts0, ...(paneOpts[id]?.yAxis ?? {}), title: undefined });
+    const measureName = (id: number) =>
+      paneOpts[id]?.yAxis?.title?.text || [...new Set(allVisible.filter((s) => (s.options.pane ?? 0) === id).map((s) => s.name))].join(", ");
+    const measureOfPane = new Map(grid.panes.map((p) => [p.key, paneOf(p)]));
+    const measureRanges = new Map<number, [number, number]>();
+    const measureRange = (id: number): [number, number] => {
+      let r = measureRanges.get(id);
+      if (!r) {
+        const list = grid.panes.filter((p) => paneOf(p) === id).flatMap((p) => paneSeries.get(p.key) ?? []);
+        r = list.length ? rangeOf(list, measureAxis(id)) : shared;
+        measureRanges.set(id, r);
+      }
+      return r;
+    };
+    const secondaryRange = hasSecondary && yOpts1 ? rangeOf(secondaryVisible, yOpts1) : undefined;
+    const secondaryPreservesZeroMin = !!secondaryRange && this.hasNonNegativeZeroBasedSeries(
+      secondaryVisible,
+      this.valueDomain(secondaryVisible, yOpts1!)[0],
+    );
+
+    // Bands. The left axis (values, or categories for bars) keeps its title
+    // in every pane row; the bottom axis's title is drawn once, below.
+    const leftOpts = inverted ? xOpts : yOpts0;
+    const bottomOpts = inverted ? yOpts0 : xOpts;
+    const titleRoom = (o: AxisOptions | undefined) =>
+      o?.title?.text && o.title.enabled !== false
+        ? 18 + Math.max(0, (o.title.margin ?? 8) - 8) + Math.max(0, o.title.offset ?? 0)
+        : 0;
+    // Measures in rows are named at the left of each row, before its labels.
+    const leaves = measuresAcross ? grid.columns.leaves : grid.rows.leaves;
+    const measureNames = measured ? leaves.map((l) => measureName(Number(l.measure ?? 0))) : [];
+    const nameLeft = measured && !measuresAcross ? this.paneNameWidth(measureNames) : 0;
+    const nameTop = measuresAcross ? PANE_NAME_HEIGHT : 0;
+    const leftBand = (leftOpts.size ?? LAYOUT.tickLength + 8 + axisLabelOffset(leftOpts) +
+      (!inverted
+        ? this.valueLabelWidth(primaryVisible, yOpts0)
+        : categories
+          ? this.catLabelWidth(allVisible)
+          // Bars placed at numbers: those numbers up the side.
+          : this.numberLabelWidth(this.xNumericDomain(allVisible), xOpts)) + titleRoom(leftOpts)) + nameLeft;
+    const rightBand = hasSecondary && yOpts1
+      ? yOpts1.size ?? LAYOUT.tickLength + 8 + axisLabelOffset(yOpts1) + this.valueLabelWidth(secondaryVisible, yOpts1) + titleRoom(yOpts1)
+      : 0;
+    // Room for a second line of labels when some won't fit their slot on
+    // one (labels.wrap): the slot as the panes would roughly share the width.
+    const wrapRoom = (() => {
+      if (inverted || !xOpts.labels?.wrap || !categories?.length) return 0;
+      const columnsCount = Math.max(1, grid.columns.leaves.length);
+      const slot = (outer.width - leftBand - rightBand) / (columnsCount * categories.length) - 6;
+      const font = { ...FONTS.axisLabel, ...sanitizeStyle(xOpts.labels?.style) };
+      const tooWide = categories.some((c) => String(c).includes(" ") && this.renderer.measureText(String(c), font).width > slot);
+      return tooWide ? Math.round((parseFloat(font["font-size"] ?? "11") || 11) * 1.15) : 0;
+    })();
+    const bottomBand = bottomOpts.size ?? LAYOUT.defaultBottomAxisHeight + axisLabelOffset(bottomOpts) + wrapRoom;
+    const bottomTitle = bottomOpts.title?.text && bottomOpts.title.enabled !== false ? bottomOpts.title : undefined;
+    const bottomTitleH = bottomTitle ? 18 + Math.max(0, bottomTitle.offset ?? 0) : 0;
+
+    // Header levels, and a row above them for the split fields' names.
+    const headerOn = (f: string | undefined) => !!f && canvas.headers?.[f]?.visible !== false;
+    const namesOn = (colDim && canvas.fieldLabels?.columns?.visible !== false) ||
+      (rowDim && canvas.fieldLabels?.rows?.visible !== false);
+    const nameRowH = namesOn ? 16 : 0;
+    // Row headers as wide as their widest (bold) value or the field's name.
+    const headerFont = { ...FONTS.axisLabel, ...sanitizeStyle(canvas.headers?.[rowDim ?? ""]?.label?.style) };
+    const rowHeaderW = !headerOn(rowDim) ? 0 : canvas.headers?.[rowDim!]?.size ?? Math.max(
+      32,
+      this.renderer.measureText(rowDim!, FONTS.axisLabel).width + 8,
+      ...grid.rows.leaves.map((l) => this.renderer.measureText(String(l.values[0] ?? ""), headerFont).width + 12),
+    );
+    const colHeaderH = !headerOn(colDim) ? 0 : canvas.headers?.[colDim!]?.size ?? 20;
+    const gap = t.gap ?? (repeat ? 16 : 0);
+    const area = { x: outer.x, y: outer.y + nameRowH, width: outer.width, height: outer.height - nameRowH - bottomTitleH };
+    const layout = layoutCanvas(grid, area, {
+      ...this.fitBands(),
+      rowHeaders: rowDim ? [rowHeaderW] : [],
+      columnHeaders: colDim ? [colHeaderH] : [],
+      axes: { left: leftBand, right: rightBand, top: (colDim ? 0 : 6) + nameTop, bottom: bottomBand },
+      // Repeated axes sit in the gaps between panes.
+      gap: {
+        columns: gap + (repeat || (cross && !inverted) ? leftBand + rightBand : 0),
+        rows: gap + (repeat || (cross && inverted) ? bottomBand : 0),
+      },
+    });
+    this.noteCanvas(layout, area);
+    this.noteCanvasBands(layout, {
+      left: leftOpts,
+      right: hasSecondary ? yOpts1 : undefined,
+      bottom: bottomOpts,
+    }, { left: inverted ? "xAxis[0]" : "yAxis[0]", right: "yAxis[1]", top: "", bottom: inverted ? "yAxis[0]" : "xAxis[0]" });
+    const first = layout.panes[0]?.rect;
+    if (first) this.gateDataLabels(first, this.series);
+
+    this.drawSmallMultipleHeaders(layout, { colDim, rowDim, outer, area, nameRowH, canvas });
+    if (measured) this.drawPaneNames(layout, measureNames, measuresAcross ? "top" : "left", () => yOpts0.id ?? "yAxis[0]", []);
+
+    // With no gap, each pane's top value tick would sit on the divider above.
+    const dropLastTick = (sc: Scale, range: [number, number]): Scale => {
+      if (repeat || gap > 0 || !(sc instanceof LinearScale)) return sc;
+      const ticks = sc.ticks();
+      return ticks.length > 1 ? new LinearScale({ domain: sc.domain, range, ticks: ticks.slice(0, -1) }) : sc;
+    };
+    const lastRow = grid.rows.leaves.length - 1;
+    const lastColumn = grid.columns.leaves.length - 1;
+    // With several pane rows the left axis's title is drawn by the chart in
+    // every row, cut to the row's height: the axis's own would run over
+    // into the next row.
+    const leftOnce = lastRow > 0;
+
+    // On the canvas past the boost threshold, counting every panel's points
+    // together; one hover for all of them.
+    const boost = this.boostEnabled([...paneSeries.values()].flat(), inverted);
+    const hits: BoostHit[] = [];
+    for (const pane of layout.panes) {
+      const cell = pane.rect;
+      const { row, column } = pane;
+      const cellSeries = paneSeries.get(pane.key) ?? [];
+      const catRange: [number, number] = inverted ? [cell.y, cell.y + cell.height] : [cell.x, cell.x + cell.width];
+      const catScale = categories
+        ? new CategoryScale({ categories, range: catRange })
+        : this.continuousX(xOpts, this.xNumericDomain(t.sharedX === false && cellSeries.length ? cellSeries : allVisible), catRange, !inverted && lastColumn > 0, inverted, this.xMinGap(allVisible));
+      const valRange: [number, number] = inverted ? [cell.x, cell.x + cell.width] : [cell.y + cell.height, cell.y];
+      const measureId = measureOfPane.get(pane.key) ?? 0;
+      // Short panes still get a few ticks to read values by: about one per
+      // 28px of the pane (one more where the top tick is dropped below), or
+      // across a bar chart's, one per 70px.
+      const paneSpan = inverted ? cell.width : cell.height;
+      const ticksFor = (o: AxisOptions): AxisOptions =>
+        o.tickCount != null || o.tickInterval != null
+          ? o
+          : inverted
+            // Across a narrow pane, labels need more room than up a short one.
+            ? { ...o, tickCount: Math.max(2, Math.min(6, Math.round(paneSpan / 70))) }
+            : { ...o, tickCount: Math.max(3, Math.min(6, Math.round(paneSpan / 28))) + (repeat || gap > 0 ? 0 : 1) };
+      const valOpts = ticksFor(measured ? measureAxis(measureId) : yOpts0);
+      const valScale = dropLastTick(
+        this.valueScale(valOpts, measured ? measureRange(measureId) : valueRange(row, column), valRange, true, preserveZeroMin),
+        valRange,
+      );
+      const rightRange: [number, number] = [cell.y + cell.height, cell.y];
+      const valScale2 = !hasSecondary || !yOpts1
+        ? undefined
+        : synced
+          ? syncedScale(valScale, rightRange)
+          : dropLastTick(this.valueScale(yOpts1, secondaryRange!, rightRange, true, secondaryPreservesZeroMin), rightRange);
+      const xScale = inverted ? valScale : catScale;
+      const yScale = inverted ? catScale : valScale;
+
+      const axisLayer = this.renderer.group({ class: "facet-axes" }, this.renderer.root);
+      this.drawPlotArea(axisLayer, cell, pane.key);
+      const leftLabelled = repeat || column === 0;
+      const bottomLabelled = repeat || row === lastRow;
+      const catLabelled = inverted ? leftLabelled : bottomLabelled;
+      const valLabelled = cross || (inverted ? bottomLabelled : leftLabelled);
+      // An axis drawn for its grid alone: no labels, line or tick marks
+      // (they would sit on the dividers between panes).
+      const bare = { labels: { enabled: false }, lineWidth: 0, ticks: false };
+      // A bare axis keeps what it draws across the plot: its grid lines
+      // (major and minor, between categories too) and plot lines and bands.
+      const bareOf = (o: AxisOptions | undefined): AxisOptions => ({
+        ...bare,
+        gridLineWidth: o?.gridLineWidth,
+        gridLineColor: o?.gridLineColor,
+        gridLineDashStyle: o?.gridLineDashStyle,
+        gridLinePlacement: o?.gridLinePlacement,
+        minorTickInterval: o?.minorTickInterval,
+        minorGridLineWidth: o?.minorGridLineWidth,
+        minorGridLineColor: o?.minorGridLineColor,
+        minorGridLineDashStyle: o?.minorGridLineDashStyle,
+        plotLines: o?.plotLines,
+        plotBands: o?.plotBands,
+        zeroLine: o?.zeroLine,
+        alternateGridColor: o?.alternateGridColor,
+      });
+
+      // Category axis: labelled along the bottom row (down the left column
+      // for bars); its grid lines only when asked for.
+      const catAxis = new Axis({
+        renderer: this.renderer,
+        scale: catScale,
+        position: inverted ? "left" : "bottom",
+        spacingScale: this.chromeSpacingScale(inverted ? "left" : "bottom"),
+        plot: cell,
+        grid: !!xOpts.gridLineWidth,
+        options: catLabelled
+          ? { ...xOpts, ticks: false, ...(inverted && !leftOnce ? {} : { title: undefined }) }
+          : bareOf(xOpts),
+        id: xOpts.id ?? "xAxis[0]",
+        instance: pane.key,
+      });
+      catAxis.render(axisLayer);
+      const valAxis = new Axis({
+        renderer: this.renderer,
+        scale: valScale,
+        position: inverted ? "bottom" : "left",
+        spacingScale: this.chromeSpacingScale(inverted ? "bottom" : "left"),
+        plot: cell,
+        grid: true,
+        cross: catScale,
+        options: valLabelled ? (inverted || leftOnce ? { ...valOpts, title: undefined } : valOpts) : bareOf(valOpts),
+        id: yOpts0.id ?? "yAxis[0]",
+        instance: pane.key,
+      });
+      valAxis.render(axisLayer);
+      let rightAxis: Axis | undefined;
+      if (valScale2 && yOpts1) {
+        rightAxis = new Axis({
+          renderer: this.renderer,
+          scale: valScale2,
+          position: "right",
+          spacingScale: this.chromeSpacingScale("right"),
+          plot: cell,
+          grid: false,
+          cross: catScale,
+          options: repeat || column === lastColumn ? yOpts1 : { ...bareOf(yOpts1), gridLineWidth: 0, minorTickInterval: undefined },
+          id: yOpts1.id ?? "yAxis[1]",
+          instance: pane.key,
+        });
+        rightAxis.render(axisLayer);
+      }
+
+      if (cellSeries.length) {
+        const group = this.groupInfo(cellSeries);
+        // Each panel paints on its own canvas, over its own rectangle.
+        const cctx = boost ? this.createBoostCanvas(cell) : null;
+        this.drawSeries(cellSeries, cell, (s) => [xScale, valScale2 && onSecondary(s) ? valScale2 : yScale], group, inverted, cctx, hits);
+      }
+
+      // Plot lines flagged `zIndex: 'above'` paint on top of this pane's series.
+      const aboveLayer = this.renderer.group({ class: "facet-axes-above" }, this.renderer.root);
+      catAxis.renderAbove(aboveLayer);
+      valAxis.renderAbove(aboveLayer);
+      rightAxis?.renderAbove(aboveLayer);
+    }
+
+    if (hits.length) this.installBoostHover(rectAround(layout.panes.map((p) => p.rect)), hits);
+
+    // The left axis's title in every pane row, centred on it and cut short
+    // (the full title on hover) where the row is shorter than the title.
+    const leftTitle = leftOpts.title?.text && leftOpts.title.enabled !== false ? leftOpts.title : undefined;
+    if (leftOnce && leftTitle?.text) {
+      const font = { ...FONTS.axisTitle, ...sanitizeStyle(leftTitle.style) };
+      const x = layout.plotArea.x - leftBand + 12 - Math.max(0, leftTitle.offset ?? 0);
+      for (const row of layout.rows) {
+        const y = row.y + row.height / 2;
+        let text: string = leftTitle.text;
+        while (text.length > 1 && this.renderer.measureText(text, font).width > row.height - 8) text = text.slice(0, -2) + "…";
+        const el = this.renderer.text(text, x, y, { "text-anchor": "middle", transform: `rotate(-90 ${x} ${y})`, ...font }, this.renderer.root);
+        if (text !== leftTitle.text) el.appendChild(Object.assign(document.createElementNS("http://www.w3.org/2000/svg", "title"), { textContent: leftTitle.text }));
+        el.setAttribute("data-fv-kind", "axisTitle");
+        el.setAttribute("data-fv-id", (inverted ? xOpts.id : yOpts0.id) ?? (inverted ? "xAxis[0]" : "yAxis[0]"));
+      }
+    }
+
+    // The bottom axis's title, once, centred under the panes.
+    if (bottomTitle?.text) {
+      const p = layout.plotArea;
+      const el = this.renderer.text(
+        bottomTitle.text,
+        p.x + p.width / 2,
+        p.y + p.height + bottomBand + 14 + Math.max(0, bottomTitle.offset ?? 0),
+        { "text-anchor": "middle", ...FONTS.axisTitle, ...sanitizeStyle(bottomTitle.style) },
+        this.renderer.root,
+      );
+      el.setAttribute("data-fv-kind", "axisTitle");
+      el.setAttribute("data-fv-id", (inverted ? yOpts0.id : xOpts.id) ?? (inverted ? "yAxis[0]" : "xAxis[0]"));
+    }
+  }
+
+  /**
+   * The small multiples' header levels (a cell per value, `data-fv-kind`
+   * header), the split fields' names above them, banding, and the dividers
+   * between pane rows and columns through the headers and the panes.
+   */
+  private drawSmallMultipleHeaders(
+    layout: CanvasLayout,
+    o: { colDim?: string; rowDim?: string; outer: Rect; area: Rect; nameRowH: number; canvas: CanvasOptions },
+  ): void {
+    const { colDim, rowDim, outer, area, nameRowH, canvas } = o;
+    const g = this.renderer.group({ class: "facet-trellis-headers" }, this.renderer.root);
+    const plot = layout.plotArea;
+    const label = { ...FONTS.axisLabel, fill: THEME.axis.labelColor };
+    const mark = (el: SVGElement, kind: string, id: string, path?: string) => {
+      el.setAttribute("data-fv-kind", kind);
+      el.setAttribute("data-fv-id", id);
+      if (path !== undefined) el.setAttribute("data-fv-path", path);
+    };
+    const headerStyle = (f: string) => sanitizeStyle(canvas.headers?.[f]?.label?.style);
+    const headerText = (f: string, v: string | null) => {
+      const fmt = canvas.headers?.[f]?.label?.format;
+      return fmt ? formatString(fmt, { value: v ?? "" }) : String(v ?? "");
     };
 
-    // Stack every cell *before* reading the shared value domain — otherwise
-    // a stacked column/bar's rendered (summed) height is invisible to the
-    // axis, which only sees each series' own unstacked max and comes up
-    // short. `computeStacks` mutates points in place and cells never share
-    // points, so running it once per cell up front is enough; the render
-    // loop's own `computeStacks` call below just re-confirms the same result.
-    for (const rv of rowVals) {
-      for (const cv of colVals) {
-        computeStacks(cellSeriesFor(cv, rv));
-      }
-    }
-
-    // Shared value domain (so every cell is directly comparable).
-    const primaryDomainSeries = primaryVisible.length
-      ? primaryVisible
-      : allVisible;
-    let [vMin, vMax] = this.valueDomain(primaryDomainSeries, yOpts0);
-    const preservePrimaryZeroMin = this.hasNonNegativeZeroBasedSeries(
-      primaryDomainSeries,
-      vMin,
-    );
-    if (
-      yOpts0.type !== "log" &&
-      (primaryVisible.length ? primaryVisible : allVisible).some((s) =>
-        ["column", "bar", "area", "areaspline", "lollipop"].includes(s.type),
-      )
-    ) {
-      vMin = Math.min(vMin, 0);
-      vMax = Math.max(vMax, 0);
-    }
-    let vMin2 = 0;
-    let vMax2 = 1;
-    let secondaryPreservesZeroMin = false;
-    if (hasSecondary && yOpts1) {
-      [vMin2, vMax2] = this.valueDomain(secondaryVisible, yOpts1);
-      const preserveSecondaryZeroMin = this.hasNonNegativeZeroBasedSeries(
-        secondaryVisible,
-        vMin2,
-      );
-      if (
-        yOpts1.type !== "log" &&
-        secondaryVisible.some((s) =>
-          ["column", "bar", "area", "areaspline", "lollipop"].includes(s.type),
-        )
-      ) {
-        vMin2 = Math.min(vMin2, 0);
-        vMax2 = Math.max(vMax2, 0);
-      }
-      // Stored alongside the shared secondary domain for the per-cell scales.
-      secondaryPreservesZeroMin = preserveSecondaryZeroMin;
-    }
-
-    // Gutters: header labels + shared axis space, laid out like a pivot
-    // table — column field + values as a header row on top, row field +
-    // values as a header column on the left (both horizontal, like normal
-    // table headers), the row field name once in the top-left corner cell.
-    // Divider lines carry the nested-axis convention used elsewhere in the
-    // library (plain bold labels, thin full-span separators, no boxed/shaded
-    // chrome) so a trellis chart still reads consistently with the rest of
-    // the library. The row/column headers already say what's split, so the
-    // (optional) y-axis title is drawn once for the whole grid rather than
-    // repeated per row.
-    const dimNameRowH = 16;
-    const rowValueColW = rowDim
-      ? Math.max(
-          32,
-          Math.max(
-            rowDim.length,
-            ...rowVals
-              .filter((v) => v !== undefined)
-              .map((v) => String(v).length),
-            0,
-          ) *
-            6.6 +
-            4,
-        )
-      : 0;
-    // Tight tick-label width for these actual values, rather than the fixed
-    // generic axis width — keeps the left gutter close to the numbers.
-    // Inverted: the left axis carries categories (text), not values.
-    const leftTitle = inverted ? xOpts.title : yOpts0.title;
-    const titleReserveLeft =
-      leftTitle?.text && leftTitle.enabled !== false
-        ? 18 +
-          Math.max(0, (leftTitle.margin ?? 8) - 8) +
-          Math.max(0, leftTitle.offset ?? 0)
-        : 0;
-    const tickLabelW =
-      LAYOUT.tickLength +
-      8 +
-      axisLabelOffset(inverted ? xOpts : yOpts0) +
-      (inverted
-        ? this.catLabelWidth(allVisible)
-        : this.valueLabelWidth(
-            primaryVisible.length ? primaryVisible : allVisible,
-            yOpts0,
-          ));
-    const colHeaderH = colDim ? dimNameRowH + 20 : rowDim ? dimNameRowH : 0;
-    const rowHeaderW = rowDim ? rowValueColW : 0;
-    const leftReserve = rowHeaderW + tickLabelW + titleReserveLeft;
-    const titleReserveRight =
-      hasSecondary && yOpts1?.title?.text && yOpts1.title.enabled !== false
-        ? 18 +
-          Math.max(0, (yOpts1.title.margin ?? 8) - 8) +
-          Math.max(0, yOpts1.title.offset ?? 0)
-        : 0;
-    const rightReserve =
-      hasSecondary && yOpts1
-        ? LAYOUT.tickLength +
-          8 +
-          axisLabelOffset(yOpts1) +
-          this.valueLabelWidth(secondaryVisible, yOpts1) +
-          titleReserveRight
-        : 0;
-    const bottomReserve =
-      LAYOUT.defaultBottomAxisHeight +
-      axisLabelOffset(inverted ? yOpts0 : xOpts);
-
-    const gridX = outer.x + leftReserve;
-    const gridY = outer.y + colHeaderH;
-    const gridW = outer.width - leftReserve - rightReserve;
-    const gridH = outer.height - colHeaderH - bottomReserve;
-    const cellW = (gridW - gap * (colVals.length - 1)) / colVals.length;
-    const cellH = (gridH - gap * (rowVals.length - 1)) / rowVals.length;
-    this.gateDataLabels(
-      { x: gridX, y: gridY, width: cellW, height: cellH },
-      this.series,
-    );
-    const lineColor = THEME.axis.lineColor;
-
-    const headerLayer = this.renderer.group(
-      { class: "facet-trellis-headers" },
-      this.renderer.root,
-    );
-    // Shared bottom extent for every full-height vertical divider, so they
-    // all end at the same point, just past the shared bottom axis.
-    const dividerBottom = gridY + gridH + LAYOUT.tickLength + 12;
-
-    // Y-axis title(s): each row draws its own copy next to its axis (see the
-    // per-cell Axis calls below), the same convention as the tick labels.
-
-    // Column headers across the top, with full-height divider lines carrying
-    // down through the shared bottom axis — the same visual language as the
-    // nested x-axis's group separators.
-    if (colDim) {
-      this.renderer.text(
-        colDim,
-        gridX + gridW / 2,
-        outer.y + dimNameRowH / 2 + 4,
-        {
-          "text-anchor": "middle",
-          ...FONTS.axisTitle,
-        },
-        headerLayer,
-      );
-      colVals.forEach((cv, ci) => {
-        if (cv === undefined) return;
-        const cx = gridX + ci * (cellW + gap) + cellW / 2;
-        this.renderer.text(
-          String(cv),
-          cx,
-          outer.y + dimNameRowH + 17,
-          {
-            "text-anchor": "middle",
-            ...FONTS.axisLabel,
-            "font-weight": "600",
-            fill: THEME.axis.titleColor,
-          },
-          headerLayer,
-        );
-        if (ci > 0) {
-          const dx = gridX + ci * (cellW + gap) - gap / 2;
-          // Starts below the (single, shared) dimension-name label so it
-          // never cuts through it — the label isn't repeated per column.
-          this.renderer.create(
-            "line",
-            {
-              x1: dx,
-              y1: outer.y + dimNameRowH,
-              x2: dx,
-              y2: dividerBottom,
-              stroke: lineColor,
-              "stroke-width": 1,
-            },
-            headerLayer,
-          );
-        }
+    // Banding: every other pane row / column, in the panes and its header.
+    const bands = this.renderer.group({ class: "facet-canvas-bands" }, g);
+    const band = (opts: CanvasBandOptions | undefined, cells: CanvasPlacedCell[], across: boolean) => {
+      if (!opts || (!opts.color && !opts.headerColor)) return;
+      const size = Math.max(1, Math.floor(opts.size ?? 1));
+      cells.forEach((c, i) => {
+        if (i % (2 * size) < size) return;
+        const r = c.rect;
+        if (opts.color)
+          this.renderer.create("rect", across
+            ? { x: r.x, y: plot.y, width: r.width, height: Math.max(0, plot.height), fill: opts.color, class: "facet-canvas-band" }
+            : { x: plot.x, y: r.y, width: Math.max(0, plot.width), height: r.height, fill: opts.color, class: "facet-canvas-band" }, bands);
+        if (opts.headerColor) this.renderer.create("rect", { ...r, fill: opts.headerColor, class: "facet-canvas-band facet-canvas-header-band" }, bands);
       });
+    };
+    band(canvas.banding?.columns, layout.headers.columns[0] ?? [], true);
+    band(canvas.banding?.rows, layout.headers.rows[0] ?? [], false);
+
+    for (const placed of layout.headers.columns[0] ?? []) {
+      if (!colDim || placed.rect.height <= 0) break;
+      const r = placed.rect;
+      const bg = canvas.headers?.[colDim]?.background;
+      if (bg) this.renderer.create("rect", { ...r, fill: bg, class: "facet-header-background" }, g);
+      const el = this.renderer.text(headerText(colDim, placed.cell.value), r.x + r.width / 2, r.y + r.height / 2 + 4, {
+        ...label, "text-anchor": "middle", ...headerStyle(colDim),
+      }, g);
+      mark(el, "header", colDim, String(placed.cell.value ?? ""));
+    }
+    for (const placed of layout.headers.rows[0] ?? []) {
+      if (!rowDim || placed.rect.width <= 0) break;
+      const r = placed.rect;
+      const bg = canvas.headers?.[rowDim]?.background;
+      if (bg) this.renderer.create("rect", { ...r, fill: bg, class: "facet-header-background" }, g);
+      const el = this.renderer.text(headerText(rowDim, placed.cell.value), r.x + 4, r.y + r.height / 2 + 4, {
+        ...label, "text-anchor": "start", ...headerStyle(rowDim),
+      }, g);
+      mark(el, "header", rowDim, String(placed.cell.value ?? ""));
+    }
+    // The fields' names, bold, above their values (which are regular):
+    // the field heads its values, as in a table.
+    if (nameRowH) {
+      const y = outer.y + 12;
+      const name = { ...label, "font-weight": "600", fill: THEME.axis.titleColor };
+      if (colDim && canvas.fieldLabels?.columns?.visible !== false)
+        mark(this.renderer.text(canvas.fieldLabels?.columns?.text ?? colDim, plot.x + plot.width / 2, y, { ...name, "text-anchor": "middle", ...sanitizeStyle(canvas.fieldLabels?.columns?.style) }, g), "fieldLabel", colDim);
+      if (rowDim && canvas.fieldLabels?.rows?.visible !== false)
+        mark(this.renderer.text(canvas.fieldLabels?.rows?.text ?? rowDim, area.x + 4, y, { ...name, "text-anchor": "start", ...sanitizeStyle(canvas.fieldLabels?.rows?.style) }, g), "fieldLabel", rowDim);
     }
 
-    // Row header down the left side — a pivot-table row-header column: the
-    // dimension name once in the top-left corner cell, then each row's value
-    // as normal (unrotated) text next to its cell, with full-width dividers.
-    if (rowDim) {
-      // Align the corner label with the column *values* row (Tech/Furniture),
-      // not centred across the whole header band — it reads as one row of
-      // header labels instead of floating between "cat" and the values.
-      const rowDimNameY = colDim
-        ? outer.y + dimNameRowH + 17
-        : outer.y + colHeaderH / 2 + 4;
-      this.renderer.text(
-        rowDim,
-        outer.x + rowHeaderW / 2,
-        rowDimNameY,
-        {
-          "text-anchor": "middle",
-          ...FONTS.axisTitle,
-        },
-        headerLayer,
-      );
-      rowVals.forEach((rv, ri) => {
-        if (rv === undefined) return;
-        const cy = gridY + ri * (cellH + gap) + cellH / 2 + 4;
-        this.renderer.text(
-          String(rv),
-          outer.x + rowHeaderW / 2,
-          cy,
-          {
-            "text-anchor": "middle",
-            ...FONTS.axisLabel,
-            "font-weight": "600",
-            fill: THEME.axis.titleColor,
-          },
-          headerLayer,
-        );
-        if (ri > 0) {
-          const dy = gridY + ri * (cellH + gap) - gap / 2;
-          this.renderer.create(
-            "line",
-            {
-              x1: outer.x,
-              y1: dy,
-              x2: outer.x + outer.width,
-              y2: dy,
-              stroke: lineColor,
-              "stroke-width": 1,
-            },
-            headerLayer,
-          );
-        }
-      });
-      // Separates the row-header column (region / East / West) from the axis
-      // and plot area.
-      this.renderer.create(
-        "line",
-        {
-          x1: gridX, //outer.x + rowHeaderW,
-          y1: outer.y,
-          x2: gridX, // outer.x + rowHeaderW,
-          y2: dividerBottom, // gridY,
-          stroke: lineColor,
-          "stroke-width": 1,
-        },
-        headerLayer,
-      );
-
-      // Closes off the right edge of the header/grid box, mirroring the
-      // left divider above — the axis label/title gutters (primary on the
-      // left, secondary on the right, when present) sit outside this box.
-      this.renderer.create(
-        "line",
-        {
-          x1: gridX + gridW,
-          y1: outer.y,
-          x2: gridX + gridW,
-          y2: dividerBottom,
-          stroke: lineColor,
-          "stroke-width": 1,
-        },
-        headerLayer,
-      );
+    // Dividers: the outline of the panes and headers, and a line between
+    // neighbouring pane columns / rows (in the middle of any gap).
+    const line = (opts: CanvasDividerOptions | undefined, x1: number, y1: number, x2: number, y2: number) => {
+      if (opts?.level === "none") return;
+      this.renderer.create("line", {
+        x1, y1, x2, y2,
+        stroke: opts?.color ?? THEME.axis.lineColor,
+        "stroke-width": opts?.width ?? 1,
+        "stroke-dasharray": opts?.dashStyle,
+        class: "facet-trellis-divider",
+      }, g);
+    };
+    const cols = layout.columns;
+    const rows = layout.rows;
+    const top = colDim ? (layout.headers.columns[0]?.[0]?.rect.y ?? plot.y) : plot.y;
+    const left = rowDim ? (layout.headers.rows[0]?.[0]?.rect.x ?? plot.x) : plot.x;
+    const right = plot.x + plot.width;
+    const bottom = plot.y + plot.height;
+    // Lines between columns run on down through the bottom axis's labels,
+    // so each column's labels sit in their own column; a line closes the
+    // right edge.
+    const labelsBottom = Math.max(bottom, ...layout.axisBands.bottom.map((b) => b.y + b.height));
+    const colDiv = canvas.dividers?.columns;
+    const rowDiv = canvas.dividers?.rows;
+    for (let i = 1; i < cols.length; i++) {
+      const x = (cols[i - 1].x + cols[i - 1].width + cols[i].x) / 2;
+      line(colDiv, x, top, x, labelsBottom);
     }
-
-    // Separates the top header band (region corner / cat + values) from the
-    // grid below.
-    if (colHeaderH) {
-      this.renderer.create(
-        "line",
-        {
-          x1: outer.x,
-          y1: gridY,
-          x2: outer.x + outer.width,
-          y2: gridY,
-          stroke: lineColor,
-          "stroke-width": 1,
-        },
-        headerLayer,
-      );
+    for (let i = 1; i < rows.length; i++) {
+      const y = (rows[i - 1].y + rows[i - 1].height + rows[i].y) / 2;
+      line(rowDiv, left, y, right, y);
     }
+    if (colDim) line(colDiv, left, plot.y, right, plot.y);
+    if (rowDim) line(rowDiv, plot.x, top, plot.x, labelsBottom);
+    if (colDim) line(colDiv, right, top, right, labelsBottom);
+  }
 
-    // Separates the bottom of the grid from the shared x-axis below it. The
-    // axis itself is drawn by the Axis class, but this divider line is a
-    // visual cue that the axis belongs to all cells, not just the last row.
-    this.renderer.create(
-      "line",
-      {
-        x1: outer.x,
-        y1: outer.y + outer.height - bottomReserve,
-        x2: outer.x + outer.width,
-        y2: outer.y + outer.height - bottomReserve,
-        stroke: lineColor,
-        "stroke-width": 1,
-      },
-      headerLayer,
-    );
+  /**
+   * Series in several panes (`series.pane`): the panes stacked down (side
+   * by side for horizontal bars), each with its own value axis and scale,
+   * sharing the category axis, which is labelled along the bottom pane
+   * (down the left of the first, for bars). Laid out by {@link layoutCanvas}
+   * with each pane a leaf, as measures on a shelf are.
+   */
+  private renderPanes(outer: Rect, visible: BaseSeries[], paneIds: number[]): void {
+    const inverted = this.isInverted(visible);
+    const xOpts = firstAxis(this.options.xAxis) ?? {};
+    const yOpts0 = axisAt(this.options.yAxis, 0);
+    const paneOpts = this.options.panes ?? [];
+    const seriesOf = (id: number) => visible.filter((s) => (s.options.pane ?? 0) === id);
+    // Each pane's value axis: the chart's, its own laid over it, titled by
+    // its series unless a title is set.
+    // A pane's name: its own title (panes[i].yAxis.title), else its series'.
+    const nameOf = (id: number) => paneOpts[id]?.yAxis?.title?.text || seriesOf(id).map((s) => s.name).join(", ");
+    // Panes across the value axis's direction are named by a header (above
+    // each column, or at the left of each row) rather than an axis title,
+    // leaving the panes more room.
+    const layoutOpt = this.options.canvas?.paneLayout;
+    const across = layoutOpt ? layoutOpt === "columns" : inverted;
+    const cross = across !== inverted;
+    const axisOf = (id: number): AxisOptions => {
+      const own = paneOpts[id]?.yAxis ?? {};
+      const merged: AxisOptions = { ...yOpts0, ...own };
+      // Titled by its series only when no title is given at all: an empty
+      // one keeps the title hidden.
+      if (cross) merged.title = undefined; // a header names the pane
+      else if (own.title?.text === undefined && yOpts0.title?.text === undefined) merged.title = { ...yOpts0.title, ...own.title, text: nameOf(id) };
+      return merged;
+    };
+    const categories = this.currentCategories(visible);
+    const keys = paneIds.map(String);
 
-    // Each cell.
-    rowVals.forEach((rv, ri) => {
-      colVals.forEach((cv, ci) => {
-        const cell: Rect = {
-          x: gridX + ci * (cellW + gap),
-          y: gridY + ri * (cellH + gap),
-          width: cellW,
-          height: cellH,
-        };
-        const cellSeries = cellSeriesFor(cv, rv);
-
-        // Category scale: horizontal (bottom axis) normally, or vertical
-        // (left axis) when inverted — the same role-swap `renderPanel`
-        // applies for bar charts.
-        const catRange: [number, number] = inverted
-          ? [cell.y, cell.y + cell.height]
-          : [cell.x, cell.x + cell.width];
-        const catScale = categories
-          ? new CategoryScale({ categories, range: catRange })
-          : new LinearScale({
-              domain: this.xNumericDomain(
-                cellSeries.length ? cellSeries : allVisible,
-              ),
-              range: catRange,
-            });
-        const dropLastTick = (sc: Scale, range: [number, number]): Scale => {
-          // Drop the max-value tick — it sits right against a divider and
-          // reads as clutter there: the top header divider when the value
-          // axis is vertical (normal), or the right-hand column
-          // divider/closing border when it's horizontal (inverted). Same
-          // domain/range either way, so bars plot identically; only the
-          // tick/gridline/label list shrinks.
-          if (sc instanceof LinearScale) {
-            const allTicks = sc.ticks();
-            if (allTicks.length > 1) {
-              return new LinearScale({
-                domain: sc.domain,
-                range,
-                ticks: allTicks.slice(0, -1),
-              });
-            }
-          }
-          return sc;
-        };
-
-        const valRange: [number, number] = inverted
-          ? [cell.x, cell.x + cell.width]
-          : [cell.y + cell.height, cell.y];
-        const valScale = dropLastTick(
-          this.valueScale(
-            yOpts0,
-            [vMin, vMax],
-            valRange,
-            true,
-            preservePrimaryZeroMin,
-          ),
-          valRange,
-        );
-        const valScale2 =
-          hasSecondary && yOpts1
-            ? dropLastTick(
-                this.valueScale(
-                  yOpts1,
-                  [vMin2, vMax2],
-                  [cell.y + cell.height, cell.y],
-                  true,
-                  secondaryPreservesZeroMin,
-                ),
-                [cell.y + cell.height, cell.y],
-              )
-            : undefined;
-        // Physically swap which slot carries category vs. value so series
-        // that key off `ctx.xScale`/`ctx.yScale` by type (e.g. `bar`) and
-        // ones that key off `ctx.inverted` (e.g. `boxplot`) both resolve
-        // the same roles.
-        const xScale = inverted ? valScale : catScale;
-        const yScale = inverted ? catScale : valScale;
-        const yScale2 = valScale2;
-
-        const axisLayer = this.renderer.group(
-          { class: "facet-axes" },
-          this.renderer.root,
-        );
-        const isLeft = ci === 0;
-        const isRight = ci === colVals.length - 1;
-        const isBottom = ri === rowVals.length - 1;
-        const catLabelled = inverted ? isLeft : isBottom;
-        const valLabelled = inverted ? isBottom : isLeft;
-
-        // Category axis: labelled (no title) on the leftmost column
-        // normally / bottom row when inverted; gridlines off unless the
-        // caller explicitly asked for them via `xOpts.gridLineWidth`.
-        const catAxis = new Axis({
-          renderer: this.renderer,
-          scale: catScale,
-          position: inverted ? "left" : "bottom",
-          spacingScale: this.chromeSpacingScale(
-            inverted ? "left" : "bottom",
-          ),
-          plot: cell,
-          grid: !!xOpts.gridLineWidth,
-          options: catLabelled
-            ? { ...xOpts, title: undefined, ticks: false }
-            : { labels: { enabled: false }, lineWidth: 0, ticks: false },
-        });
-        catAxis.render(axisLayer);
-
-        // Value axis: labelled (incl. title) on the left column normally /
-        // bottom row when inverted, gridlines only elsewhere. Each row
-        // draws its own copy of the title (only supported in the
-        // non-inverted, left-hand position).
-        const valAxis = new Axis({
-          renderer: this.renderer,
-          scale: valScale,
-          position: inverted ? "bottom" : "left",
-          spacingScale: this.chromeSpacingScale(
-            inverted ? "bottom" : "left",
-          ),
-          plot: cell,
-          grid: true,
-          cross: catScale,
-          options: valLabelled
-            ? inverted
-              ? { ...yOpts0, title: undefined }
-              : yOpts0
-            : { labels: { enabled: false }, lineWidth: 0 },
-        });
-        valAxis.render(axisLayer);
-
-        // Secondary y axis: labelled (incl. title) on the right column only,
-        // mirroring the primary axis; drawn without gridlines to avoid a
-        // double grid. Only ever set when !inverted (see hasSecondary).
-        let rightAxis: Axis | undefined;
-        if (hasSecondary && yScale2 && yOpts1) {
-          rightAxis = new Axis({
-            renderer: this.renderer,
-            scale: yScale2,
-            position: "right",
-            spacingScale: this.chromeSpacingScale("right"),
-            plot: cell,
-            grid: false,
-            cross: catScale,
-            options: isRight
-              ? yOpts1
-              : { labels: { enabled: false }, lineWidth: 0 },
-          });
-          rightAxis.render(axisLayer);
-        }
-
-        if (cellSeries.length) {
-          computeStacks(cellSeries);
-          const group = this.groupInfo(cellSeries);
-          for (const s of cellSeries) {
-            const sy = yScale2 && onSecondary(s) ? yScale2 : yScale;
-            const ctx = this.seriesContext(
-              s,
-              cell,
-              xScale,
-              sy,
-              group,
-              inverted,
-              false,
-            );
-            s.render(ctx);
-          }
-        }
-
-        // Plot lines flagged `zIndex: 'above'` paint on top of this cell's
-        // series (a fresh, later-in-DOM group wins the SVG paint order).
-        const aboveLayer = this.renderer.group(
-          { class: "facet-axes-above" },
-          this.renderer.root,
-        );
-        catAxis.renderAbove(aboveLayer);
-        valAxis.renderAbove(aboveLayer);
-        rightAxis?.renderAbove(aboveLayer);
-      });
+    // Panes across (columns) or down (rows): by default along the value
+    // axis, sharing the category axis. The other way (`cross`) every pane
+    // has its own value axis, in the gap before it, and category labels.
+    const grid = buildCanvasGrid({
+      [across ? "columns" : "rows"]: [{ kind: "axis" as const, measures: keys }],
+      records: [],
     });
+    // The value band is as wide (tall, for bars) as the widest pane needs.
+    const valueSide = inverted ? "bottom" : "left";
+    const catSide = inverted ? "left" : "bottom";
+    const valueBand = Math.max(...paneIds.map((id) => this.axisReserve(axisOf(id), valueSide, this.valueLabelWidth(seriesOf(id), axisOf(id)))));
+    const catBand = this.axisReserve(xOpts, catSide, this.catLabelWidth(visible));
+    const paneGap = this.options.canvas?.paneGap ?? 16;
+    const gap = cross ? paneGap + valueBand : paneGap;
+    const weights = paneIds.map((id) => paneOpts[id]?.weight ?? 1);
+    const names = paneIds.map(nameOf);
+    const nameTop = cross && across ? PANE_NAME_HEIGHT : 0;
+    const nameLeft = cross && !across ? this.paneNameWidth(names) : 0;
+    const layout = layoutCanvas(grid, outer, {
+      ...this.fitBands(),
+      axes: inverted
+        ? { left: catBand + nameLeft, bottom: valueBand, right: 8, top: 6 + nameTop }
+        : { left: valueBand + nameLeft, bottom: catBand, right: 8, top: 6 + nameTop },
+      gap: across ? { columns: gap } : { rows: gap + nameTop },
+      weights: across ? { columns: weights } : { rows: weights },
+    });
+    if (cross) this.drawPaneNames(layout, names, across ? "top" : "left", (i) => axisOf(paneIds[i]).id ?? "yAxis[0]", paneIds.map((id) => `pane:${id}`));
+    this.noteCanvas(layout, outer);
+    this.noteCanvasBands(
+      layout,
+      inverted ? { left: xOpts, bottom: yOpts0 } : { left: yOpts0, bottom: xOpts },
+      { left: inverted ? "xAxis[0]" : "yAxis[0]", right: "", top: "", bottom: inverted ? "yAxis[0]" : "xAxis[0]" },
+    );
+    if (layout.panes[0]) this.gateDataLabels(layout.panes[0].rect, visible, true);
+
+    const zeroTypes = ["column", "bar", "area", "areaspline", "errorbar", "lollipop"];
+    // Every pane's points count together toward the canvas; one hover.
+    const boost = this.boostEnabled(visible, inverted);
+    const hits: BoostHit[] = [];
+    layout.panes.forEach((pane, i) => {
+      const id = paneIds[i];
+      const list = seriesOf(id);
+      const opts = axisOf(id);
+      const r = pane.rect;
+      computeStacks(list);
+      const catRange: [number, number] = inverted ? [r.y, r.y + r.height] : [r.x, r.x + r.width];
+      const catScale: Scale = categories
+        ? new CategoryScale({ categories, range: catRange, reversed: xOpts.reversed })
+        : this.continuousX(xOpts, this.xNumericDomain(visible), catRange, false, inverted, this.xMinGap(visible));
+      let [lo, hi] = this.valueDomain(list, opts);
+      const preserveZeroMin = this.hasNonNegativeZeroBasedSeries(list, lo);
+      if (!positiveLog(opts) && reachesZero(opts, list.some((s) => zeroTypes.includes(s.type)))) {
+        lo = Math.min(lo, 0);
+        hi = Math.max(hi, 0);
+      }
+      const valRange: [number, number] = inverted ? [r.x, r.x + r.width] : [r.y + r.height, r.y];
+      const valScale = this.valueScale(opts, [lo, hi], valRange, true, preserveZeroMin);
+
+      const axisLayer = this.renderer.group({ class: "facet-axes" }, this.renderer.root);
+      const instance = `pane:${id}`;
+      this.drawPlotArea(axisLayer, r, instance);
+      // The category axis is labelled once (along the last pane, down the
+      // first for bars), or on every pane when they split it.
+      const catLabelled = cross || (inverted ? i === 0 : i === layout.panes.length - 1);
+      const catAxis = new Axis({
+        renderer: this.renderer,
+        scale: catScale,
+        position: catSide,
+        spacingScale: this.chromeSpacingScale(catSide),
+        plot: r,
+        grid: !!xOpts.gridLineWidth,
+        options: catLabelled ? xOpts : { labels: { enabled: false }, ticks: false, title: undefined, lineColor: xOpts.lineColor, lineWidth: xOpts.lineWidth },
+        id: xOpts.id ?? "xAxis[0]",
+        instance,
+      });
+      catAxis.render(axisLayer);
+      const valAxis = new Axis({
+        renderer: this.renderer,
+        scale: valScale,
+        position: valueSide,
+        spacingScale: this.chromeSpacingScale(valueSide),
+        plot: r,
+        grid: true,
+        cross: catScale,
+        options: opts,
+        id: opts.id ?? "yAxis[0]",
+        instance,
+      });
+      valAxis.render(axisLayer);
+
+      // Every series in the pane reads on its scale (no second axis here),
+      // on the pane's own canvas past the boost threshold.
+      const existing = new Set(this.renderer.root.children);
+      const group = this.groupInfo(list);
+      const cctx = boost ? this.createBoostCanvas(r) : null;
+      this.drawSeries(list, r, () => (inverted ? [valScale, catScale] : [catScale, valScale]), group, inverted, cctx, hits);
+      this.clipToPlot(r, existing);
+      const aboveLayer = this.renderer.group({ class: "facet-axes-above" }, this.renderer.root);
+      catAxis.renderAbove(aboveLayer);
+      valAxis.renderAbove(aboveLayer);
+    });
+    if (hits.length) this.installBoostHover(rectAround(layout.panes.map((p) => p.rect)), hits);
   }
 
   private renderPolarPanel(plot: Rect, visible: BaseSeries[]): void {
@@ -2783,10 +3164,10 @@ export class FacetViz {
         domain[0],
       );
       if (
-        domainSeries.some((item) =>
+        reachesZero(options, domainSeries.some((item) =>
           ["column", "area", "areaspline"].includes(item.type),
-        ) &&
-        options.type !== "log"
+        )) &&
+        !positiveLog(options)
       )
         domain = [Math.min(0, domain[0]), Math.max(0, domain[1])];
       return this.valueScale(
@@ -3320,6 +3701,13 @@ export class FacetViz {
 
   // -- Nested (hierarchical x-axis) ------------------------------
 
+  /**
+   * The nested x axis as a canvas: the outer `dimensions` are header levels
+   * and the innermost is a category axis inside each pane, one pane per
+   * outer group (`xAxis.dimensions` is this shelf's old spelling). Header
+   * levels sit below the panes, or above them with `opposite` (categories
+   * stay below); down the left (and right) for horizontal bars.
+   */
   private renderNestedPanel(
     outer: Rect,
     visible: BaseSeries[],
@@ -3337,10 +3725,8 @@ export class FacetViz {
     // Stacks are of the leaf points, built after the series' own were.
     computeStacks(aggSeries);
 
-    // Horizontal bars: category axis becomes vertical (left, or left+right
-    // when split), value axis horizontal (bottom) — the same role-swap
-    // `renderPanel`/the trellis table apply for `chart.type:'bar'` /
-    // `chart.inverted`. Inverted, the secondary value axis runs across the top.
+    // Horizontal bars: categories and header levels run down the left (the
+    // value axis along the bottom, a secondary one across the top).
     const inverted = this.isInverted(visible);
 
     const yOpts0 = axisAt(this.options.yAxis, 0);
@@ -3349,325 +3735,199 @@ export class FacetViz {
     const secondary = aggSeries.filter((s) => onAxis(s, 1));
     const hasSecondary = secondary.length > 0;
 
-    // Reserve axis space. In split mode (opposite) the innermost dimension is
-    // labelled nearest the plot while the outer grouping dimensions sit on
-    // the far side.
     const xOpts = firstAxis(this.options.xAxis) ?? {};
+    const canvas = this.options.canvas ?? {};
     const split = !!xOpts.opposite;
-    // Mirrors `axisReserve`'s `visible === false` short-circuit for the
-    // plain (non-nested) panel: no line/ticks/labels/dividers drawn, and no
-    // space reserved beyond the same minimal 6px sliver.
+    // Hidden, the axis draws nothing and keeps only a 6px sliver, as a
+    // plain hidden axis does.
     const catVisible = xOpts.visible !== false;
-    const rowH = 18;
-    const splitSeparatorExtra = split
-      ? Math.max(0, dims.length - 2) * NESTED_SPLIT_TIER_GAP
-      : 0;
-    const rotExtra = !inverted
-      ? nestedInnerRotationExtent(leaves, xOpts.labels?.rotation ?? 0)
-      : 0;
+    const levels = dims.length;
     const catLabelOffset = catVisible ? axisLabelOffset(xOpts) : 0;
-    const bottomSpacingScale = this.chromeSpacingScale("bottom");
-    const leftSpacingScale = this.chromeSpacingScale("left");
-    const rightSpacingScale = this.chromeSpacingScale("right");
+    const titleOn = !!(xOpts.title?.text && xOpts.title.enabled !== false);
+    const header = (l: number) => canvas.headers?.[dims[l]];
+    const shown = (l: number) => catVisible && header(l)?.visible !== false;
 
-    let plot: Rect;
-    let catScale: CategoryScale;
-    let valScale0: Scale;
-    let valScale1: Scale;
-    const axisLayer = this.renderer.group(
-      { class: "facet-axes" },
-      this.renderer.root,
-    );
-    let valAxis0: Axis;
-    let valAxis1: Axis | undefined;
+    const grid = buildCanvasGrid({
+      [inverted ? "rows" : "columns"]: [
+        ...dims.slice(0, -1).map((field) => ({ kind: "dim" as const, field })),
+        { kind: "category" as const, field: dims[levels - 1] },
+      ],
+      records: leaves.map((l) => Object.fromEntries(dims.map((d, i) => [d, l[i]]))),
+    });
 
+    let layout: CanvasLayout;
     if (!inverted) {
-      const leftReserve =
-        LAYOUT.tickLength +
-        8 +
-        axisLabelOffset(yOpts0) +
-        this.valueLabelWidth(
-          aggSeries.filter((s) => onAxis(s, 0)),
-          yOpts0,
-        ) +
-        (yOpts0.title?.text && yOpts0.title.enabled !== false
-          ? 18 +
-            ((yOpts0.title.margin ?? 8 * leftSpacingScale) - 8) +
-            Math.max(0, yOpts0.title.offset ?? 0)
+      const leftSpacingScale = this.chromeSpacingScale("left");
+      const rightSpacingScale = this.chromeSpacingScale("right");
+      const valueBand = (opts: AxisOptions, list: BaseSeries[], scale: number) =>
+        typeof opts.size === "number" ? opts.size : LAYOUT.tickLength + 8 + axisLabelOffset(opts) + this.valueLabelWidth(list, opts) +
+        (opts.title?.text && opts.title.enabled !== false
+          ? 18 + ((opts.title.margin ?? 8 * scale) - 8) + Math.max(0, opts.title.offset ?? 0)
           : 0);
-      const rightReserve = hasSecondary
-        ? LAYOUT.tickLength +
-          8 +
-          axisLabelOffset(yOpts1) +
-          this.valueLabelWidth(secondary, yOpts1) +
-          (yOpts1.title?.text && yOpts1.title.enabled !== false
-            ? 18 +
-              ((yOpts1.title.margin ?? 8 * rightSpacingScale) - 8) +
-              Math.max(0, yOpts1.title.offset ?? 0)
-            : 0)
-        : 8;
-      const bottomReserve = catVisible
-        ? LAYOUT.tickLength +
-          catLabelOffset +
-          (split ? 1 : dims.length) * rowH +
-          12 +
-          rotExtra +
-          splitSeparatorExtra +
-          (xOpts.title?.text && xOpts.title.enabled !== false
-            ? 30 +
-              ((xOpts.title.margin ??
-                LAYOUT.axisTitleGap * bottomSpacingScale) -
-                LAYOUT.axisTitleGap) +
-              Math.max(0, xOpts.title.offset ?? 0)
-            : 0)
-        : 6;
-      const topReserve =
-        catVisible && split
-          ? LAYOUT.tickLength +
-            catLabelOffset +
-            (dims.length - 1) * NESTED_SPLIT_TIER_PITCH +
-            8
-          : 6;
-      plot = {
-        x: outer.x + leftReserve,
-        y: outer.y + topReserve,
-        width: outer.width - leftReserve - rightReserve,
-        height: outer.height - topReserve - bottomReserve,
-      };
-      this.gateDataLabels(plot, visible);
-
-      catScale = new CategoryScale({
-        categories: keys,
-        range: [plot.x, plot.x + plot.width],
+      const rotExtra = categoryRotationExtent(leaves, xOpts.labels?.rotation ?? 0);
+      const sepExtra = split ? Math.max(0, levels - 2) * SPLIT_TIER_GAP : 0;
+      const titleBand = catVisible
+        ? 12 + sepExtra + (titleOn
+          ? 30 + ((xOpts.title!.margin ?? LAYOUT.axisTitleGap * this.chromeSpacingScale("bottom")) - LAYOUT.axisTitleGap) +
+            Math.max(0, xOpts.title!.offset ?? 0)
+          : 0)
+        : 0;
+      const topExtra = catVisible && split ? 8 : 0;
+      const area = { x: outer.x, y: outer.y + topExtra, width: outer.width, height: outer.height - topExtra - titleBand };
+      layout = layoutCanvas(grid, area, {
+        ...this.fitBands(),
+        axes: {
+          left: valueBand(yOpts0, aggSeries.filter((s) => onAxis(s, 0)), leftSpacingScale),
+          right: hasSecondary ? valueBand(yOpts1, secondary, rightSpacingScale) : 8,
+          top: catVisible && split ? LAYOUT.tickLength + catLabelOffset : 6,
+          bottom: catVisible ? LAYOUT.tickLength + catLabelOffset + TIER_HEIGHT + rotExtra : 6,
+        },
+        columnHeaders: dims.slice(0, -1).map((_, l) =>
+          shown(l) ? header(l)?.size ?? (split ? SPLIT_TIER_PITCH : TIER_HEIGHT) : 0,
+        ),
+        columnHeaderSide: split ? "top" : "bottom",
       });
-      const range: [number, number] = [plot.y + plot.height, plot.y];
-      const scaleFor = (list: BaseSeries[], opts: AxisOptions) => {
-        const domainSeries = list.length ? list : aggSeries;
-        let [lo, hi] = this.valueDomain(domainSeries, opts);
-        const preserveZeroMin = this.hasNonNegativeZeroBasedSeries(
-          domainSeries,
-          lo,
-        );
-        if (opts.type !== "log") {
-          lo = Math.min(lo, 0);
-          hi = Math.max(hi, 0);
-        }
-        return this.valueScale(
-          opts,
-          [lo, hi],
-          range,
-          true,
-          preserveZeroMin,
-        );
-      };
-      valScale0 = scaleFor(
-        aggSeries.filter((s) => onAxis(s, 0)),
-        yOpts0,
-      );
-      valScale1 = hasSecondary ? scaleFor(secondary, yOpts1) : valScale0;
-
-      valAxis0 = new Axis({
-        renderer: this.renderer,
-        scale: valScale0,
-        position: "left",
-        spacingScale: this.chromeSpacingScale("left"),
-        plot,
-        cross: catScale,
-        options: yOpts0,
-        grid: true,
-      });
-      valAxis0.render(axisLayer);
-      if (hasSecondary) {
-        valAxis1 = new Axis({
-          renderer: this.renderer,
-          scale: valScale1,
-          position: "right",
-          spacingScale: this.chromeSpacingScale("right"),
-          plot,
-          cross: catScale,
-          options: yOpts1,
-          grid: false,
-        });
-        valAxis1.render(axisLayer);
-      }
-      if (catVisible) {
-        new NestedAxis({
-          renderer: this.renderer,
-          scale: catScale,
-          plot,
-          leaves,
-          keys,
-          position: split ? "split" : "bottom",
-          groupLines: xOpts.groupLines,
-          spacingScale: this.chromeSpacingScale("bottom"),
-          labels: xOpts.labels,
-          title: xOpts.title,
-          lineColor: xOpts.lineColor,
-          lineWidth: xOpts.lineWidth,
-          gridLineColor: xOpts.gridLineColor,
-          gridLineWidth: xOpts.gridLineWidth,
-          alternateGridColor: xOpts.alternateGridColor,
-        }).render(axisLayer);
-      }
+      this.noteCanvas(layout, area);
     } else {
-      // Vertical nested axis: left reserve fits the tier(s) nearest the plot
-      // (all tiers stacked when not split, just the innermost when split);
-      // the outer grouping tiers get a right reserve only when split.
-      const colWidths = nestedLevelWidths(leaves);
-      const innerW = colWidths[colWidths.length - 1] ?? 0;
-      const outerW = colWidths.slice(0, -1).reduce((a, b) => a + b, 0);
-      const totalW = colWidths.reduce((a, b) => a + b, 0);
-      const leftReserve = catVisible
-        ? LAYOUT.tickLength +
-          8 +
-          catLabelOffset +
-          (split ? innerW : totalW) +
-          (xOpts.title?.text && xOpts.title.enabled !== false
-            ? 22 +
-              ((xOpts.title.margin ?? 16 * leftSpacingScale) - 14) +
-              Math.max(0, xOpts.title.offset ?? 0)
-            : 0)
-        : 6;
-      const rightReserve =
-        catVisible && split
-          ? LAYOUT.tickLength + 8 + catLabelOffset + outerW
-          : 8;
-      const bottomReserve =
-        LAYOUT.defaultBottomAxisHeight +
-        axisLabelOffset(yOpts0) +
-        (yOpts0.title?.text && yOpts0.title.enabled !== false
-          ? 32 +
-            ((yOpts0.title.margin ??
-              LAYOUT.axisTitleGap * bottomSpacingScale) - 14) +
-            Math.max(0, yOpts0.title.offset ?? 0)
+      const bottomSpacingScale = this.chromeSpacingScale("bottom");
+      const valueBand = (opts: AxisOptions, scale: number) =>
+        typeof opts.size === "number" ? opts.size : LAYOUT.defaultBottomAxisHeight + axisLabelOffset(opts) +
+        (opts.title?.text && opts.title.enabled !== false
+          ? 32 + ((opts.title.margin ?? LAYOUT.axisTitleGap * scale) - 14) + Math.max(0, opts.title.offset ?? 0)
           : 0);
-      const topReserve = hasSecondary
-        ? LAYOUT.defaultBottomAxisHeight +
-          axisLabelOffset(yOpts1) +
-          (yOpts1.title?.text && yOpts1.title.enabled !== false
-            ? 32 +
-              ((yOpts1.title.margin ??
-                LAYOUT.axisTitleGap * this.chromeSpacingScale("top")) -
-                14) +
-              Math.max(0, yOpts1.title.offset ?? 0)
-            : 0)
-        : 6;
-      plot = {
-        x: outer.x + leftReserve,
-        y: outer.y + topReserve,
-        width: outer.width - leftReserve - rightReserve,
-        height: outer.height - topReserve - bottomReserve,
-      };
-      this.gateDataLabels(plot, visible);
-
-      catScale = new CategoryScale({
-        categories: keys,
-        range: [plot.y, plot.y + plot.height],
+      const widths = tierWidths(leaves);
+      const titleW = titleOn
+        ? 22 + ((xOpts.title!.margin ?? 16 * this.chromeSpacingScale("left")) - 14) + Math.max(0, xOpts.title!.offset ?? 0)
+        : 0;
+      const leftExtra = catVisible ? 8 + titleW : 0;
+      const rightExtra = catVisible && split ? 8 : 0;
+      const area = { x: outer.x + leftExtra, y: outer.y, width: outer.width - leftExtra - rightExtra, height: outer.height };
+      layout = layoutCanvas(grid, area, {
+        ...this.fitBands(),
+        axes: {
+          left: catVisible ? LAYOUT.tickLength + catLabelOffset + widths[levels - 1] : 6,
+          right: catVisible && split ? LAYOUT.tickLength + catLabelOffset : 8,
+          top: hasSecondary ? valueBand(yOpts1, this.chromeSpacingScale("top")) : 6,
+          bottom: valueBand(yOpts0, bottomSpacingScale),
+        },
+        rowHeaders: dims.slice(0, -1).map((_, l) => (shown(l) ? header(l)?.size ?? widths[l] : 0)),
+        rowHeaderSide: split ? "right" : "left",
       });
-      const range: [number, number] = [plot.x, plot.x + plot.width];
-      const scaleFor = (list: BaseSeries[], opts: AxisOptions) => {
-        const domainSeries = list.length ? list : aggSeries;
-        let [lo, hi] = this.valueDomain(domainSeries, opts);
-        const preserveZeroMin = this.hasNonNegativeZeroBasedSeries(
-          domainSeries,
-          lo,
-        );
-        if (opts.type !== "log") {
-          lo = Math.min(lo, 0);
-          hi = Math.max(hi, 0);
-        }
-        return this.valueScale(opts, [lo, hi], range, true, preserveZeroMin);
-      };
-      valScale0 = scaleFor(
-        aggSeries.filter((s) => onAxis(s, 0)),
-        yOpts0,
-      );
-      valScale1 = hasSecondary ? scaleFor(secondary, yOpts1) : valScale0;
+      this.noteCanvas(layout, area);
+    }
+    const plot = layout.plotArea;
+    this.gateDataLabels(plot, visible);
+    this.noteCanvasBands(layout, {
+      left: inverted ? (catVisible ? xOpts : undefined) : yOpts0,
+      right: !inverted && hasSecondary ? yOpts1 : undefined,
+      top: inverted && hasSecondary ? yOpts1 : undefined,
+      bottom: inverted ? yOpts0 : catVisible ? xOpts : undefined,
+    }, { left: inverted ? "xAxis[0]" : "yAxis[0]", right: "yAxis[1]", top: "yAxis[1]", bottom: inverted ? "yAxis[0]" : "xAxis[0]" });
 
-      valAxis0 = new Axis({
+    // One category scale across every pane: the value axes' plot lines find
+    // their groups on it, and the header levels their category positions.
+    // Panes take shares by their number of categories, so each pane's own
+    // scale has this same step.
+    const catScale = new CategoryScale({
+      categories: keys,
+      range: inverted ? [plot.y, plot.y + plot.height] : [plot.x, plot.x + plot.width],
+    });
+    const valueRange: [number, number] = inverted ? [plot.x, plot.x + plot.width] : [plot.y + plot.height, plot.y];
+    const scaleFor = (list: BaseSeries[], opts: AxisOptions) => {
+      const domainSeries = list.length ? list : aggSeries;
+      let [lo, hi] = this.valueDomain(domainSeries, opts);
+      const preserveZeroMin = this.hasNonNegativeZeroBasedSeries(domainSeries, lo);
+      if (!positiveLog(opts) && reachesZero(opts, true)) {
+        lo = Math.min(lo, 0);
+        hi = Math.max(hi, 0);
+      }
+      return this.valueScale(opts, [lo, hi], valueRange, true, preserveZeroMin);
+    };
+    const synced = hasSecondary && yOpts1.sync === true;
+    const valScale0 = scaleFor(synced ? aggSeries : aggSeries.filter((s) => onAxis(s, 0)), yOpts0);
+    const valScale1 = !hasSecondary ? valScale0 : synced ? syncedScale(valScale0, valueRange) : scaleFor(secondary, yOpts1);
+
+    const axisLayer = this.renderer.group({ class: "facet-axes" }, this.renderer.root);
+    const valAxis0 = new Axis({
+      renderer: this.renderer,
+      scale: valScale0,
+      position: inverted ? "bottom" : "left",
+      spacingScale: this.chromeSpacingScale(inverted ? "bottom" : "left"),
+      plot,
+      cross: catScale,
+      options: yOpts0,
+      grid: true,
+      id: "yAxis[0]",
+    });
+    valAxis0.render(axisLayer);
+    // Each goes in first, so draw the last pane first to keep pane order.
+    for (const pane of [...layout.panes].reverse())
+      this.drawPlotArea(axisLayer, pane.rect, layout.panes.length > 1 ? pane.key : undefined);
+    let valAxis1: Axis | undefined;
+    if (hasSecondary) {
+      valAxis1 = new Axis({
         renderer: this.renderer,
-        scale: valScale0,
-        position: "bottom",
-        spacingScale: this.chromeSpacingScale("bottom"),
+        scale: valScale1,
+        position: inverted ? "top" : "right",
+        spacingScale: this.chromeSpacingScale(inverted ? "top" : "right"),
         plot,
         cross: catScale,
-        options: yOpts0,
-        grid: true,
+        options: yOpts1,
+        grid: false,
+        id: "yAxis[1]",
       });
-      valAxis0.render(axisLayer);
-      if (hasSecondary) {
-        valAxis1 = new Axis({
-          renderer: this.renderer,
-          scale: valScale1,
-          position: "top",
-          spacingScale: this.chromeSpacingScale("top"),
-          plot,
-          cross: catScale,
-          options: yOpts1,
-          grid: false,
-        });
-        valAxis1.render(axisLayer);
-      }
-      if (catVisible) {
-        new NestedAxis({
-          renderer: this.renderer,
-          scale: catScale,
-          plot,
-          leaves,
-          keys,
-          position: split ? "split" : "bottom",
-          groupLines: xOpts.groupLines,
-          vertical: true,
-          spacingScale: this.chromeSpacingScale("left"),
-          labels: xOpts.labels,
-          title: xOpts.title,
-          lineColor: xOpts.lineColor,
-          lineWidth: xOpts.lineWidth,
-          gridLineColor: xOpts.gridLineColor,
-          gridLineWidth: xOpts.gridLineWidth,
-          alternateGridColor: xOpts.alternateGridColor,
-        }).render(axisLayer);
-      }
+      valAxis1.render(axisLayer);
+    }
+    if (catVisible) {
+      new HeaderTiers({
+        renderer: this.renderer,
+        id: xOpts.id ?? "xAxis[0]",
+        layout,
+        cells: inverted ? layout.headers.rows : layout.headers.columns,
+        fields: dims,
+        leaves,
+        leafCenter: (i) => catScale.scale(keys[i]),
+        step: catScale.fullStep(),
+        plot,
+        vertical: inverted,
+        split,
+        axis: xOpts,
+        canvas,
+        spacingScale: this.chromeSpacingScale(inverted ? "left" : "bottom"),
+      }).render(axisLayer);
     }
 
+    // Each pane draws its own categories' points on its own category scale,
+    // so a line stops at its group's edge. Series by series, so marks keep
+    // their series order.
     const group = this.groupInfo(aggSeries);
-    const lineFamily = new Set([
-      "line",
-      "spline",
-      "step",
-      "area",
-      "areaspline",
-    ]);
+    const track = inverted ? grid.rows : grid.columns;
+    const panes = layout.panes.map((pane) => {
+      const leaf = track.leaves[inverted ? pane.row : pane.column];
+      const keys = (leaf.categories ?? []).map((c) => [...leaf.values, c].map((v) => v ?? "").join("\u0000"));
+      const r = pane.rect;
+      return {
+        rect: r,
+        keys: new Set(keys),
+        scale: new CategoryScale({ categories: keys, range: inverted ? [r.y, r.y + r.height] : [r.x, r.x + r.width] }),
+      };
+    });
     const existing = new Set(this.renderer.root.children);
     for (const s of aggSeries) {
       const valScale = onAxis(s, 1) ? valScale1 : valScale0;
-      const xScale = inverted ? valScale : catScale;
-      const yScale = inverted ? catScale : valScale;
-      const ctx = this.seriesContext(
-        s,
-        plot,
-        xScale,
-        yScale,
-        group,
-        inverted,
-        false,
-      );
-      if (lineFamily.has(s.type)) {
-        // Draw a separate line per first-dimension group so the line does not
-        // run continuously across group boundaries.
-        let segStart = 0;
-        for (let i = 1; i <= s.points.length; i++) {
-          const boundary =
-            i === s.points.length ||
-            leaves[s.points[i].index][0] !==
-              leaves[s.points[segStart].index][0];
-          if (boundary) {
-            s.withPoints(s.points.slice(segStart, i)).render(ctx);
-            segStart = i;
-          }
-        }
-      } else {
-        s.render(ctx);
+      for (const pane of panes) {
+        const points = s.points.filter((p) => pane.keys.has(String(p.x)));
+        if (!points.length) continue;
+        const ctx = this.seriesContext(
+          s,
+          pane.rect,
+          inverted ? valScale : pane.scale,
+          inverted ? pane.scale : valScale,
+          group,
+          inverted,
+          false,
+        );
+        s.withPoints(points).render(ctx);
       }
     }
     // Clip series content to the plot — a zero-anchored column's baseline is
@@ -3696,8 +3956,7 @@ export class FacetViz {
     const pair = visible.slice(0, 2);
     if (pair.length < 2) {
       // fall back to a single centred column chart
-      const panels = this.computePanels(outer);
-      for (const p of panels) this.renderPanel(p);
+      this.renderPanel({ rect: outer, series: this.series });
       return;
     }
     const [leftS, rightS] = pair;
@@ -3755,6 +4014,8 @@ export class FacetViz {
       grid: false,
       plot: { x: plot.x, y: plot.y, width: halfW, height: plot.height },
       options: { ...yOpts, title: undefined },
+      id: "yAxis[0]",
+      instance: "left",
     });
     leftAxis.render(axisLayer);
     const rightAxis = new Axis({
@@ -3765,8 +4026,11 @@ export class FacetViz {
       grid: false,
       plot: { x: rightZeroX, y: plot.y, width: halfW, height: plot.height },
       options: { ...yOpts, title: undefined },
+      id: "yAxis[0]",
+      instance: "right",
     });
     rightAxis.render(axisLayer);
+    this.drawPlotArea(axisLayer, plot);
 
     // Category names down the central gutter.
     const band = catScale.bandwidth();
@@ -4288,10 +4552,9 @@ export class FacetViz {
     visible: BaseSeries[],
     plot: Rect,
     inverted: boolean,
-    shared?: { x?: BaseSeries[]; y?: BaseSeries[] },
   ): { xScale: Scale; xScale2?: Scale; yScale: Scale; yScale2?: Scale } {
-    const xSource = shared?.x ?? visible;
-    const ySource = shared?.y ?? visible;
+    const xSource = visible;
+    const ySource = visible;
     const primaryXSource = xSource.filter((s) => (s.options.xAxis ?? 0) === 0);
     const secondaryXSource = xSource.filter((s) => (s.options.xAxis ?? 0) === 1);
     const categories = this.currentCategories(
@@ -4316,7 +4579,10 @@ export class FacetViz {
     // visible series when nothing besides the secondary axis is present, so
     // this can't produce an empty domain). Error bars are typically overlaid
     // on (and read like) a column series, so they share its zero baseline.
-    const primaryDomainSeries = primaryVisible.length
+    // A synchronised second axis reads on the first's scale, so the first
+    // covers both axes' series.
+    const synced = hasSecondary && axisAt(this.options.yAxis, 1).sync === true;
+    const primaryDomainSeries = primaryVisible.length && !synced
       ? primaryVisible
       : ySource;
     let [vMin, vMax] = this.valueDomain(primaryDomainSeries, yAxisOpts);
@@ -4331,8 +4597,8 @@ export class FacetViz {
     );
     const primaryValueAxis = yAxisOpts;
     if (
-      (includeZero || primaryValueAxis.startOnZero === true) &&
-      primaryValueAxis.type !== "log"
+      reachesZero(primaryValueAxis, includeZero) &&
+      !positiveLog(primaryValueAxis)
     ) {
       vMin = Math.min(vMin, 0);
       vMax = Math.max(vMax, 0);
@@ -4370,7 +4636,7 @@ export class FacetViz {
     if (markerR) {
       const valueAxisOpts = yAxisOpts;
       const valuePx = inverted ? plot.width : plot.height;
-      if (valueAxisOpts.type === "log") {
+      if (positiveLog(valueAxisOpts)) {
         const k = logPadFactor(markerR, valuePx, vMin, vMax);
         if (valueAxisOpts.min === undefined) vMin /= k;
         if (valueAxisOpts.max === undefined) vMax *= k;
@@ -4392,7 +4658,7 @@ export class FacetViz {
       const valueAxisOpts = yAxisOpts;
       const valuePx = inverted ? plot.width : plot.height;
       if (valueAxisOpts.max === undefined) {
-        if (valueAxisOpts.type === "log")
+        if (positiveLog(valueAxisOpts))
           vMax *= logPadFactor(labelRoom, valuePx, vMin, vMax);
         else vMax += (labelRoom / Math.max(1, valuePx)) * (vMax - vMin || 1);
       }
@@ -4408,7 +4674,7 @@ export class FacetViz {
       const [dmin, dmax] = this.xNumericDomain(list);
       let min = opts.min ?? dmin,
         max = opts.max ?? dmax;
-      if (markerR && opts.type === "log") {
+      if (markerR && positiveLog(opts)) {
         const k = logPadFactor(markerR, plot.width, min, max);
         if (opts.min === undefined) min /= k;
         if (opts.max === undefined) max *= k;
@@ -4417,19 +4683,11 @@ export class FacetViz {
         if (opts.min === undefined) min -= padX;
         if (opts.max === undefined) max += padX;
       }
-      if (opts.startOnZero === true && opts.type !== "log") {
+      if (opts.startOnZero === true && !positiveLog(opts)) {
         min = Math.min(min, 0);
         max = Math.max(max, 0);
       }
-      if (opts.type === "log") {
-        return new LogScale({
-          domain: [min, max],
-          range,
-          reversed,
-          niceMin: opts.min === undefined,
-          niceMax: opts.max === undefined,
-        });
-      }
+      if (opts.type === "log") return logScale(opts, [min, max], range, reversed);
       if (opts.type === "datetime") {
         const { ticks, format } = niceDateTicks(min, max);
         return new LinearScale({
@@ -4441,11 +4699,13 @@ export class FacetViz {
           nice: opts.min === undefined && opts.max === undefined,
         });
       }
+      const ticks = fixedTicks(opts, min, max);
       return new LinearScale({
         domain: [min, max],
         range,
         tickCount: opts.tickCount,
         ...(reversed ? { reversed } : {}),
+        ...(ticks ? { ticks } : {}),
         nice: opts.min === undefined && opts.max === undefined,
       });
     };
@@ -4462,8 +4722,9 @@ export class FacetViz {
 
     // The secondary value scale over `range`: its own domain, zero kept in
     // for bars and areas, and room for its labels.
-    const secondaryScale = (range: [number, number]): Scale | undefined => {
+    const secondaryScale = (range: [number, number], primary: Scale): Scale | undefined => {
       if (!hasSecondary) return undefined;
+      if (synced) return syncedScale(primary, range);
       const secondaryVisible = ySource.filter(onSecondary);
       const secondaryOpts = axisAt(this.options.yAxis, 1);
       let [vMin2, vMax2] = this.valueDomain(secondaryVisible, secondaryOpts);
@@ -4482,8 +4743,8 @@ export class FacetViz {
         ].includes(s.type),
       );
       if (
-        (includeZero2 || secondaryOpts.startOnZero === true) &&
-        secondaryOpts.type !== "log"
+        reachesZero(secondaryOpts, includeZero2) &&
+        !positiveLog(secondaryOpts)
       ) {
         vMin2 = Math.min(vMin2, 0);
         vMax2 = Math.max(vMax2, 0);
@@ -4522,7 +4783,7 @@ export class FacetViz {
             xAxisOpts.reversed,
           );
       // `yScale2` stays the secondary *value* scale, here horizontal.
-      const yScale2 = secondaryScale([plot.x, plot.x + plot.width]);
+      const yScale2 = secondaryScale([plot.x, plot.x + plot.width], xScale);
       return { xScale, yScale, yScale2 };
     }
 
@@ -4546,7 +4807,7 @@ export class FacetViz {
       labelRoom,
     );
 
-    const yScale2 = secondaryScale([plot.y + plot.height, plot.y]);
+    const yScale2 = secondaryScale([plot.y + plot.height, plot.y], yScale);
     return { xScale, xScale2, yScale, yScale2 };
   }
 
@@ -4625,7 +4886,7 @@ export class FacetViz {
       if (free >= room) break;
       const [lo, hi] = (scale as LinearScale | LogScale).domain;
       const short = room - free + 1;
-      if (opts.type === "log") max = hi * logPadFactor(short, axisPx, lo, hi);
+      if (positiveLog(opts)) max = hi * logPadFactor(short, axisPx, lo, hi);
       else max = hi + (short / Math.max(1, axisPx)) * (hi - lo || 1);
       scale = this.valueScale(opts, [lo, max], range, false, preserveZeroMin);
     }
@@ -4641,33 +4902,37 @@ export class FacetViz {
   ): Scale {
     let min = opts.min ?? domain[0];
     let max = opts.max ?? domain[1];
-    if (opts.type === "log") {
+    if (positiveLog(opts)) {
       // A logarithmic axis needs multiplicative padding so its lower bound
       // remains positive. Explicit bounds continue to opt out independently.
       if (padDomain && opts.min === undefined)
         min /= 1 + VALUE_DOMAIN_PADDING;
       if (padDomain && opts.max === undefined)
         max *= 1 + VALUE_DOMAIN_PADDING;
-      return new LogScale({
-        domain: [min, max],
-        range,
-        reversed: opts.reversed,
-        niceMin: opts.min === undefined,
-        niceMax: opts.max === undefined,
-      });
+      return logScale(opts, [min, max], range, opts.reversed);
     }
+    // A symmetric log axis snaps its own ends out to powers.
+    if (opts.type === "log") return logScale(opts, [min, max], range, opts.reversed);
 
     if (padDomain) {
       const domainSpan = max - min || Math.abs(max) || Math.abs(min) || 1;
       const padding = domainSpan * VALUE_DOMAIN_PADDING;
+      const lo = min;
+      const hi = max;
       if (
         opts.min === undefined &&
         !(preserveZeroMin && min === 0)
       )
         min -= padding;
       if (opts.max === undefined) max += padding;
+      // Padding never takes values all on one side of zero across it: an
+      // axis that needn't reach zero still shouldn't show a negative step
+      // under positive values (or a positive one over negative values).
+      if (lo >= 0 && min < 0) min = 0;
+      if (hi <= 0 && max > 0) max = 0;
     }
 
+    const ticks = fixedTicks(opts, min, max);
     return new LinearScale({
       domain: [min, max],
       range,
@@ -4675,6 +4940,7 @@ export class FacetViz {
       reversed: opts.reversed,
       niceMin: opts.min === undefined,
       niceMax: opts.max === undefined,
+      ...(ticks ? { ticks } : {}),
     });
   }
 
@@ -4682,7 +4948,7 @@ export class FacetViz {
     visible: BaseSeries[],
     axis?: AxisOptions,
   ): [number, number] {
-    const log = axis?.type === "log";
+    const log = !!axis && positiveLog(axis);
     const mins: number[] = [];
     const maxs: number[] = [];
     for (const s of visible) {
@@ -4690,7 +4956,8 @@ export class FacetViz {
       // A log axis skips non-positive values (e.g. a column's zero
       // baseline): log(0) is -infinity and would drag the axis down to the
       // scale's epsilon, squashing every bar into the top of the plot.
-      const extent = log ? s.positiveValueExtent() : s.valueExtent();
+      // An axis told not to reach zero leaves columns' baselines out.
+      const extent = log ? s.positiveValueExtent() : axis?.startOnZero === false ? s.dataExtent() : s.valueExtent();
       if (!extent) continue;
       mins.push(extent[0]);
       maxs.push(extent[1]);
@@ -4709,6 +4976,78 @@ export class FacetViz {
         ["column", "bar", "area", "areaspline"].includes(item.type),
       )
     );
+  }
+
+  /** A continuous x scale on the canvas: an explicitly linear axis is
+   * scaled as a value axis is (its min and max, nice ticks by its width,
+   * room at the ends); otherwise its points' extent. Beside other panels,
+   * a tick at its right edge is left out. */
+  private continuousX(xOpts: AxisOptions, domain: [number, number], range: [number, number], besideOthers = false, inverted = false, gap = 0): Scale {
+    // About one tick per 70px, so narrow panels' labels don't run together.
+    const ticks = Math.max(2, Math.min(8, Math.round(Math.abs(range[1] - range[0]) / 70)));
+    if (xOpts.type === "datetime") {
+      // A timeline: half a period's room at each end, and date ticks
+      // (years, months, days…) inside, labelled by their unit.
+      if (inverted) range = [range[1], range[0]];
+      const pad = gap > 0 ? gap / 2 : (domain[1] - domain[0]) * 0.02 || 86_400_000;
+      const min = xOpts.min ?? domain[0] - pad;
+      const max = xOpts.max ?? domain[1] + pad;
+      const { ticks: dates, format } = niceDateTicks(min, max, ticks);
+      const inside = dates.filter((t) => t >= min && t <= max);
+      return new LinearScale({ domain: [min, max], range, reversed: xOpts.reversed, ticks: inside, niceMin: false, niceMax: false, endTicks: false, format: (v) => formatDate(v, format) });
+    }
+    if (xOpts.type === "linear") {
+      // Up the side of a bar chart, values grow upwards.
+      if (inverted) range = [range[1], range[0]];
+      const sc = this.linearX(xOpts.tickCount != null || xOpts.tickInterval != null ? xOpts : { ...xOpts, tickCount: ticks }, domain, range);
+      // Panels side by side: a tick at a panel's right edge would run into
+      // the next panel's first, so it's left out.
+      if (!besideOthers || !(sc instanceof LinearScale)) return sc;
+      const vals = sc.ticks() as number[];
+      const last = vals[vals.length - 1];
+      return vals.length > 1 && last != null && Math.abs(range[1] - sc.scale(last)) < 14
+        ? new LinearScale({ domain: sc.domain, range, ticks: vals.slice(0, -1), format: (sc as unknown as { format?: (v: number) => string }).format })
+        : sc;
+    }
+    return new LinearScale({ domain, range, reversed: xOpts.reversed });
+  }
+
+  /** An explicitly linear x scale: it runs from just below its smallest
+   * value to just above its largest (room for half a column and a little
+   * more), not out to the next round tick, so marks use the width; its
+   * own min or max are kept, and so is zero when all values are on one
+   * side of it. Ticks are round values inside. */
+  private linearX(opts: AxisOptions, [lo, hi]: [number, number], range: [number, number]): Scale {
+    if (opts.type !== "linear" || positiveLog(opts)) return this.valueScale(opts, [lo, hi], range, true, true);
+    const px = Math.abs(range[1] - range[0]);
+    const column = Math.max(4, Math.min(24, px * 0.08));
+    const padPx = column / 2 + 6;
+    const span = hi - lo || Math.abs(hi) || 1;
+    const pad = (span * padPx) / Math.max(1, px - 2 * padPx);
+    let min = opts.min ?? lo - pad;
+    let max = opts.max ?? hi + pad;
+    if (opts.min === undefined && lo >= 0 && min < 0) min = Math.min(0, lo);
+    if (opts.max === undefined && hi <= 0 && max > 0) max = Math.max(0, hi);
+    if (max <= min) max = min + 1;
+    // Round ticks inside the range: a finer step when a coarse one leaves
+    // fewer than two (0..31 asked for two ticks steps by 50).
+    const inside = (count: number) => niceTicks(min, max, count).filter((v) => v >= min - 1e-9 && v <= max + 1e-9);
+    const want = opts.tickCount ?? 4;
+    let ticks = fixedTicks(opts, min, max) ?? inside(want);
+    for (let count = want + 1; ticks.length < 2 && count <= want + 4; count++) ticks = inside(count);
+    return new LinearScale({ domain: [min, max], range, reversed: opts.reversed, ticks, niceMin: false, niceMax: false, endTicks: false });
+  }
+
+  /** The smallest step between neighbouring x values of the series: a
+   * timeline's period, about. */
+  private xMinGap(visible: BaseSeries[]): number {
+    const xs = [...new Set(visible.flatMap((s) => s.points.map((p) => p.x)).filter((x): x is number => typeof x === "number"))].sort((a, b) => a - b);
+    let gap = 0;
+    for (let i = 1; i < xs.length; i++) {
+      const d = xs[i] - xs[i - 1];
+      if (d > 0 && (!gap || d < gap)) gap = d;
+    }
+    return gap;
   }
 
   private xNumericDomain(visible: BaseSeries[]): [number, number] {
@@ -4743,10 +5082,12 @@ export class FacetViz {
   ): string[] | undefined {
     const xAxis = axisAt(this.options.xAxis, axisIndex);
     if (xAxis?.categories) return xAxis.categories;
-    // A datetime/continuous x-axis stays numeric even for bar-family series.
+    // A datetime or linear x-axis stays numeric even for bar-family series
+    // (columns placed at numbers).
     const banded =
       xAxis?.type === "category" ||
       (xAxis?.type !== "datetime" &&
+        xAxis?.type !== "linear" &&
         visible.some((s) => FacetViz.BANDED.has(s.type)));
     const allNumeric = visible.every((s) =>
       s.points.every((p) => typeof p.x === "number"),
@@ -4835,8 +5176,12 @@ export class FacetViz {
     );
 
     if (!this.tooltip) return;
-    const total = s.points.reduce((sum, pt) => sum + (pt.y ?? 0), 0);
     const build = (): TooltipContext => {
+      let total = this.seriesTotals.get(s);
+      if (total === undefined) {
+        total = s.points.reduce((sum, pt) => sum + (pt.y ?? 0), 0);
+        this.seriesTotals.set(s, total);
+      }
       const ctx: TooltipContext = {
         series: s.name,
         seriesIndex: this.series.indexOf(s),
@@ -4897,15 +5242,14 @@ export class FacetViz {
     // Some renderers expose more than one hover target for one logical point
     // (for example both ends of a dumbbell). Keep those pointer targets, but
     // expose only one screen-reader/focus stop for the datum.
-    if (
-      this.accessiblePoints.some(
-        (entry) => entry.series === s && entry.point === p,
-      )
-    ) {
+    let exposed = this.accessibleBySeries.get(s);
+    if (!exposed) this.accessibleBySeries.set(s, (exposed = new Set()));
+    if (exposed.has(p)) {
       el.setAttribute("aria-hidden", "true");
       return;
     }
 
+    exposed.add(p);
     this.accessiblePoints.push({ el, series: s, point: p });
     el.classList.add("facet-a11y-point");
     el.setAttribute("role", "img");
@@ -5545,10 +5889,23 @@ export class FacetViz {
   }
 }
 
+/** A band a resize handle can drag: its edge facing the panes moves. */
+interface ResizeBand {
+  kind: "axis" | "header";
+  id: string;
+  side: "left" | "right" | "top" | "bottom";
+  rect: Rect;
+  size: number;
+}
+
+/** The grid of a chart with nothing on its Rows or Columns: one pane. */
+const SINGLE_PANE = buildCanvasGrid({ records: [] });
+
 interface PanelSpec {
   rect: Rect;
   series: BaseSeries[];
-  title?: string;
+  /** Which pane this is, when the chart has several. */
+  instance?: string;
 }
 
 interface GroupInfo {
@@ -5577,12 +5934,28 @@ interface BatchCheckpoint {
   animate: boolean;
 }
 
+/** Height of the band naming pane columns. */
+const PANE_NAME_HEIGHT = 20;
+/** The widest the names at the left of pane rows get, cut short past it. */
+const PANE_NAME_MAX = 140;
+
+/** The smallest rectangle holding all of `rects`. */
+function rectAround(rects: Rect[]): Rect {
+  const x = Math.min(...rects.map((r) => r.x));
+  const y = Math.min(...rects.map((r) => r.y));
+  const right = Math.max(...rects.map((r) => r.x + r.width));
+  const bottom = Math.max(...rects.map((r) => r.y + r.height));
+  return { x, y, width: right - x, height: bottom - y };
+}
+
 /** A boosted point's pixel position, for nearest-point hover lookup. */
 interface BoostHit {
   x: number;
   y: number;
   point: Point;
   series: BaseSeries;
+  /** A bar's rectangle: hovered with the pointer inside it. */
+  rect?: Rect;
 }
 
 /** An invisible hit area (a line's hover target, say): no hover border on it. */
@@ -5594,4 +5967,53 @@ function hidden(el: SVGElement): boolean {
     el.getAttribute("opacity") === "0" ||
     el.getAttribute("fill-opacity") === "0"
   );
+}
+
+/** A log axis that skips values at or below zero (not a symmetric one). */
+function positiveLog(opts: AxisOptions): boolean {
+  return opts.type === "log" && opts.log?.mode !== "symmetric";
+}
+
+/**
+ * Whether a value axis reaches zero: always with `startOnZero: true`, never
+ * with `false`, else when its marks grow from zero (`byDefault`).
+ */
+function reachesZero(opts: AxisOptions, byDefault: boolean): boolean {
+  return opts.startOnZero ?? byDefault;
+}
+
+/** The axis's fixed ticks over [lo, hi]: every `tickInterval` from `tickOrigin`, none for `'none'`, else undefined (automatic). */
+function fixedTicks(opts: AxisOptions, lo: number, hi: number): number[] | undefined {
+  if (opts.tickInterval === "none") return [];
+  if (typeof opts.tickInterval === "number") {
+    // Counted from an origin, a tick may fall just past zero; values all on
+    // one side of it keep the axis there.
+    return intervalTicks(lo, hi, opts.tickInterval, opts.tickOrigin ?? 0).filter(
+      (t) => !(lo >= 0 && t < 0) && !(hi <= 0 && t > 0),
+    );
+  }
+  return undefined;
+}
+
+/** A logarithmic scale for `opts`: symmetric (through zero) or positive, on its base. */
+function logScale(opts: AxisOptions, domain: [number, number], range: [number, number], reversed?: boolean): Scale {
+  const ticks = opts.tickInterval === "none" ? [] : undefined;
+  if (opts.log?.mode === "symmetric")
+    return new SymLogScale({ domain, range, reversed, base: opts.log.base, ...(ticks ? { ticks } : {}) });
+  return new LogScale({
+    domain,
+    range,
+    reversed,
+    base: opts.log?.base,
+    niceMin: opts.min === undefined,
+    niceMax: opts.max === undefined,
+    ...(ticks ? { ticks } : {}),
+  });
+}
+
+/** A second value axis's scale on `primary`'s range and ticks, over `range`. */
+function syncedScale(primary: Scale, range: [number, number]): Scale {
+  const domain = (primary as LinearScale).domain;
+  if (primary instanceof LogScale || primary instanceof SymLogScale || !domain) return primary;
+  return new LinearScale({ domain, range, ticks: primary.ticks() as number[], nice: false });
 }

@@ -136,6 +136,15 @@ export type {
   ChartEvents,
   SeriesEvents,
   FacetVizPointEvent,
+  CanvasObjectEvent,
+  CanvasResizeEvent,
+  CanvasObjectKind,
+  CanvasOptions,
+  PaneOptions,
+  CanvasHeaderOptions,
+  CanvasDividerOptions,
+  CanvasBandOptions,
+  CanvasFieldLabelOptions,
 } from "./core/options.js";
 
 export { resolveTheme, registerTheme, LIGHT_THEME } from "./core/theme.js";

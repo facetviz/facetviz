@@ -75,6 +75,20 @@ export class Renderer {
    * deterministic font-size fallback for headless and pre-mount environments.
    */
   measureText(content: string, attrs: Attrs = {}): { width: number; height: number } {
+    // Each measurement forces a layout, so one text in one style is measured
+    // once per render (an axis with thousands of categories asks again and
+    // again). `clear` forgets them, as a new render may change the fonts.
+    const key = `${content}\u0000${JSON.stringify(attrs)}`;
+    const known = this.measured.get(key);
+    if (known) return known;
+    const size = this.measureNow(content, attrs);
+    this.measured.set(key, size);
+    return size;
+  }
+
+  private measured = new Map<string, { width: number; height: number }>();
+
+  private measureNow(content: string, attrs: Attrs): { width: number; height: number } {
     const fontSize = parseFloat(String(attrs['font-size'] ?? '11')) || 11;
     const probe = this.text(content, -10000, -10000, {
       visibility: 'hidden',
@@ -105,6 +119,7 @@ export class Renderer {
   }
 
   clear(): void {
+    this.measured.clear();
     while (this.root.firstChild) this.root.removeChild(this.root.firstChild);
   }
 

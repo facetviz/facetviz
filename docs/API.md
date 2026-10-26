@@ -777,13 +777,19 @@ Applies to both `xAxis` and `yAxis`. A **category axis** is used when
 | `visible`                | `boolean`                                       | `true`       | When `false`, nothing is drawn and **no space is reserved** for the axis.                                                                          |
 | `opposite`               | `boolean`                                       | `false`      | Move the axis to the opposite side: **y → right**, **x → top**. For a nested x-axis this triggers the [split layout](#nested-hierarchical-x-axis). |
 | `categories`             | `string[]`                                      | –            | Category labels; makes this a categorical axis.                                                                                                    |
-| `type`                   | `'linear' \| 'log' \| 'category' \| 'datetime'` | inferred     | Scale type.                                                                                                                                        |
+| `type`                   | `'linear' \| 'log' \| 'category' \| 'datetime'` | inferred     | Scale type. An x axis set to `'linear'` keeps columns and bars at their numbers (points `{ x: 4.4, y: 38 }`), each 4–24px wide; on the canvas it runs from just below its smallest number to just above its largest (room for half a column; its own min / max kept, and zero when all values are on one side of it) with round ticks inside, about one per 70px; a tick at a panel's right edge is left out, and up a bar chart's side values grow upwards. `plotLines` on it are drawn in every panel. A `'datetime'` x axis on the canvas (in panels too) is a timeline: half a period's room at each end, ticks by year, month or day as the range calls for. |
 | `title`                  | [`AxisTitleOptions`](#axis-titles)              | –            | Axis title and its placement.                                                                                                                      |
 | `min`                    | `number`                                        | data min     | Force the axis minimum (value axes).                                                                                                               |
 | `max`                    | `number`                                        | data max     | Force the axis maximum (value axes).                                                                                                               |
 | `tickCount`              | `number`                                        | `4`          | Approximate number of ticks (linear axes).                                                                                                         |
 | `labels`                 | [`AxisLabelOptions`](#axis-labels)              | enabled      | Tick label config.                                                                                                                                 |
 | `gridLineWidth`          | `number`                                        | `1`          | Major grid line thickness (value axis). `0` hides major grid lines.                                                                                |
+| `gridLinePlacement` | `'on' \| 'between'` | `'on'` | On a category axis: grid lines through each category, or between neighbouring categories (none before the first). |
+| `zeroLine` | `boolean \| { color, width, dashStyle }` | — | A dotted line across the plot at zero when a continuous axis's range runs through it; drawn in every panel of small multiples. |
+| `minorTicks` | `boolean` | — | Short tick marks at the minor intervals (with `minorTickInterval`; `minorGridLineWidth: 0` keeps the ticks without the minor grid lines). |
+| `tickLength` | `number` | `5` | Tick marks' length in px (outside, at most 8, leaving the labels clear; inside, up to 20). |
+| `tickColor` | `string` | axis line's | Tick marks' color. |
+| `tickPosition` | `'outside' \| 'inside'` | `'outside'` | Tick marks outside the plot or into it from the axis line. |
 | `gridLineColor`          | `string`                                        | `'#e6e6e6'`  | Major grid line colour.                                                                                                                            |
 | `gridLineDashStyle`      | `string`                                        | –            | Major-grid SVG dash array, for example `'6 3'`.                                                                                                    |
 | `alternateGridColor`     | `string`                                        | –            | On a category axis, shade the second, fourth, etc. category bands across the plot with this colour.                                                |
@@ -816,6 +822,7 @@ Applies to both `xAxis` and `yAxis`. A **category axis** is used when
 | `step`         | `number`                | auto         | Draw every Nth label; collision handling may increase it.                                                                                                           |
 | `maxWidth`     | `number`                | –            | Maximum measured label width in pixels.                                                                                                                             |
 | `overflow`     | `'ellipsis' \| 'hide'`  | `'ellipsis'` | Truncate or hide labels wider than `maxWidth`.                                                                                                                      |
+| `wrap`         | `boolean`               | `false`      | Unrotated bottom labels too wide for their slot break onto a second line at a space (both lines fitting) before being cut short. |
 | `position`     | `'outer' \| 'inner'`    | `'outer'`    | Non-inverted polar x-axis: place labels outside the plot or curve them around the centre-hole radius.                                                               |
 | `offset`       | `number`                | contextual   | Gap from the axis line. Cartesian default is `0`; polar x-axis defaults are 7 for inner, 10 for outer, and 6 beside an inverted radial axis.                         |
 | `style`        | `Record<string,string>` | –            | Extra text attributes.                                                                                                                                              |
@@ -1416,16 +1423,24 @@ for just that one point. See [Boxplot options](#boxplot-options) and
 
 ## TrellisOptions
 
-Splits one dataset into a grid of panels (small multiples) by data fields.
+Splits one dataset into a grid of panes (small multiples) by data fields. The
+fields are header levels on the canvas (one header object per value, the
+field's name above), every row × column value pair is a pane (one with no data
+too), value axes run down the left of each pane row and category axes along the
+bottom row; the bottom axis's title is drawn once under the panes.
+`canvas.headers`, `canvas.banding`, `canvas.dividers` and `canvas.fieldLabels`
+(`rows` / `columns`) apply.
 
 | Key       | Type      | Default   | Description                                                                         |
 | --------- | --------- | --------- | ----------------------------------------------------------------------------------- |
-| `columns` | `string`  | –         | Field whose values become grid columns.                                             |
-| `rows`    | `string`  | –         | Field whose values become grid rows.                                                |
-| `gap`     | `number`  | `14`/`24` | Gap in px between panels.                                                           |
-| `table`   | `boolean` | `true`    | `true` → cross-tab table (shared axes, headers once); `false` → independent panels. |
-| `sharedX` | `boolean` | `true`    | Share the x scale across panels.                                                    |
-| `sharedY` | `boolean` | `true`    | Share the y scale across panels.                                                    |
+| `columns` | `string`  | –         | Field whose values become pane columns.                                             |
+| `rows`    | `string`  | –         | Field whose values become pane rows.                                                |
+| `gap`     | `number`  | `0` / `16` | Gap in px between panes (`16` with `table: false`).                                |
+| `table`   | `boolean` | `true`    | `false` repeats both axes in every pane (room for them is left between panes).      |
+| `sharedX` | `boolean` | `true`    | `false`: each pane its own numeric x range.                                         |
+| `columnOrder` | `string[]` | — | The column panels' values in this order (others after, as found). By default panels go in the order their values are first met in the points. |
+| `rowOrder` | `string[]` | — | The row panels' values in order, as `columnOrder`. |
+| `sharedY` | `boolean` | `true`    | `false` is `yAxis.range.mode: 'independent'`: each pane row its own value range (each pane, with `table: false`). |
 
 ```ts
 trellis: { columns: 'category', rows: 'region' },
@@ -1449,9 +1464,35 @@ xAxis: { dimensions: ['Region', 'Category'], aggregate: 'sum', opposite: true },
   group, so a group's columns stand without lines between them as on a plain
   category axis; `'all'` also divides every leaf through the plot (the look
   before 0.1.16); `'none'` draws none.
-- A `line`/`area`-type series on a nested axis is drawn as one segment **per
-  first-dimension group** (it does not run continuously across group boundaries),
-  so a column+line combo reads correctly.
+- The outer dimensions are **header levels** and the innermost a category
+  axis inside each pane: every group of the outer dimensions is its own pane,
+  as wide as its number of categories, so bars keep one width. A `line`/`area`
+  series stops at its pane's edge (it does not run across groups).
+- Each header level is its own object: its cells are `text` elements with
+  `data-fv-kind="header"`, `data-fv-id` = the field and `data-fv-path` = the
+  cell's values, outer first; `canvasClick` reports `{ kind: 'header', id, path }`.
+
+#### Header levels, dividers, banding, field labels (`canvas`)
+
+```ts
+canvas: {
+  headers: { Region: { size: 24, label: { style: { fontWeight: '700' } }, background: '#f6f7fb' },
+             Category: { visible: false } },          // hide one level; its room goes to the panes
+  dividers: { columns: { level: 0, color: '#999', width: 1, dashStyle: '4 2' } },
+  banding: { columns: { color: 'rgba(0,0,0,.04)', headerColor: 'rgba(0,0,0,.06)', level: 0 } },
+  fieldLabels: { columns: { visible: true } },
+}
+```
+
+| Key | Description |
+| --- | --- |
+| `headers[field]` | `visible`, `size` (px: height across columns, width down rows), `label` (`style`, `rotation`, `format` with `{value}`), `background` |
+| `dividers.columns` / `.rows` | `level`: a header level (it and every level outside it), `'all'` (every category too) or `'none'`; default every header level. `color`, `width`, `dashStyle`. `xAxis.groupLines` still works when this isn't set. |
+| `banding.columns` / `.rows` | Every other group of `level` (default the innermost header level) shaded in the panes (`color`) and its header cells (`headerColor`); `size` groups per band |
+| `fieldLabels.columns` / `.rows` | `visible`: the header fields' names beside their levels (`data-fv-kind="fieldLabel"`), bold above their (regular) values; `text` in place of the name, e.g. `Region / Segment` |
+
+Horizontal bars (`chart.type: 'bar'` or `inverted`) use `.rows`: the levels run
+down the left, the outer level farthest out.
 
 On a nested x-axis specifically, this also combines with a secondary y-axis
 (below) for a "combo chart with two differently-scaled measures" look:
@@ -1637,7 +1678,110 @@ concentric arc bars and dumbbell connectors become circular arcs.
 
 Register callbacks in config, or subscribe via [`chart.on()`](#instance-methods).
 
-**`ChartEvents`** (`chart.events`): `load(chart)`, `render(chart)`, `click(ev)`.
+**`ChartEvents`** (`chart.events`): `load(chart)`, `render(chart)`, `click(ev)`,
+`canvasClick(ev)`, `canvasDoubleClick(ev)`, `canvasContextMenu(ev)`.
+
+### Axis objects
+
+Every axis is addressed by its canvas id (`xAxis[0]`, `yAxis[1]`, or its own
+`id`), and `canvas.axes[id]` sets any axis option on it:
+
+```ts
+yAxis: [{ id: 'sales@rows' }, { id: 'target@rows:dual', sync: true }],
+canvas: { axes: { 'sales@rows': { range: { mode: 'fixed', start: 0, end: 'auto' }, title: { text: 'Sales', subtitle: 'in $K' } } } },
+```
+
+| Option | Description |
+| --- | --- |
+| `range.mode` | `'auto'` / `'uniform'` (one range for every pane row or column the axis repeats on) / `'independent'` (each its own; small multiples) / `'fixed'` |
+| `range.start`, `range.end` | With `fixed`: a number or `'auto'` for that end (same as `min` / `max`) |
+| `range.includeZero` / `startOnZero` | `true` always reaches zero; `false` never forces it, not even under columns |
+| `type: 'log'` + `log.mode` | `'positive'` (default) or `'symmetric'` (through zero, logarithmic either side); `log.base` sets the powers ticks fall on |
+| `tickInterval`, `tickOrigin` | Major ticks every interval from the origin; `'none'` draws no ticks, labels or grid lines |
+| `title.subtitle` | A second, smaller line beyond the title (`title.subtitleStyle`) |
+| `size` | The axis band's thickness in px |
+| `sync` | On a second value axis: the first's range and ticks, both series on one scale |
+
+### Panes
+
+Give series a `pane` number and the chart stacks the panes down (side by side
+for horizontal bars): each pane has its own value axis and scale, and they
+share the category axis, labelled along the bottom pane. `panes[i]` sets
+pane `i`'s value axis (laid over `yAxis`; its title defaults to its series'
+names) and its share of the height (`weight`); `canvas.paneGap` the space
+between panes (default 16). `canvas.paneLayout: 'rows' | 'columns'` picks
+the direction; the other way from the default each pane has its own value
+axis (in the gap before it) and category labels, and is named in a header
+(above each column, at the left of each row) instead of an axis title. With small multiples
+(`trellis`) the panes are the innermost rows or columns of the grid, each
+pane's value scale shared across the panels, each measure named in a
+header (above its columns, or at the left of its rows) instead of an axis
+title. Series without a pane are in pane 0; with all series in one pane
+the chart is drawn as usual. Each pane's plot area and
+axes carry `data-fv-instance="pane:<n>"`.
+
+```ts
+series: [
+  { type: 'column', name: 'Sales', data: sales },
+  { type: 'line', name: 'Margin %', data: margin, pane: 1 },
+],
+panes: [{ weight: 2 }, { yAxis: { labels: { format: '{value}%' } } }],
+```
+
+### Fit and resizing
+
+`canvas.fit` sets how panes take the room: `'entire'` (default) fills it both
+ways; `'width'` fits pane columns to the width and gives pane rows a fixed
+height; `'height'` the other way round; `'standard'` fixes both.
+`canvas.cell` is the fixed size in px — `width` per pane column (per category
+on a nested axis; defaults 200 / 40), `height` per pane row (160 / 24). With a
+fixed direction the chart renders at its canvas's natural size (`chart.size`,
+the `canvasNaturalSize` event) and keeps it rather than shrinking into its
+box, so put it in a scrolling container.
+
+Listening for `chart.events.canvasResize` puts a resize handle on every axis
+band's and header level's edge facing the panes. A drag draws a guide and
+reports `{ phase: 'move' | 'end', kind: 'axis' | 'header', id, size, side }`;
+facetviz only reports — store the size and redraw:
+
+```ts
+canvasResize: (ev) => {
+  if (ev.phase !== 'end') return;
+  (ev.kind === 'axis' ? sizes.axes : sizes.headers)[ev.id] = { size: ev.size };
+  chart.update({ canvas: { axes: sizes.axes, headers: sizes.headers } });
+}
+```
+
+### Canvas parts
+
+Every part of the canvas carries `data-fv-kind` and `data-fv-id` (and
+`data-fv-instance` when it repeats), and the `canvas*` events report which
+part was clicked, double-clicked or right-clicked. Clicks on marks stay
+point events. With `canvasContextMenu` set, the browser's own menu doesn't
+open over canvas parts.
+
+| `kind`      | `id`                                          | What it is                                   |
+| ----------- | --------------------------------------------- | -------------------------------------------- |
+| `axis`      | `xAxis[0]`, `xAxis[1]`, `yAxis[0]`, `yAxis[1]`, or the axis's `id` option | The axis: its line, ticks and labels (nested axes too) |
+| `axisTitle` | the axis's id                                 | The axis title                               |
+| `grid`      | the axis's id                                 | Its grid lines and alternate bands           |
+| `plotLine`, `plotBand` | the axis's id                      | Its reference lines and bands                |
+| `plotArea`  | `plotArea`                                    | The empty plot behind the marks (one per pane on a nested axis, `instance` = the pane key) |
+| `title`, `subtitle` | `title`, `subtitle`                   | The chart titles                             |
+| `legend`    | `legend`                                      | The legend                                   |
+| `header`    | the header's field (with `path`)              | A header cell of a nested axis level         |
+| `fieldLabel` | the field                                    | A header field's name                         |
+
+**`CanvasObjectEvent`** (`ev`): `type` (`'click'` / `'dblclick'` /
+`'contextmenu'`), `kind`, `id`, `instance` (a pane's key on small multiples
+and nested axes, e.g. `'seg=Consumer#region=East'`, or `'left'` / `'right'` on a butterfly), `domEvent`.
+
+```ts
+yAxis: [{ id: 'sales@rows' }, { id: 'profit@rows:dual' }],
+chart: { events: { canvasClick: (ev) => openSettings(ev.kind, ev.id) } }
+```
+
+See `docs/canvas.html`.
 
 **`SeriesEvents`** (`seriesEvents`, applied to all series):
 `click(ev)`, `contextMenu(ev)`, `mouseOver(ev)`, `mouseOut(ev)`, `legendItemClick({ series, visible })`.
@@ -1836,7 +1980,7 @@ series: [{ type: 'column', borderRadius: 6, data: [5, 3, { y: -4, borderRadius: 
 | `animation` | `boolean \| { duration?, easing?, enabled? }` | on      | Enter animation: bars grow, lines draw in, others fade.                                                                                                                                                       |
 | `zoom`      | `'x' \| 'y' \| 'xy' \| false \| { type }`     | off     | Drag-select on a numeric/datetime axis to zoom — `'x'`, `'y'`, or both with `'xy'`; a **Reset zoom** control restores the full range.                                                                         |
 | `reflow`    | `boolean`                                     | `true`  | Auto re-render when the container's width **or** height resizes. Set `false` to disable and call `chart.reflow()` yourself.                                                                                   |
-| `boost`     | `boolean \| { enabled?, threshold? }`         | auto    | Draw high-volume point/line series to a canvas overlay (lines min/max-decimated). Auto-enables past `threshold` points (default 1500). Handles 100k+ points; exports embed the canvas pixels as an SVG image. |
+| `boost`     | `boolean \| { enabled?, threshold? }`         | auto    | Draw high-volume series to a canvas overlay: points and lines (lines min/max-decimated), columns and bars (horizontal too, grouped or stacked, same rectangles, fills, outlines and rounded ends; data labels stay SVG) and stacked areas, on one canvas per plot (each pane of series in panes and each small-multiple panel has its own, with one hover for all). Auto-enables when one series passes `threshold` points (default 1500) or all of them together pass 10 × `threshold`. Bars closer than a pixel apart are merged into one per device pixel, from the lowest to the highest edge, so peaks and dips still show. A bar is hovered with the pointer in it. Handles 100k+ points; exports embed the canvas pixels as an SVG image. |
 
 Axes add `type: 'datetime'` (nice date ticks) and `crosshair: true` (hover guide
 line). Points add `drilldown: '<id>'`; top-level `drilldown.series` lists the

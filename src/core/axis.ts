@@ -29,6 +29,67 @@ export interface AxisConfig {
   spacingScale?: number;
   /** The other axis's scale, where plot lines and bands find their `group`. */
   cross?: Scale;
+  /** Canvas address when `options.id` isn't set, e.g. `yAxis[0]`. */
+  id?: string;
+  /** Which copy of a repeated axis this is, e.g. a small-multiples cell. */
+  instance?: string;
+}
+
+/** Room an axis subtitle line takes beyond its title, px. */
+export const SUBTITLE_LINE = 14;
+
+/** Sub-parts of an axis group, by class, and the canvas kind each reports. */
+const AXIS_PARTS: Array<[string, string]> = [
+  ['facet-gridline', 'grid'],
+  ['facet-minor-gridline', 'grid'],
+  ['facet-alternate-grid-band', 'grid'],
+  ['facet-plotband', 'plotBand'],
+  ['facet-plotband-whisker', 'plotBand'],
+  ['facet-plotline', 'plotLine'],
+];
+
+/** Up to this many labels are all measured to find the widest. */
+const MEASURE_ALL = 200;
+/** Past `MEASURE_ALL`, how many of the longest (by characters) are. */
+const MEASURE_LONGEST = 50;
+
+/**
+ * The widest of these texts in px, in `style`. Past `MEASURE_ALL` texts
+ * only the longest `MEASURE_LONGEST` by characters are measured, which
+ * hold the widest in practice, so an axis with tens of thousands of
+ * categories doesn't measure each one.
+ */
+export function widestText(renderer: Renderer, texts: string[], style: Record<string, string>): number {
+  let pick = texts;
+  if (texts.length > MEASURE_ALL) {
+    pick = [...new Set(texts)].sort((a, b) => b.length - a.length).slice(0, MEASURE_LONGEST);
+  }
+  let widest = 0;
+  for (const text of pick) widest = Math.max(widest, renderer.measureText(text, style).width);
+  return widest;
+}
+
+/**
+ * Marks `group` as an axis's canvas part (`data-fv-kind="axis"`, its id and
+ * instance), and its grid lines, bands, reference lines and title elements
+ * with their own kinds and the same id.
+ */
+export function markAxisParts(
+  group: SVGGElement,
+  id: string | undefined,
+  instance?: string,
+  titles: SVGElement[] = [],
+): void {
+  if (!id) return;
+  const mark = (el: Element, kind: string) => {
+    el.setAttribute('data-fv-kind', kind);
+    el.setAttribute('data-fv-id', id);
+    if (instance) el.setAttribute('data-fv-instance', instance);
+  };
+  mark(group, 'axis');
+  for (const [cls, kind] of AXIS_PARTS)
+    group.querySelectorAll(`.${cls}`).forEach((el) => mark(el, kind));
+  for (const el of titles) mark(el, 'axisTitle');
 }
 
 /**
@@ -143,11 +204,7 @@ export class Axis {
       const band = scale.bandwidth();
       if (band > 0) {
         const style = this.labelStyle();
-        const widest = ticks.reduce(
-          (m: number, t) =>
-            Math.max(m, renderer.measureText(this.labelText(scale, t), style).width),
-          0,
-        );
+        const widest = widestText(renderer, ticks.map((t) => this.labelText(scale, t)), style);
         if (options.labels?.rotation === undefined) {
           const candidates = options.labels?.autoRotation ?? [0];
           labelRotation =
@@ -186,6 +243,15 @@ export class Axis {
       }
     }
 
+    // Down a vertical category axis (horizontal bars) labels closer than
+    // their letters are tall (about 80% of the font size) sit on one
+    // another: draw every Nth instead.
+    if (isCategory && labelsEnabled && !this.horizontal && options.labels?.step === undefined) {
+      const spacing = Math.abs((scale as CategoryScale).fullStep());
+      const tall = 0.8 * (parseFloat(this.labelStyle()["font-size"] ?? "11") || 11);
+      if (spacing > 0 && spacing < tall) labelStep = Math.ceil(tall / spacing);
+    }
+
     // Minor grid lines sit below the major grid. They are deliberately opt-in
     // via `minorTickInterval` and only apply to continuous scales.
     const minorGridWidth = options.minorGridLineWidth ?? 1;
@@ -208,6 +274,21 @@ export class Axis {
         );
       }
     }
+    // Minor tick marks, half as long, where the minor grid lines would be
+    // (with `minorTicks`, on the axis even without minor grid lines).
+    if (!isCategory && options.minorTicks && options.ticks !== false && options.minorTickInterval !== undefined) {
+      for (const pos of minorGridPositions(scale, options.minorTickInterval)) {
+        this.drawTick(group, pos, axisColor, 2.5);
+      }
+    }
+
+    // Category ticks closer than 3px merge into a solid bar: they're drawn
+    // only where a label is (or every few px), not one per category.
+    let tickStep = 1;
+    if (isCategory) {
+      const spacing = Math.abs((scale as CategoryScale).fullStep());
+      if (spacing > 0 && spacing < 3) tickStep = labelStep > 1 ? labelStep : Math.ceil(3 / spacing);
+    }
 
     ticks.forEach((tick, i) => {
       const pos = scale.scale(tick);
@@ -215,14 +296,18 @@ export class Axis {
       // Gridline across the plot — skipped for category centres unless the
       // caller explicitly set `gridLineWidth` (a category scale never gets
       // "nice" numeric ticks to derive a default from, so it stays opt-in).
+      // On a category axis placed 'between', the lines run between
+      // neighbouring categories instead, none before the first.
+      const between = isCategory && options.gridLinePlacement === 'between';
       if (
         this.cfg.grid &&
         gridWidth > 0 &&
-        (!isCategory || options.gridLineWidth)
+        (!isCategory || options.gridLineWidth) &&
+        !(between && i === 0)
       ) {
         this.drawGridLine(
           group,
-          pos,
+          between ? pos - (scale as CategoryScale).fullStep() / 2 : pos,
           gridColor,
           gridWidth,
           options.gridLineDashStyle,
@@ -231,7 +316,7 @@ export class Axis {
       }
 
       // Tick mark.
-      if (options.ticks !== false) this.drawTick(group, pos, axisColor);
+      if (options.ticks !== false && i % tickStep === 0) this.drawTick(group, pos, axisColor);
 
       // Label.
       if (labelsEnabled && i % labelStep === 0) {
@@ -245,13 +330,28 @@ export class Axis {
       }
     });
 
+    // A dotted line at zero across the plot, when the axis runs through it.
+    const zero = options.zeroLine;
+    if (zero && !isCategory && 'domain' in scale) {
+      const [d0, d1] = (scale as unknown as { domain: [number, number] }).domain;
+      if (Math.min(d0, d1) < 0 && Math.max(d0, d1) > 0) {
+        const z = typeof zero === 'object' ? zero : {};
+        this.drawGridLine(group, scale.scale(0), z.color ?? THEME.axis.lineColor, z.width ?? 1, z.dashStyle ?? '2 3', 'facet-zero-line');
+      }
+    }
+
     // Plot lines drawn above the grid (and above bands) — but still below
     // the series, which paint after the whole axis layer. Lines flagged
     // `zIndex: 'above'` are skipped here; `renderAbove` draws those instead.
     this.drawPlotLines(group, 'below');
 
-    if (options.title?.text && options.title.enabled !== false)
-      this.drawTitle(group, options.title.text);
+    const titles: SVGElement[] = [];
+    if (options.title?.text && options.title.enabled !== false) {
+      const title = this.drawTitle(group, options.title.text);
+      titles.push(title);
+      if (options.title.subtitle) titles.push(this.drawSubtitle(group, title, options.title.subtitle));
+    }
+    markAxisParts(group, options.id ?? this.cfg.id, this.cfg.instance, titles);
   }
 
   /**
@@ -267,6 +367,9 @@ export class Axis {
     const group = renderer.group({ class: `facet-axis-above facet-axis-${position}` }, parent);
     this.drawPlotBands(group, 'above');
     this.drawPlotLines(group, 'above');
+    markAxisParts(group, options.id ?? this.cfg.id, this.cfg.instance);
+    // Only its bands and lines answer clicks; the group itself is no axis.
+    group.removeAttribute('data-fv-kind');
   }
 
   /** Fill every other full category step across the plot area. */
@@ -541,21 +644,26 @@ export class Axis {
     }
   }
 
-  private drawTick(g: SVGGElement, pos: number, color: string): void {
-    const { renderer, plot, position } = this.cfg;
-    const len = LAYOUT.tickLength;
+  private drawTick(g: SVGGElement, pos: number, color: string, len?: number): void {
+    const { renderer, plot, position, options } = this.cfg;
+    // Its length (no longer than leaves the labels clear, outside), color,
+    // and side: outside the plot (default) or inside it.
+    const full = Math.min(Math.max(options.tickLength ?? LAYOUT.tickLength, 1), options.tickPosition === 'inside' ? 20 : LAYOUT.tickLength + 3);
+    const l = len == null ? full : Math.max(1, Math.min(len, full / 2));
+    const d = options.tickPosition === 'inside' ? -l : l;
+    const attrs = { stroke: options.tickColor ?? color };
     switch (position) {
       case 'bottom':
-        renderer.create('line', { x1: pos, y1: plot.y + plot.height, x2: pos, y2: plot.y + plot.height + len, stroke: color }, g);
+        renderer.create('line', { x1: pos, y1: plot.y + plot.height, x2: pos, y2: plot.y + plot.height + d, ...attrs }, g);
         break;
       case 'top':
-        renderer.create('line', { x1: pos, y1: plot.y, x2: pos, y2: plot.y - len, stroke: color }, g);
+        renderer.create('line', { x1: pos, y1: plot.y, x2: pos, y2: plot.y - d, ...attrs }, g);
         break;
       case 'left':
-        renderer.create('line', { x1: plot.x - len, y1: pos, x2: plot.x, y2: pos, stroke: color }, g);
+        renderer.create('line', { x1: plot.x - d, y1: pos, x2: plot.x, y2: pos, ...attrs }, g);
         break;
       case 'right':
-        renderer.create('line', { x1: plot.x + plot.width, y1: pos, x2: plot.x + plot.width + len, y2: pos, stroke: color }, g);
+        renderer.create('line', { x1: plot.x + plot.width, y1: pos, x2: plot.x + plot.width + d, y2: pos, ...attrs }, g);
         break;
     }
   }
@@ -598,9 +706,10 @@ export class Axis {
   ): void {
     const { renderer, plot, position } = this.cfg;
     const style = this.labelStyle();
-    const text = this.fitLabel(rawText, style);
-    if (text === undefined) return;
     const rotation = resolvedRotation ?? options.labels?.rotation ?? 0;
+    const lines = options.labels?.wrap && position === 'bottom' && !rotation ? this.wrapLabel(rawText, style) : undefined;
+    const text = lines ? lines[0] : this.fitLabel(rawText, style);
+    if (text === undefined) return;
     const offset = this.labelOffset;
     let x = 0;
     let y = 0;
@@ -644,10 +753,42 @@ export class Axis {
       'dominant-baseline': baseline,
       ...style,
     }, g);
+    if (lines) {
+      // Two lines: the first as drawn, the second under it.
+      el.textContent = '';
+      lines.forEach((line, i) => {
+        const span = renderer.create('tspan', { x, ...(i ? { dy: '1.15em' } : {}) }, el);
+        span.textContent = line;
+      });
+    }
     if (rotation) el.setAttribute('transform', `rotate(${rotation} ${x} ${y})`);
   }
 
-  private drawTitle(g: SVGGElement, text: string): void {
+  /**
+   * A label too wide for its slot on two lines, broken at the space that
+   * leaves both lines fitting (the most even); none fits, it's cut short
+   * as usual. Undefined when it fits on one line or can't be broken.
+   */
+  private wrapLabel(text: string, style: Record<string, string>): [string, string] | undefined {
+    const room = this.fitWidth;
+    const measure = (t: string) => this.cfg.renderer.measureText(t, style).width;
+    if (!room || measure(text) <= room) return undefined;
+    const words = text.split(' ');
+    let best: [string, string] | undefined;
+    let worst = Infinity;
+    for (let i = 1; i < words.length; i++) {
+      const a = words.slice(0, i).join(' ');
+      const b = words.slice(i).join(' ');
+      const wider = Math.max(measure(a), measure(b));
+      if (wider <= room && wider < worst) {
+        best = [a, b];
+        worst = wider;
+      }
+    }
+    return best;
+  }
+
+  private drawTitle(g: SVGGElement, text: string): SVGTextElement {
     const { renderer, plot, position } = this.cfg;
     const style = {
       ...FONTS.axisTitle,
@@ -670,7 +811,7 @@ export class Axis {
       const y = position === 'bottom'
         ? plot.y + plot.height + LAYOUT.tickLength + gap + margin + offset + 8
         : plot.y - LAYOUT.tickLength - gap - margin - offset - 4;
-      renderer.text(text, x, y, {
+      return renderer.text(text, x, y, {
         'text-anchor': align === "start" ? "start" : align === "end" ? "end" : "middle",
         ...style,
       }, g);
@@ -680,12 +821,27 @@ export class Axis {
         : plot.x + plot.width + LAYOUT.tickLength + 4 + gap + margin + offset;
       const y = plot.y + plot.height * along;
       const rot = position === 'left' ? -90 : 90;
-      renderer.text(text, x, y, {
+      return renderer.text(text, x, y, {
         'text-anchor': align === "start" ? "start" : align === "end" ? "end" : "middle",
         transform: `rotate(${rot} ${x} ${y})`,
         ...style,
       }, g);
     }
+  }
+
+  /** The subtitle, one line beyond the title (farther from the plot), in the label font. */
+  private drawSubtitle(g: SVGGElement, title: SVGTextElement, text: string): SVGTextElement {
+    const { renderer, position } = this.cfg;
+    const x = Number(title.getAttribute('x'));
+    const y = Number(title.getAttribute('y'));
+    const style = { ...FONTS.axisLabel, ...sanitizeStyle(this.cfg.options.title?.subtitleStyle) };
+    const anchor = title.getAttribute('text-anchor') ?? 'middle';
+    const step = SUBTITLE_LINE;
+    if (position === 'bottom') return renderer.text(text, x, y + step, { 'text-anchor': anchor, ...style }, g);
+    if (position === 'top') return renderer.text(text, x, y - step, { 'text-anchor': anchor, ...style }, g);
+    const sx = position === 'left' ? x - step : x + step;
+    const rot = position === 'left' ? -90 : 90;
+    return renderer.text(text, sx, y, { 'text-anchor': anchor, transform: `rotate(${rot} ${sx} ${y})`, ...style }, g);
   }
 
   /**
@@ -697,19 +853,12 @@ export class Axis {
     const { scale, options } = this.cfg;
     const labelStyle = sanitizeStyle(options.labels?.style);
     const fontPx = parseFloat(labelStyle['font-size'] ?? FONTS.axisLabel['font-size'] ?? '11') || 11;
-    let maxW = 0;
-    for (const t of scale.ticks()) {
-      const measured = this.cfg.renderer.measureText(this.labelText(scale, t), {
-        ...FONTS.axisLabel,
-        ...labelStyle,
-      }).width;
-      maxW = Math.max(
-        maxW,
-        options.labels?.maxWidth
-          ? Math.min(measured, options.labels.maxWidth)
-          : measured,
-      );
-    }
+    const widest = widestText(
+      this.cfg.renderer,
+      scale.ticks().map((t) => this.labelText(scale, t)),
+      { ...FONTS.axisLabel, ...labelStyle },
+    );
+    const maxW = options.labels?.maxWidth ? Math.min(widest, options.labels.maxWidth) : widest;
     const rot = options.labels?.rotation ?? 0;
     if (this.horizontal) {
       // Rotated labels take vertical room proportional to their width.
