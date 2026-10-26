@@ -2341,13 +2341,25 @@ export class FacetViz {
     const repeat = t.table === false;
     const independent = yOpts0.range?.mode === "independent" || t.sharedY === false;
 
+    // Series in panes (`series.pane`): each pane a measure leaf, innermost
+    // on Rows or Columns (`canvas.paneLayout`; down for vertical charts,
+    // across for bars), its own value scale shared across the panels.
+    const paneIds = [...new Set(allVisible.map((s) => s.options.pane ?? 0))].sort((a, b) => a - b);
+    const measured = paneIds.length > 1;
+    const measuresAcross = measured && (canvas.paneLayout ? canvas.paneLayout === "columns" : inverted);
+    // Measures across the value axis's direction: each measure pane labels
+    // its own value axis, in a wider gap before it.
+    const cross = measured && measuresAcross !== inverted;
+    const measureItem = { kind: "axis" as const, measures: paneIds.map(String) };
+    const paneOf = (p: { rowMeasure?: string; columnMeasure?: string }) => Number(p.rowMeasure ?? p.columnMeasure ?? 0);
+
     // Points without a value of a split field belong to no pane.
     const records = allVisible
       .flatMap((s) => s.points.map((p) => p.options as Record<string, unknown>))
       .filter((r) => (!rowDim || r[rowDim] != null) && (!colDim || r[colDim] != null));
     const grid = buildCanvasGrid({
-      rows: rowDim ? [{ kind: "dim", field: rowDim }] : [],
-      columns: colDim ? [{ kind: "dim", field: colDim }] : [],
+      rows: [...(rowDim ? [{ kind: "dim" as const, field: rowDim }] : []), ...(measured && !measuresAcross ? [measureItem] : [])],
+      columns: [...(colDim ? [{ kind: "dim" as const, field: colDim }] : []), ...(measuresAcross ? [measureItem] : [])],
       records,
     });
     const paneSeries = new Map(
@@ -2355,7 +2367,14 @@ export class FacetViz {
         const filter: Record<string, unknown> = {};
         if (rowDim) filter[rowDim] = grid.rows.leaves[p.row].values[0];
         if (colDim) filter[colDim] = grid.columns.leaves[p.column].values[0];
-        return [p.key, this.series.map((s) => s.filterByDimensions(filter)).filter((s) => s.visible && s.points.length)];
+        const id = paneOf(p);
+        return [
+          p.key,
+          this.series
+            .filter((s) => !measured || (s.options.pane ?? 0) === id)
+            .map((s) => s.filterByDimensions(filter))
+            .filter((s) => s.visible && s.points.length),
+        ];
       }),
     );
     // Stack every pane before reading value ranges, so a stack's summed
@@ -2396,6 +2415,27 @@ export class FacetViz {
       }
       return r;
     };
+    // A measure pane's value axis: the chart's with the pane's own laid
+    // over it, titled by its series unless a title is set; one range for
+    // the measure across every panel.
+    const paneOpts = this.options.panes ?? [];
+    const measureAxis = (id: number): AxisOptions => {
+      const own = paneOpts[id]?.yAxis ?? {};
+      const merged: AxisOptions = { ...yOpts0, ...own };
+      if (!own.title && !yOpts0.title?.text) merged.title = { ...yOpts0.title, text: [...new Set(allVisible.filter((s) => (s.options.pane ?? 0) === id).map((s) => s.name))].join(", ") };
+      return merged;
+    };
+    const measureOfPane = new Map(grid.panes.map((p) => [p.key, paneOf(p)]));
+    const measureRanges = new Map<number, [number, number]>();
+    const measureRange = (id: number): [number, number] => {
+      let r = measureRanges.get(id);
+      if (!r) {
+        const list = grid.panes.filter((p) => paneOf(p) === id).flatMap((p) => paneSeries.get(p.key) ?? []);
+        r = list.length ? rangeOf(list, measureAxis(id)) : shared;
+        measureRanges.set(id, r);
+      }
+      return r;
+    };
     const secondaryRange = hasSecondary && yOpts1 ? rangeOf(secondaryVisible, yOpts1) : undefined;
     const secondaryPreservesZeroMin = !!secondaryRange && this.hasNonNegativeZeroBasedSeries(
       secondaryVisible,
@@ -2410,13 +2450,16 @@ export class FacetViz {
       o?.title?.text && o.title.enabled !== false
         ? 18 + Math.max(0, (o.title.margin ?? 8) - 8) + Math.max(0, o.title.offset ?? 0)
         : 0;
+    // Measure panes title their own value axes, by their series.
+    const valueTitleRoom = measured ? 18 : 0;
     const leftBand = leftOpts.size ?? LAYOUT.tickLength + 8 + axisLabelOffset(leftOpts) +
-      (inverted ? this.catLabelWidth(allVisible) : this.valueLabelWidth(primaryVisible, yOpts0)) + titleRoom(leftOpts);
+      (inverted ? this.catLabelWidth(allVisible) : this.valueLabelWidth(primaryVisible, yOpts0)) + (inverted || !measured ? titleRoom(leftOpts) : valueTitleRoom);
     const rightBand = hasSecondary && yOpts1
       ? yOpts1.size ?? LAYOUT.tickLength + 8 + axisLabelOffset(yOpts1) + this.valueLabelWidth(secondaryVisible, yOpts1) + titleRoom(yOpts1)
       : 0;
-    const bottomBand = bottomOpts.size ?? LAYOUT.defaultBottomAxisHeight + axisLabelOffset(bottomOpts);
-    const bottomTitle = bottomOpts.title?.text && bottomOpts.title.enabled !== false ? bottomOpts.title : undefined;
+    const bottomBand = bottomOpts.size ?? LAYOUT.defaultBottomAxisHeight + axisLabelOffset(bottomOpts) + (inverted ? valueTitleRoom : 0);
+    // Horizontal bars' measure panes title their value axes themselves.
+    const bottomTitle = bottomOpts.title?.text && bottomOpts.title.enabled !== false && !(inverted && measured) ? bottomOpts.title : undefined;
     const bottomTitleH = bottomTitle ? 18 + Math.max(0, bottomTitle.offset ?? 0) : 0;
 
     // Header levels, and a row above them for the split fields' names.
@@ -2440,7 +2483,10 @@ export class FacetViz {
       columnHeaders: colDim ? [colHeaderH] : [],
       axes: { left: leftBand, right: rightBand, top: colDim ? 0 : 6, bottom: bottomBand },
       // Repeated axes sit in the gaps between panes.
-      gap: { columns: gap + (repeat ? leftBand + rightBand : 0), rows: gap + (repeat ? bottomBand : 0) },
+      gap: {
+        columns: gap + (repeat || (cross && !inverted) ? leftBand + rightBand : 0),
+        rows: gap + (repeat || (cross && inverted) ? bottomBand : 0),
+      },
     });
     this.noteCanvas(layout, area);
     this.noteCanvasBands(layout, {
@@ -2464,7 +2510,7 @@ export class FacetViz {
     // With several pane rows the left axis's title is drawn once down them
     // all, as the bottom one is across the columns: in every row it would
     // be longer than the row and overlap the next.
-    const leftOnce = lastRow > 0;
+    const leftOnce = lastRow > 0 && !measured;
 
     // On the canvas past the boost threshold, counting every panel's points
     // together; one hover for all of them.
@@ -2482,8 +2528,10 @@ export class FacetViz {
             range: catRange,
           });
       const valRange: [number, number] = inverted ? [cell.x, cell.x + cell.width] : [cell.y + cell.height, cell.y];
+      const measureId = measureOfPane.get(pane.key) ?? 0;
+      const valOpts = measured ? measureAxis(measureId) : yOpts0;
       const valScale = dropLastTick(
-        this.valueScale(yOpts0, valueRange(row, column), valRange, true, preserveZeroMin),
+        this.valueScale(valOpts, measured ? measureRange(measureId) : valueRange(row, column), valRange, true, preserveZeroMin),
         valRange,
       );
       const rightRange: [number, number] = [cell.y + cell.height, cell.y];
@@ -2500,7 +2548,7 @@ export class FacetViz {
       const leftLabelled = repeat || column === 0;
       const bottomLabelled = repeat || row === lastRow;
       const catLabelled = inverted ? leftLabelled : bottomLabelled;
-      const valLabelled = inverted ? bottomLabelled : leftLabelled;
+      const valLabelled = cross || (inverted ? bottomLabelled : leftLabelled);
       const bare = { labels: { enabled: false }, lineWidth: 0 };
 
       // Category axis: labelled along the bottom row (down the left column
@@ -2527,7 +2575,7 @@ export class FacetViz {
         plot: cell,
         grid: true,
         cross: catScale,
-        options: valLabelled ? (inverted || leftOnce ? { ...yOpts0, title: undefined } : yOpts0) : bare,
+        options: valLabelled ? ((inverted && !measured) || leftOnce ? { ...valOpts, title: undefined } : valOpts) : bare,
         id: yOpts0.id ?? "yAxis[0]",
         instance: pane.key,
       });
@@ -2723,8 +2771,14 @@ export class FacetViz {
     const categories = this.currentCategories(visible);
     const keys = paneIds.map(String);
 
+    // Panes across (columns) or down (rows): by default along the value
+    // axis, sharing the category axis. The other way (`cross`) every pane
+    // has its own value axis, in the gap before it, and category labels.
+    const layoutOpt = this.options.canvas?.paneLayout;
+    const across = layoutOpt ? layoutOpt === "columns" : inverted;
+    const cross = across !== inverted;
     const grid = buildCanvasGrid({
-      [inverted ? "columns" : "rows"]: [{ kind: "axis" as const, measures: keys }],
+      [across ? "columns" : "rows"]: [{ kind: "axis" as const, measures: keys }],
       records: [],
     });
     // The value band is as wide (tall, for bars) as the widest pane needs.
@@ -2732,14 +2786,16 @@ export class FacetViz {
     const catSide = inverted ? "left" : "bottom";
     const valueBand = Math.max(...paneIds.map((id) => this.axisReserve(axisOf(id), valueSide, this.valueLabelWidth(seriesOf(id), axisOf(id)))));
     const catBand = this.axisReserve(xOpts, catSide, this.catLabelWidth(visible));
-    const gap = this.options.canvas?.paneGap ?? 16;
+    const paneGap = this.options.canvas?.paneGap ?? 16;
+    const gap = cross ? paneGap + valueBand : paneGap;
+    const weights = paneIds.map((id) => paneOpts[id]?.weight ?? 1);
     const layout = layoutCanvas(grid, outer, {
       ...this.fitBands(),
       axes: inverted
         ? { left: catBand, bottom: valueBand, right: 8, top: 6 }
         : { left: valueBand, bottom: catBand, right: 8, top: 6 },
-      gap: inverted ? { columns: gap } : { rows: gap },
-      weights: inverted ? { columns: paneIds.map((id) => paneOpts[id]?.weight ?? 1) } : { rows: paneIds.map((id) => paneOpts[id]?.weight ?? 1) },
+      gap: across ? { columns: gap } : { rows: gap },
+      weights: across ? { columns: weights } : { rows: weights },
     });
     this.noteCanvas(layout, outer);
     this.noteCanvasBands(
@@ -2775,8 +2831,9 @@ export class FacetViz {
       const axisLayer = this.renderer.group({ class: "facet-axes" }, this.renderer.root);
       const instance = `pane:${id}`;
       this.drawPlotArea(axisLayer, r, instance);
-      // The category axis is labelled once: along the last pane, down the first for bars.
-      const catLabelled = inverted ? i === 0 : i === layout.panes.length - 1;
+      // The category axis is labelled once (along the last pane, down the
+      // first for bars), or on every pane when they split it.
+      const catLabelled = cross || (inverted ? i === 0 : i === layout.panes.length - 1);
       const catAxis = new Axis({
         renderer: this.renderer,
         scale: catScale,

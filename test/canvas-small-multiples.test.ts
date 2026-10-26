@@ -129,4 +129,46 @@ describe('small multiples on the canvas', () => {
     expect(render({ trellis: { rows: 'region' } }).querySelectorAll('[data-fv-kind="plotArea"]')).toHaveLength(2);
     expect(render({ trellis: { columns: 'cat' } }).querySelectorAll('[data-fv-kind="plotArea"]')).toHaveLength(2);
   });
+
+  describe('with series in panes', () => {
+    const profit = data.map((d) => ({ ...d, y: d.y * 100 }));
+    const two = (canvas: ChartOptions['canvas'] = {}) =>
+      render({
+        trellis: { columns: 'cat' },
+        canvas,
+        series: [
+          { type: 'column', name: 'Sales', data },
+          { type: 'column', name: 'Profit', data: profit, pane: 1 },
+        ],
+      });
+    const instances = (el: Element) => [...el.querySelectorAll('[data-fv-kind="plotArea"]')].map((a) => a.getAttribute('data-fv-instance'));
+    const valueTops = (el: Element) =>
+      [...el.querySelectorAll('[data-fv-kind="axis"][data-fv-id="yAxis[0]"]')]
+        .map((g) => [...g.querySelectorAll(':scope > text')].map((t) => Number(t.textContent)).filter((n) => !Number.isNaN(n)))
+        .filter((ns) => ns.length)
+        .map((ns) => Math.max(...ns));
+
+    it('gives each measure a row of panels, on its own scale shared across them', () => {
+      const el = two();
+      // 2 measure rows x 2 categories.
+      expect(instances(el)).toHaveLength(4);
+      expect(instances(el)[0]).toContain('@measure=0');
+      expect(instances(el)[2]).toContain('@measure=1');
+      const tops = valueTops(el);
+      expect(tops).toHaveLength(2);
+      expect(tops[1]).toBeGreaterThan(tops[0] * 10);
+      // Each row's axis is titled by its measure.
+      const titles = [...el.querySelectorAll('[data-fv-kind="axisTitle"][data-fv-id="yAxis[0]"]')].map((t) => t.textContent);
+      expect(titles).toEqual(['Sales', 'Profit']);
+    });
+
+    it('puts the measures side by side with paneLayout columns, each labelling its value axis', () => {
+      const el = two({ paneLayout: 'columns' });
+      const areas = [...el.querySelectorAll('[data-fv-kind="plotArea"]')];
+      expect(areas).toHaveLength(4);
+      expect(new Set(areas.map((a) => a.getAttribute('y'))).size).toBe(1);
+      expect(valueTops(el)).toHaveLength(4);
+    });
+  });
 });
+

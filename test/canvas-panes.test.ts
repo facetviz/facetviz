@@ -108,4 +108,24 @@ describe('series in panes', () => {
     expect(Math.max(...top.map(Number))).toBeLessThan(10);
     expect(Math.max(...bottom.map(Number))).toBeGreaterThanOrEqual(300);
   });
+
+  it('lays panes side by side with paneLayout columns, each with its own value axis and categories', () => {
+    const el = render({ canvas: { paneLayout: 'columns' } });
+    const [a, b] = areas(el);
+    expect(num(a, 'y')).toBeCloseTo(num(b, 'y'), 6);
+    expect(num(b, 'x')).toBeGreaterThan(num(a, 'x') + num(a, 'width') + 20);
+    const cats = [...el.querySelectorAll('[data-fv-kind="axis"][data-fv-id="xAxis[0]"]')].map((g) => g.querySelectorAll(':scope > text').length);
+    expect(cats.every((n) => n > 0)).toBe(true);
+    const [sales, margin] = valueLabels(el);
+    expect(Math.max(...sales.map(Number))).toBeGreaterThanOrEqual(30);
+    expect(Math.max(...margin.map(Number))).toBeLessThan(1);
+  });
+
+  it('stacks horizontal bars\' panes down with paneLayout rows', () => {
+    const el = render({ chart: { type: 'bar' }, canvas: { paneLayout: 'rows' }, series: [{ name: 'Sales', data: [10, 20, 30] }, { name: 'Units', data: [1, 2, 3], pane: 1 }] });
+    const [a, b] = areas(el);
+    expect(num(a, 'x')).toBeCloseTo(num(b, 'x'), 6);
+    expect(num(b, 'y')).toBeGreaterThan(num(a, 'y') + num(a, 'height'));
+  });
 });
+

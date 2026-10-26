@@ -1699,8 +1699,13 @@ for horizontal bars): each pane has its own value axis and scale, and they
 share the category axis, labelled along the bottom pane. `panes[i]` sets
 pane `i`'s value axis (laid over `yAxis`; its title defaults to its series'
 names) and its share of the height (`weight`); `canvas.paneGap` the space
-between panes (default 16). Series without a pane are in pane 0; with all
-series in one pane the chart is drawn as usual. Each pane's plot area and
+between panes (default 16). `canvas.paneLayout: 'rows' | 'columns'` picks
+the direction; the other way from the default each pane has its own value
+axis (in the gap before it) and category labels. With small multiples
+(`trellis`) the panes are the innermost rows or columns of the grid, each
+pane's value scale shared across the panels and its axis titled by its
+series. Series without a pane are in pane 0; with all series in one pane
+the chart is drawn as usual. Each pane's plot area and
 axes carry `data-fv-instance="pane:<n>"`.
 
 ```ts

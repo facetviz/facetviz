@@ -773,6 +773,15 @@ export interface CanvasOptions {
   /** Px between panes of a chart with series in several panes. Default 16. */
   paneGap?: number;
   /**
+   * Series in panes (`series.pane`): stacked down as rows, or side by side
+   * as columns. Default rows, columns for horizontal bars (along the value
+   * axis, sharing the category axis). The other way each pane has its own
+   * value axis and category labels. Inside small multiples the panes are
+   * the innermost rows or columns, a value scale per pane shared across
+   * the panels.
+   */
+  paneLayout?: "rows" | "columns";
+  /**
    * How panes take the chart's room: `entire` (default) fills it both ways;
    * `width` fits pane columns to the width with fixed-height pane rows,
    * `height` the other way round, `standard` fixes both. With a fixed
