@@ -2461,7 +2461,8 @@ export class FacetViz {
     // measure across every panel.
     const paneOpts = this.options.panes ?? [];
     const measureAxis = (id: number): AxisOptions => ({ ...yOpts0, ...(paneOpts[id]?.yAxis ?? {}), title: undefined });
-    const measureName = (id: number) => [...new Set(allVisible.filter((s) => (s.options.pane ?? 0) === id).map((s) => s.name))].join(", ");
+    const measureName = (id: number) =>
+      paneOpts[id]?.yAxis?.title?.text || [...new Set(allVisible.filter((s) => (s.options.pane ?? 0) === id).map((s) => s.name))].join(", ");
     const measureOfPane = new Map(grid.panes.map((p) => [p.key, paneOf(p)]));
     const measureRanges = new Map<number, [number, number]>();
     const measureRange = (id: number): [number, number] => {
@@ -2802,7 +2803,8 @@ export class FacetViz {
     const seriesOf = (id: number) => visible.filter((s) => (s.options.pane ?? 0) === id);
     // Each pane's value axis: the chart's, its own laid over it, titled by
     // its series unless a title is set.
-    const nameOf = (id: number) => seriesOf(id).map((s) => s.name).join(", ");
+    // A pane's name: its own title (panes[i].yAxis.title), else its series'.
+    const nameOf = (id: number) => paneOpts[id]?.yAxis?.title?.text || seriesOf(id).map((s) => s.name).join(", ");
     // Panes across the value axis's direction are named by a header (above
     // each column, or at the left of each row) rather than an axis title,
     // leaving the panes more room.
@@ -2814,8 +2816,8 @@ export class FacetViz {
       const merged: AxisOptions = { ...yOpts0, ...own };
       // Titled by its series only when no title is given at all: an empty
       // one keeps the title hidden.
-      if (own.title?.text === undefined && yOpts0.title?.text === undefined) merged.title = cross ? undefined : { ...yOpts0.title, ...own.title, text: nameOf(id) };
-      else if (cross && own.title?.text === undefined) merged.title = undefined;
+      if (cross) merged.title = undefined; // a header names the pane
+      else if (own.title?.text === undefined && yOpts0.title?.text === undefined) merged.title = { ...yOpts0.title, ...own.title, text: nameOf(id) };
       return merged;
     };
     const categories = this.currentCategories(visible);

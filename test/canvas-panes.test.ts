@@ -145,5 +145,12 @@ describe('series in panes', () => {
     const titles = [...el.querySelectorAll('[data-fv-kind="axisTitle"][data-fv-id="yAxis[0]"]')].map((t) => t.textContent);
     expect(titles.filter(Boolean)).toEqual([]);
   });
+
+  it('names panes by their own titles when given, in headers laid across', () => {
+    const el = render({ canvas: { paneLayout: 'columns' }, panes: [{ yAxis: { title: { text: 'Sales' } } }, { yAxis: { title: { text: 'Margin' } } }], series: [{ type: 'column', name: 'East', data: [1, 2, 3] }, { type: 'column', name: 'East', data: [4, 5, 6], pane: 1 }] });
+    expect([...el.querySelectorAll('.facet-pane-names text')].map((t) => t.textContent)).toEqual(['Sales', 'Margin']);
+    // No rotated axis title besides the header.
+    expect([...el.querySelectorAll('[data-fv-kind="axisTitle"][data-fv-id="yAxis[0]"]')].every((t) => t.closest('.facet-pane-names'))).toBe(true);
+  });
 });
 
