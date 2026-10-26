@@ -176,5 +176,19 @@ describe('small multiples on the canvas', () => {
       expect([...el.querySelectorAll('.facet-pane-names text')].map((t) => t.textContent)).toEqual(['Sales', 'Profit', 'Sales', 'Profit']);
     });
   });
+
+  it('titles the value axis in every pane row, centred on it', () => {
+    const el = render({ yAxis: { title: { text: 'Revenue' } } });
+    const titles = [...el.querySelectorAll('[data-fv-kind="axisTitle"][data-fv-id="yAxis[0]"]')];
+    const rowAreas = [...el.querySelectorAll('[data-fv-kind="plotArea"]')].filter((a, i, all) => all.findIndex((b) => b.getAttribute('y') === a.getAttribute('y')) === i);
+    expect(titles).toHaveLength(rowAreas.length);
+    expect(rowAreas.length).toBeGreaterThan(1);
+    titles.forEach((t, i) => {
+      const y = Number(t.getAttribute('y'));
+      const top = Number(rowAreas[i].getAttribute('y'));
+      expect(y).toBeGreaterThan(top);
+      expect(y).toBeLessThan(top + Number(rowAreas[i].getAttribute('height')));
+    });
+  });
 });
 

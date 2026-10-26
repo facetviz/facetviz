@@ -2547,9 +2547,9 @@ export class FacetViz {
     };
     const lastRow = grid.rows.leaves.length - 1;
     const lastColumn = grid.columns.leaves.length - 1;
-    // With several pane rows the left axis's title is drawn once down them
-    // all, as the bottom one is across the columns: in every row it would
-    // be longer than the row and overlap the next.
+    // With several pane rows the left axis's title is drawn by the chart in
+    // every row, cut to the row's height: the axis's own would run over
+    // into the next row.
     const leftOnce = lastRow > 0;
 
     // On the canvas past the boost threshold, counting every panel's points
@@ -2653,21 +2653,21 @@ export class FacetViz {
 
     if (hits.length) this.installBoostHover(rectAround(layout.panes.map((p) => p.rect)), hits);
 
-    // The left axis's title, once, centred down the pane rows.
+    // The left axis's title in every pane row, centred on it and cut short
+    // (the full title on hover) where the row is shorter than the title.
     const leftTitle = leftOpts.title?.text && leftOpts.title.enabled !== false ? leftOpts.title : undefined;
     if (leftOnce && leftTitle?.text) {
-      const p = layout.plotArea;
-      const x = p.x - leftBand + 12 - Math.max(0, leftTitle.offset ?? 0);
-      const y = p.y + p.height / 2;
-      const el = this.renderer.text(
-        leftTitle.text,
-        x,
-        y,
-        { "text-anchor": "middle", transform: `rotate(-90 ${x} ${y})`, ...FONTS.axisTitle, ...sanitizeStyle(leftTitle.style) },
-        this.renderer.root,
-      );
-      el.setAttribute("data-fv-kind", "axisTitle");
-      el.setAttribute("data-fv-id", (inverted ? xOpts.id : yOpts0.id) ?? (inverted ? "xAxis[0]" : "yAxis[0]"));
+      const font = { ...FONTS.axisTitle, ...sanitizeStyle(leftTitle.style) };
+      const x = layout.plotArea.x - leftBand + 12 - Math.max(0, leftTitle.offset ?? 0);
+      for (const row of layout.rows) {
+        const y = row.y + row.height / 2;
+        let text: string = leftTitle.text;
+        while (text.length > 1 && this.renderer.measureText(text, font).width > row.height - 8) text = text.slice(0, -2) + "…";
+        const el = this.renderer.text(text, x, y, { "text-anchor": "middle", transform: `rotate(-90 ${x} ${y})`, ...font }, this.renderer.root);
+        if (text !== leftTitle.text) el.appendChild(Object.assign(document.createElementNS("http://www.w3.org/2000/svg", "title"), { textContent: leftTitle.text }));
+        el.setAttribute("data-fv-kind", "axisTitle");
+        el.setAttribute("data-fv-id", (inverted ? xOpts.id : yOpts0.id) ?? (inverted ? "xAxis[0]" : "yAxis[0]"));
+      }
     }
 
     // The bottom axis's title, once, centred under the panes.
