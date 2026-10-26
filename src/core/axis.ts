@@ -48,6 +48,27 @@ const AXIS_PARTS: Array<[string, string]> = [
   ['facet-plotline', 'plotLine'],
 ];
 
+/** Up to this many labels are all measured to find the widest. */
+const MEASURE_ALL = 200;
+/** Past `MEASURE_ALL`, how many of the longest (by characters) are. */
+const MEASURE_LONGEST = 50;
+
+/**
+ * The widest of these texts in px, in `style`. Past `MEASURE_ALL` texts
+ * only the longest `MEASURE_LONGEST` by characters are measured, which
+ * hold the widest in practice, so an axis with tens of thousands of
+ * categories doesn't measure each one.
+ */
+export function widestText(renderer: Renderer, texts: string[], style: Record<string, string>): number {
+  let pick = texts;
+  if (texts.length > MEASURE_ALL) {
+    pick = [...new Set(texts)].sort((a, b) => b.length - a.length).slice(0, MEASURE_LONGEST);
+  }
+  let widest = 0;
+  for (const text of pick) widest = Math.max(widest, renderer.measureText(text, style).width);
+  return widest;
+}
+
 /**
  * Marks `group` as an axis's canvas part (`data-fv-kind="axis"`, its id and
  * instance), and its grid lines, bands, reference lines and title elements
@@ -183,11 +204,7 @@ export class Axis {
       const band = scale.bandwidth();
       if (band > 0) {
         const style = this.labelStyle();
-        const widest = ticks.reduce(
-          (m: number, t) =>
-            Math.max(m, renderer.measureText(this.labelText(scale, t), style).width),
-          0,
-        );
+        const widest = widestText(renderer, ticks.map((t) => this.labelText(scale, t)), style);
         if (options.labels?.rotation === undefined) {
           const candidates = options.labels?.autoRotation ?? [0];
           labelRotation =
@@ -249,6 +266,14 @@ export class Axis {
       }
     }
 
+    // Category ticks closer than 3px merge into a solid bar: they're drawn
+    // only where a label is (or every few px), not one per category.
+    let tickStep = 1;
+    if (isCategory) {
+      const spacing = Math.abs((scale as CategoryScale).fullStep());
+      if (spacing > 0 && spacing < 3) tickStep = labelStep > 1 ? labelStep : Math.ceil(3 / spacing);
+    }
+
     ticks.forEach((tick, i) => {
       const pos = scale.scale(tick);
 
@@ -271,7 +296,7 @@ export class Axis {
       }
 
       // Tick mark.
-      if (options.ticks !== false) this.drawTick(group, pos, axisColor);
+      if (options.ticks !== false && i % tickStep === 0) this.drawTick(group, pos, axisColor);
 
       // Label.
       if (labelsEnabled && i % labelStep === 0) {
@@ -760,19 +785,12 @@ export class Axis {
     const { scale, options } = this.cfg;
     const labelStyle = sanitizeStyle(options.labels?.style);
     const fontPx = parseFloat(labelStyle['font-size'] ?? FONTS.axisLabel['font-size'] ?? '11') || 11;
-    let maxW = 0;
-    for (const t of scale.ticks()) {
-      const measured = this.cfg.renderer.measureText(this.labelText(scale, t), {
-        ...FONTS.axisLabel,
-        ...labelStyle,
-      }).width;
-      maxW = Math.max(
-        maxW,
-        options.labels?.maxWidth
-          ? Math.min(measured, options.labels.maxWidth)
-          : measured,
-      );
-    }
+    const widest = widestText(
+      this.cfg.renderer,
+      scale.ticks().map((t) => this.labelText(scale, t)),
+      { ...FONTS.axisLabel, ...labelStyle },
+    );
+    const maxW = options.labels?.maxWidth ? Math.min(widest, options.labels.maxWidth) : widest;
     const rot = options.labels?.rotation ?? 0;
     if (this.horizontal) {
       // Rotated labels take vertical room proportional to their width.

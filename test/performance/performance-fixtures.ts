@@ -7,7 +7,8 @@ export type PerformanceScenario =
   | 'stream-batch'
   | 'table-page'
   | 'pivot-table'
-  | 'table-cell-charts';
+  | 'table-cell-charts'
+  | 'large';
 
 export interface PerformanceMetrics {
   scenario: PerformanceScenario;
@@ -22,6 +23,8 @@ export interface PerformanceMetrics {
   renderedRows?: number;
   columns?: number;
   charts?: number;
+  /** The large-data case drawn: `<type>[-stacked] <categories>x<series>`. */
+  label?: string;
   domNodes: number;
   svgElements: number;
   pointElements: number;
@@ -217,6 +220,28 @@ if (scenario === 'svg') {
   renderedRows = container.querySelectorAll('tbody tr').length;
   columns = container.querySelectorAll('tbody tr:first-child td').length;
   charts = table.charts.length;
+} else if (scenario === 'large') {
+  // Charts at the sizes the app can ask for with every value shown:
+  // ?type=column&categories=5000&series=12&stacked=1. Same numbers every run.
+  const type = params.get('type') ?? 'column';
+  const count = Number(params.get('categories') ?? 500);
+  const seriesCount = Number(params.get('series') ?? 1);
+  const stacked = params.get('stacked') === '1';
+  const categories = Array.from({ length: count }, (_, i) => `Category ${i}`);
+  const series = Array.from({ length: seriesCount }, (_, s) => ({
+    name: `Series ${s}`,
+    data: categories.map((_c, i) => Math.round(Math.abs(Math.sin(i / 50 + s)) * 1_000)),
+  }));
+  points = count * seriesCount;
+  const start = performance.now();
+  chart = new FacetViz(container, {
+    chart: { type: type as 'column', width: 960, height: 520, animation: false, reflow: false },
+    xAxis: { categories },
+    plotOptions: stacked ? { series: { stacking: 'normal' } } : {},
+    legend: { enabled: seriesCount <= 20 },
+    series,
+  });
+  renderMs = performance.now() - start;
 } else {
   throw new Error(`Unknown performance scenario: ${scenario}`);
 }
@@ -234,6 +259,7 @@ const metrics: PerformanceMetrics = {
   renderedRows,
   columns,
   charts,
+  label: scenario === 'large' ? `${params.get('type')}${params.get('stacked') === '1' ? '-stacked' : ''} ${params.get('categories')}x${params.get('series') ?? 1}` : undefined,
   domNodes: container.querySelectorAll('*').length,
   svgElements: container.querySelectorAll('svg *').length,
   pointElements: container.querySelectorAll('.facet-point, .facet-point-hit').length,

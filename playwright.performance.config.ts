@@ -23,6 +23,12 @@ export default defineConfig({
     reuseExistingServer: !isCI,
     timeout: 120_000,
   },
+  // The desktop app draws in WebKit, the slower of the two with SVG, so the
+  // large-data cases run in both; the older cases stay on Chromium.
+  projects: [
+    { name: 'chromium', use: { browserName: 'chromium' } },
+    { name: 'webkit', use: { browserName: 'webkit' }, testMatch: '**/large-data.performance.spec.ts' },
+  ],
   reporter: isCI
     ? [['line'], ['html', { outputFolder: 'playwright-performance-report', open: 'never' }]]
     : 'list',

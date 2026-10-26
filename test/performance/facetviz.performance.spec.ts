@@ -1,7 +1,8 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import type { PerformanceMetrics, PerformanceScenario } from './performance-fixtures.js';
 
-const budgets: Record<PerformanceScenario, {
+// The large-data cases keep their budgets in large-data.performance.spec.ts.
+const budgets: Record<Exclude<PerformanceScenario, 'large'>, {
   renderMs: number;
   updateMs?: number;
   sortMs?: number;

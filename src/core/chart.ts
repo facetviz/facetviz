@@ -29,7 +29,7 @@ import type {
   DataLabelOptions,
 } from "./options.js";
 import { Renderer } from "./renderer.js";
-import { Axis, Rect, minorGridPositions, SUBTITLE_LINE } from "./axis.js";
+import { Axis, Rect, minorGridPositions, SUBTITLE_LINE, widestText } from "./axis.js";
 import { Tooltip } from "./tooltip.js";
 import {
   Legend,
@@ -194,6 +194,11 @@ export class FacetViz {
   };
   private crosshairEl?: SVGElement;
   /** Rendered SVG data marks in keyboard-navigation order. */
+  /** The points given a focus stop, per series: a quick check for a second
+   * hover target of a point already exposed. */
+  private accessibleBySeries = new Map<BaseSeries, Set<Point>>();
+  /** Each series' total of y, for tooltips' percentage; worked out once. */
+  private seriesTotals = new Map<BaseSeries, number>();
   private accessiblePoints: Array<{
     el: SVGElement;
     series: BaseSeries;
@@ -507,6 +512,8 @@ export class FacetViz {
     this.boostHoverCleanups.forEach((cleanup) => cleanup());
     this.boostHoverCleanups = [];
     this.accessiblePoints = [];
+    this.accessibleBySeries = new Map();
+    this.seriesTotals = new Map();
     if (!this.renderer) {
       this.renderer = new Renderer(this.width, this.height);
       this.renderer.mount(this.container);
@@ -1449,14 +1456,7 @@ export class FacetViz {
       ...FONTS.axisLabel,
       ...sanitizeStyle(opts.labels?.style),
     };
-    const measured = cats.reduce(
-      (max, category) =>
-        Math.max(
-          max,
-          this.renderer.measureText(label(String(category)), style).width,
-        ),
-      0,
-    );
+    const measured = widestText(this.renderer, cats.map((category) => label(String(category))), style);
     return opts.labels?.maxWidth
       ? Math.min(measured, opts.labels.maxWidth)
       : measured;
@@ -4828,8 +4828,12 @@ export class FacetViz {
     );
 
     if (!this.tooltip) return;
-    const total = s.points.reduce((sum, pt) => sum + (pt.y ?? 0), 0);
     const build = (): TooltipContext => {
+      let total = this.seriesTotals.get(s);
+      if (total === undefined) {
+        total = s.points.reduce((sum, pt) => sum + (pt.y ?? 0), 0);
+        this.seriesTotals.set(s, total);
+      }
       const ctx: TooltipContext = {
         series: s.name,
         seriesIndex: this.series.indexOf(s),
@@ -4890,15 +4894,14 @@ export class FacetViz {
     // Some renderers expose more than one hover target for one logical point
     // (for example both ends of a dumbbell). Keep those pointer targets, but
     // expose only one screen-reader/focus stop for the datum.
-    if (
-      this.accessiblePoints.some(
-        (entry) => entry.series === s && entry.point === p,
-      )
-    ) {
+    let exposed = this.accessibleBySeries.get(s);
+    if (!exposed) this.accessibleBySeries.set(s, (exposed = new Set()));
+    if (exposed.has(p)) {
       el.setAttribute("aria-hidden", "true");
       return;
     }
 
+    exposed.add(p);
     this.accessiblePoints.push({ el, series: s, point: p });
     el.classList.add("facet-a11y-point");
     el.setAttribute("role", "img");
