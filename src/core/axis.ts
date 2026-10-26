@@ -274,6 +274,13 @@ export class Axis {
         );
       }
     }
+    // Minor tick marks, half as long, where the minor grid lines would be
+    // (with `minorTicks`, on the axis even without minor grid lines).
+    if (!isCategory && options.minorTicks && options.ticks !== false && options.minorTickInterval !== undefined) {
+      for (const pos of minorGridPositions(scale, options.minorTickInterval)) {
+        this.drawTick(group, pos, axisColor, Math.max(2, LAYOUT.tickLength / 2));
+      }
+    }
 
     // Category ticks closer than 3px merge into a solid bar: they're drawn
     // only where a label is (or every few px), not one per category.
@@ -322,6 +329,16 @@ export class Axis {
         );
       }
     });
+
+    // A dotted line at zero across the plot, when the axis runs through it.
+    const zero = options.zeroLine;
+    if (zero && !isCategory && 'domain' in scale) {
+      const [d0, d1] = (scale as unknown as { domain: [number, number] }).domain;
+      if (Math.min(d0, d1) < 0 && Math.max(d0, d1) > 0) {
+        const z = typeof zero === 'object' ? zero : {};
+        this.drawGridLine(group, scale.scale(0), z.color ?? THEME.axis.lineColor, z.width ?? 1, z.dashStyle ?? '2 3', 'facet-zero-line');
+      }
+    }
 
     // Plot lines drawn above the grid (and above bands) — but still below
     // the series, which paint after the whole axis layer. Lines flagged
@@ -627,9 +644,8 @@ export class Axis {
     }
   }
 
-  private drawTick(g: SVGGElement, pos: number, color: string): void {
+  private drawTick(g: SVGGElement, pos: number, color: string, len = LAYOUT.tickLength): void {
     const { renderer, plot, position } = this.cfg;
-    const len = LAYOUT.tickLength;
     switch (position) {
       case 'bottom':
         renderer.create('line', { x1: pos, y1: plot.y + plot.height, x2: pos, y2: plot.y + plot.height + len, stroke: color }, g);

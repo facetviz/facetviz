@@ -2627,6 +2627,22 @@ export class FacetViz {
       // An axis drawn for its grid alone: no labels, line or tick marks
       // (they would sit on the dividers between panes).
       const bare = { labels: { enabled: false }, lineWidth: 0, ticks: false };
+      // A bare axis keeps what it draws across the plot: its grid lines
+      // (major and minor, between categories too) and plot lines and bands.
+      const bareOf = (o: AxisOptions | undefined): AxisOptions => ({
+        ...bare,
+        gridLineWidth: o?.gridLineWidth,
+        gridLineColor: o?.gridLineColor,
+        gridLineDashStyle: o?.gridLineDashStyle,
+        gridLinePlacement: o?.gridLinePlacement,
+        minorTickInterval: o?.minorTickInterval,
+        minorGridLineWidth: o?.minorGridLineWidth,
+        minorGridLineColor: o?.minorGridLineColor,
+        minorGridLineDashStyle: o?.minorGridLineDashStyle,
+        plotLines: o?.plotLines,
+        plotBands: o?.plotBands,
+        zeroLine: o?.zeroLine,
+      });
 
       // Category axis: labelled along the bottom row (down the left column
       // for bars); its grid lines only when asked for.
@@ -2639,15 +2655,7 @@ export class FacetViz {
         grid: !!xOpts.gridLineWidth,
         options: catLabelled
           ? { ...xOpts, ticks: false, ...(inverted && !leftOnce ? {} : { title: undefined }) }
-          : {
-              ...bare,
-              ticks: false,
-              // Its grid lines as in the labelled panels (between categories too).
-              gridLineWidth: xOpts.gridLineWidth,
-              gridLineColor: xOpts.gridLineColor,
-              gridLineDashStyle: xOpts.gridLineDashStyle,
-              gridLinePlacement: xOpts.gridLinePlacement,
-            },
+          : bareOf(xOpts),
         id: xOpts.id ?? "xAxis[0]",
         instance: pane.key,
       });
@@ -2660,7 +2668,7 @@ export class FacetViz {
         plot: cell,
         grid: true,
         cross: catScale,
-        options: valLabelled ? (inverted || leftOnce ? { ...valOpts, title: undefined } : valOpts) : bare,
+        options: valLabelled ? (inverted || leftOnce ? { ...valOpts, title: undefined } : valOpts) : bareOf(valOpts),
         id: yOpts0.id ?? "yAxis[0]",
         instance: pane.key,
       });
@@ -2675,7 +2683,7 @@ export class FacetViz {
           plot: cell,
           grid: false,
           cross: catScale,
-          options: repeat || column === lastColumn ? yOpts1 : bare,
+          options: repeat || column === lastColumn ? yOpts1 : { ...bareOf(yOpts1), gridLineWidth: 0, minorTickInterval: undefined },
           id: yOpts1.id ?? "yAxis[1]",
           instance: pane.key,
         });
