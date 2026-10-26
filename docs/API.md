@@ -816,6 +816,7 @@ Applies to both `xAxis` and `yAxis`. A **category axis** is used when
 | `step`         | `number`                | auto         | Draw every Nth label; collision handling may increase it.                                                                                                           |
 | `maxWidth`     | `number`                | –            | Maximum measured label width in pixels.                                                                                                                             |
 | `overflow`     | `'ellipsis' \| 'hide'`  | `'ellipsis'` | Truncate or hide labels wider than `maxWidth`.                                                                                                                      |
+| `wrap`         | `boolean`               | `false`      | Unrotated bottom labels too wide for their slot break onto a second line at a space (both lines fitting) before being cut short. |
 | `position`     | `'outer' \| 'inner'`    | `'outer'`    | Non-inverted polar x-axis: place labels outside the plot or curve them around the centre-hole radius.                                                               |
 | `offset`       | `number`                | contextual   | Gap from the axis line. Cartesian default is `0`; polar x-axis defaults are 7 for inner, 10 for outer, and 6 beside an inverted radial axis.                         |
 | `style`        | `Record<string,string>` | –            | Extra text attributes.                                                                                                                                              |
@@ -1479,7 +1480,7 @@ canvas: {
 | `headers[field]` | `visible`, `size` (px: height across columns, width down rows), `label` (`style`, `rotation`, `format` with `{value}`), `background` |
 | `dividers.columns` / `.rows` | `level`: a header level (it and every level outside it), `'all'` (every category too) or `'none'`; default every header level. `color`, `width`, `dashStyle`. `xAxis.groupLines` still works when this isn't set. |
 | `banding.columns` / `.rows` | Every other group of `level` (default the innermost header level) shaded in the panes (`color`) and its header cells (`headerColor`); `size` groups per band |
-| `fieldLabels.columns` / `.rows` | `visible`: the header fields' names beside their levels (`data-fv-kind="fieldLabel"`) |
+| `fieldLabels.columns` / `.rows` | `visible`: the header fields' names beside their levels (`data-fv-kind="fieldLabel"`), bold above their (regular) values; `text` in place of the name, e.g. `Region / Segment` |
 
 Horizontal bars (`chart.type: 'bar'` or `inverted`) use `.rows`: the levels run
 down the left, the outer level farthest out.

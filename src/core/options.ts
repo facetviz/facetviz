@@ -397,6 +397,11 @@ export interface AxisLabelOptions {
   /** What to do when a label exceeds `maxWidth`. Default `'ellipsis'`. */
   overflow?: "ellipsis" | "hide";
   /**
+   * Unrotated labels along the bottom that don't fit their slot break onto
+   * a second line at a space (both lines fitting) before being cut short.
+   */
+  wrap?: boolean;
+  /**
    * Polar x-axis placement. `inner` curves category labels around the centre
    * hole; ignored by Cartesian axes.
    */
@@ -766,6 +771,9 @@ export interface CanvasBandOptions {
 /** The names of the header fields, beside their levels. */
 export interface CanvasFieldLabelOptions {
   visible?: boolean;
+  /** Text in place of the field's name, e.g. `Region / Segment` naming
+   * the field along the axis inside the panels too. */
+  text?: string;
   style?: Record<string, string>;
 }
 

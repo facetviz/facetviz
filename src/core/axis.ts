@@ -680,9 +680,10 @@ export class Axis {
   ): void {
     const { renderer, plot, position } = this.cfg;
     const style = this.labelStyle();
-    const text = this.fitLabel(rawText, style);
-    if (text === undefined) return;
     const rotation = resolvedRotation ?? options.labels?.rotation ?? 0;
+    const lines = options.labels?.wrap && position === 'bottom' && !rotation ? this.wrapLabel(rawText, style) : undefined;
+    const text = lines ? lines[0] : this.fitLabel(rawText, style);
+    if (text === undefined) return;
     const offset = this.labelOffset;
     let x = 0;
     let y = 0;
@@ -726,7 +727,39 @@ export class Axis {
       'dominant-baseline': baseline,
       ...style,
     }, g);
+    if (lines) {
+      // Two lines: the first as drawn, the second under it.
+      el.textContent = '';
+      lines.forEach((line, i) => {
+        const span = renderer.create('tspan', { x, ...(i ? { dy: '1.15em' } : {}) }, el);
+        span.textContent = line;
+      });
+    }
     if (rotation) el.setAttribute('transform', `rotate(${rotation} ${x} ${y})`);
+  }
+
+  /**
+   * A label too wide for its slot on two lines, broken at the space that
+   * leaves both lines fitting (the most even); none fits, it's cut short
+   * as usual. Undefined when it fits on one line or can't be broken.
+   */
+  private wrapLabel(text: string, style: Record<string, string>): [string, string] | undefined {
+    const room = this.fitWidth;
+    const measure = (t: string) => this.cfg.renderer.measureText(t, style).width;
+    if (!room || measure(text) <= room) return undefined;
+    const words = text.split(' ');
+    let best: [string, string] | undefined;
+    let worst = Infinity;
+    for (let i = 1; i < words.length; i++) {
+      const a = words.slice(0, i).join(' ');
+      const b = words.slice(i).join(' ');
+      const wider = Math.max(measure(a), measure(b));
+      if (wider <= room && wider < worst) {
+        best = [a, b];
+        worst = wider;
+      }
+    }
+    return best;
   }
 
   private drawTitle(g: SVGGElement, text: string): SVGTextElement {

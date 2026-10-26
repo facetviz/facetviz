@@ -177,6 +177,10 @@ export class FacetViz {
   private naturalDelta?: { dw: number; dh: number };
   /** Inside the render pass at the canvas's natural size. */
   private fitting = false;
+  /** While a fixed `canvas.fit` renders at the canvas's natural size: the
+   * size it was given, which text keeps scaling by (a larger canvas
+   * scrolls; its text doesn't grow). */
+  private fontBasis?: { width: number; height: number };
   /** Axis bands and header levels drawn this render, for resize handles. */
   private resizeBands: ResizeBand[] = [];
   private boostHoverCleanups: Array<() => void> = [];
@@ -533,7 +537,7 @@ export class FacetViz {
       this.theme,
       this.options.chart?.responsive === false
         ? 1
-        : chartFontScale(this.width, this.height),
+        : chartFontScale(this.fontBasis?.width ?? this.width, this.fontBasis?.height ?? this.height),
       this.options.chart?.scaleFonts !== false,
     );
 
@@ -719,6 +723,7 @@ export class FacetViz {
     const w = fit === "width" ? this.width : Math.max(1, Math.round(this.width + this.naturalDelta.dw));
     const h = fit === "height" ? this.height : Math.max(1, Math.round(this.height + this.naturalDelta.dh));
     if (Math.abs(w - this.width) < 1 && Math.abs(h - this.height) < 1) return;
+    this.fontBasis = { width: this.width, height: this.height };
     this.width = w;
     this.height = h;
     this.fitting = true;
@@ -726,6 +731,7 @@ export class FacetViz {
       this.render();
     } finally {
       this.fitting = false;
+      this.fontBasis = undefined;
     }
     this.options.chart?.events?.canvasNaturalSize?.({ width: this.width, height: this.height });
   }
@@ -2498,7 +2504,17 @@ export class FacetViz {
     const rightBand = hasSecondary && yOpts1
       ? yOpts1.size ?? LAYOUT.tickLength + 8 + axisLabelOffset(yOpts1) + this.valueLabelWidth(secondaryVisible, yOpts1) + titleRoom(yOpts1)
       : 0;
-    const bottomBand = bottomOpts.size ?? LAYOUT.defaultBottomAxisHeight + axisLabelOffset(bottomOpts);
+    // Room for a second line of labels when some won't fit their slot on
+    // one (labels.wrap): the slot as the panes would roughly share the width.
+    const wrapRoom = (() => {
+      if (inverted || !xOpts.labels?.wrap || !categories?.length) return 0;
+      const columnsCount = Math.max(1, grid.columns.leaves.length);
+      const slot = (outer.width - leftBand - rightBand) / (columnsCount * categories.length) - 6;
+      const font = { ...FONTS.axisLabel, ...sanitizeStyle(xOpts.labels?.style) };
+      const tooWide = categories.some((c) => String(c).includes(" ") && this.renderer.measureText(String(c), font).width > slot);
+      return tooWide ? Math.round((parseFloat(font["font-size"] ?? "11") || 11) * 1.15) : 0;
+    })();
+    const bottomBand = bottomOpts.size ?? LAYOUT.defaultBottomAxisHeight + axisLabelOffset(bottomOpts) + wrapRoom;
     const bottomTitle = bottomOpts.title?.text && bottomOpts.title.enabled !== false ? bottomOpts.title : undefined;
     const bottomTitleH = bottomTitle ? 18 + Math.max(0, bottomTitle.offset ?? 0) : 0;
 
@@ -2508,7 +2524,7 @@ export class FacetViz {
       (rowDim && canvas.fieldLabels?.rows?.visible !== false);
     const nameRowH = namesOn ? 16 : 0;
     // Row headers as wide as their widest (bold) value or the field's name.
-    const headerFont = { ...FONTS.axisLabel, "font-weight": "600", ...sanitizeStyle(canvas.headers?.[rowDim ?? ""]?.label?.style) };
+    const headerFont = { ...FONTS.axisLabel, ...sanitizeStyle(canvas.headers?.[rowDim ?? ""]?.label?.style) };
     const rowHeaderW = !headerOn(rowDim) ? 0 : canvas.headers?.[rowDim!]?.size ?? Math.max(
       32,
       this.renderer.measureText(rowDim!, FONTS.axisLabel).width + 8,
@@ -2570,7 +2586,12 @@ export class FacetViz {
           });
       const valRange: [number, number] = inverted ? [cell.x, cell.x + cell.width] : [cell.y + cell.height, cell.y];
       const measureId = measureOfPane.get(pane.key) ?? 0;
-      const valOpts = measured ? measureAxis(measureId) : yOpts0;
+      // Short panes still get a few ticks to read values by: about one per
+      // 28px of the pane (one more where the top tick is dropped below).
+      const paneSpan = inverted ? cell.width : cell.height;
+      const ticksFor = (o: AxisOptions): AxisOptions =>
+        o.tickCount != null || o.tickInterval != null ? o : { ...o, tickCount: Math.max(3, Math.min(6, Math.round(paneSpan / 28))) + (repeat || gap > 0 ? 0 : 1) };
+      const valOpts = ticksFor(measured ? measureAxis(measureId) : yOpts0);
       const valScale = dropLastTick(
         this.valueScale(valOpts, measured ? measureRange(measureId) : valueRange(row, column), valRange, true, preserveZeroMin),
         valRange,
@@ -2736,7 +2757,7 @@ export class FacetViz {
       const bg = canvas.headers?.[colDim]?.background;
       if (bg) this.renderer.create("rect", { ...r, fill: bg, class: "facet-header-background" }, g);
       const el = this.renderer.text(headerText(colDim, placed.cell.value), r.x + r.width / 2, r.y + r.height / 2 + 4, {
-        ...label, "font-weight": "600", "text-anchor": "middle", ...headerStyle(colDim),
+        ...label, "text-anchor": "middle", ...headerStyle(colDim),
       }, g);
       mark(el, "header", colDim, String(placed.cell.value ?? ""));
     }
@@ -2746,16 +2767,19 @@ export class FacetViz {
       const bg = canvas.headers?.[rowDim]?.background;
       if (bg) this.renderer.create("rect", { ...r, fill: bg, class: "facet-header-background" }, g);
       const el = this.renderer.text(headerText(rowDim, placed.cell.value), r.x + 4, r.y + r.height / 2 + 4, {
-        ...label, "font-weight": "600", "text-anchor": "start", ...headerStyle(rowDim),
+        ...label, "text-anchor": "start", ...headerStyle(rowDim),
       }, g);
       mark(el, "header", rowDim, String(placed.cell.value ?? ""));
     }
+    // The fields' names, bold, above their values (which are regular):
+    // the field heads its values, as in a table.
     if (nameRowH) {
       const y = outer.y + 12;
+      const name = { ...label, "font-weight": "600", fill: THEME.axis.titleColor };
       if (colDim && canvas.fieldLabels?.columns?.visible !== false)
-        mark(this.renderer.text(colDim, plot.x + plot.width / 2, y, { ...label, "text-anchor": "middle", ...sanitizeStyle(canvas.fieldLabels?.columns?.style) }, g), "fieldLabel", colDim);
+        mark(this.renderer.text(canvas.fieldLabels?.columns?.text ?? colDim, plot.x + plot.width / 2, y, { ...name, "text-anchor": "middle", ...sanitizeStyle(canvas.fieldLabels?.columns?.style) }, g), "fieldLabel", colDim);
       if (rowDim && canvas.fieldLabels?.rows?.visible !== false)
-        mark(this.renderer.text(rowDim, area.x + 4, y, { ...label, "text-anchor": "start", ...sanitizeStyle(canvas.fieldLabels?.rows?.style) }, g), "fieldLabel", rowDim);
+        mark(this.renderer.text(canvas.fieldLabels?.rows?.text ?? rowDim, area.x + 4, y, { ...name, "text-anchor": "start", ...sanitizeStyle(canvas.fieldLabels?.rows?.style) }, g), "fieldLabel", rowDim);
     }
 
     // Dividers: the outline of the panes and headers, and a line between
@@ -2776,18 +2800,23 @@ export class FacetViz {
     const left = rowDim ? (layout.headers.rows[0]?.[0]?.rect.x ?? plot.x) : plot.x;
     const right = plot.x + plot.width;
     const bottom = plot.y + plot.height;
+    // Lines between columns run on down through the bottom axis's labels,
+    // so each column's labels sit in their own column; a line closes the
+    // right edge.
+    const labelsBottom = Math.max(bottom, ...layout.axisBands.bottom.map((b) => b.y + b.height));
     const colDiv = canvas.dividers?.columns;
     const rowDiv = canvas.dividers?.rows;
     for (let i = 1; i < cols.length; i++) {
       const x = (cols[i - 1].x + cols[i - 1].width + cols[i].x) / 2;
-      line(colDiv, x, top, x, bottom);
+      line(colDiv, x, top, x, labelsBottom);
     }
     for (let i = 1; i < rows.length; i++) {
       const y = (rows[i - 1].y + rows[i - 1].height + rows[i].y) / 2;
       line(rowDiv, left, y, right, y);
     }
     if (colDim) line(colDiv, left, plot.y, right, plot.y);
-    if (rowDim) line(rowDiv, plot.x, top, plot.x, bottom);
+    if (rowDim) line(rowDiv, plot.x, top, plot.x, labelsBottom);
+    if (colDim) line(colDiv, right, top, right, labelsBottom);
   }
 
   /**

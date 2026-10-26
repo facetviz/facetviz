@@ -201,5 +201,32 @@ describe('small multiples on the canvas', () => {
     expect(inner.every((g) => ticksOf(g) === 0)).toBe(true);
     expect(labelled.length).toBeGreaterThan(0);
   });
+
+  it('names the column field as asked, bold, with its values in regular weight', () => {
+    const el = render({ canvas: { fieldLabels: { columns: { text: 'cat / month' } } } });
+    const label = [...el.querySelectorAll('[data-fv-kind="fieldLabel"]')].find((t) => t.textContent === 'cat / month');
+    expect(label?.getAttribute('font-weight')).toBe('600');
+    const header = el.querySelector('[data-fv-kind="header"]')!;
+    expect(header.getAttribute('font-weight')).toBeNull();
+  });
+
+  it('runs the lines between columns down through the labels, and closes the right edge', () => {
+    const el = render({});
+    const lines = [...el.querySelectorAll('.facet-trellis-divider')];
+    const plotBottom = Math.max(...[...el.querySelectorAll('[data-fv-kind="plotArea"]')].map((a) => Number(a.getAttribute('y')) + Number(a.getAttribute('height'))));
+    const vertical = lines.filter((l) => l.getAttribute('x1') === l.getAttribute('x2'));
+    expect(vertical.some((l) => Number(l.getAttribute('y2')) > plotBottom + 5)).toBe(true);
+    const right = Math.max(...vertical.map((l) => Number(l.getAttribute('x1'))));
+    const paneRight = Math.max(...[...el.querySelectorAll('[data-fv-kind="plotArea"]')].map((a) => Number(a.getAttribute('x')) + Number(a.getAttribute('width'))));
+    expect(right).toBeCloseTo(paneRight, 0);
+  });
+
+  it('gives a short pane at least three value ticks', () => {
+    const el = render({});
+    const ticks = [...el.querySelectorAll('[data-fv-kind="axis"][data-fv-id="yAxis[0]"]')]
+      .map((g) => g.querySelectorAll(':scope > text').length)
+      .filter((n) => n > 0);
+    expect(Math.min(...ticks)).toBeGreaterThanOrEqual(3);
+  });
 });
 
