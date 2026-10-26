@@ -441,6 +441,9 @@ export interface AxisOptions {
   labels?: AxisLabelOptions;
   /** SVG dash array for major grid lines, for example `'6 3'`. */
   gridLineDashStyle?: string;
+  /** On a category axis: grid lines through each category ('on', the
+   * default) or between neighbouring categories ('between'). */
+  gridLinePlacement?: 'on' | 'between';
   gridLineWidth?: number;
   gridLineColor?: string;
   /**

@@ -289,14 +289,18 @@ export class Axis {
       // Gridline across the plot — skipped for category centres unless the
       // caller explicitly set `gridLineWidth` (a category scale never gets
       // "nice" numeric ticks to derive a default from, so it stays opt-in).
+      // On a category axis placed 'between', the lines run between
+      // neighbouring categories instead, none before the first.
+      const between = isCategory && options.gridLinePlacement === 'between';
       if (
         this.cfg.grid &&
         gridWidth > 0 &&
-        (!isCategory || options.gridLineWidth)
+        (!isCategory || options.gridLineWidth) &&
+        !(between && i === 0)
       ) {
         this.drawGridLine(
           group,
-          pos,
+          between ? pos - (scale as CategoryScale).fullStep() / 2 : pos,
           gridColor,
           gridWidth,
           options.gridLineDashStyle,
