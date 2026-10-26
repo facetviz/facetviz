@@ -2590,7 +2590,9 @@ export class FacetViz {
       const bottomLabelled = repeat || row === lastRow;
       const catLabelled = inverted ? leftLabelled : bottomLabelled;
       const valLabelled = cross || (inverted ? bottomLabelled : leftLabelled);
-      const bare = { labels: { enabled: false }, lineWidth: 0 };
+      // An axis drawn for its grid alone: no labels, line or tick marks
+      // (they would sit on the dividers between panes).
+      const bare = { labels: { enabled: false }, lineWidth: 0, ticks: false };
 
       // Category axis: labelled along the bottom row (down the left column
       // for bars); its grid lines only when asked for.

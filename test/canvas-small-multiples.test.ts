@@ -190,5 +190,16 @@ describe('small multiples on the canvas', () => {
       expect(y).toBeLessThan(top + Number(rowAreas[i].getAttribute('height')));
     });
   });
+
+  it('draws tick marks only on the labelled axes, none on the dividers inside', () => {
+    const el = render({});
+    const axes = [...el.querySelectorAll('[data-fv-kind="axis"][data-fv-id="yAxis[0]"]')];
+    const ticksOf = (g: Element) => [...g.querySelectorAll(':scope > line')].filter((l) => !(l.getAttribute('class') ?? '').includes('gridline')).length;
+    const labelled = axes.filter((g) => g.querySelector(':scope > text'));
+    const inner = axes.filter((g) => !g.querySelector(':scope > text'));
+    expect(inner.length).toBeGreaterThan(0);
+    expect(inner.every((g) => ticksOf(g) === 0)).toBe(true);
+    expect(labelled.length).toBeGreaterThan(0);
+  });
 });
 
