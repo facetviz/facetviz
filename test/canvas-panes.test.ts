@@ -127,5 +127,17 @@ describe('series in panes', () => {
     expect(num(a, 'x')).toBeCloseTo(num(b, 'x'), 6);
     expect(num(b, 'y')).toBeGreaterThan(num(a, 'y') + num(a, 'height'));
   });
+
+  it('names panes laid across in a header above each, not a rotated axis title', () => {
+    const el = render({ canvas: { paneLayout: 'columns' } });
+    const names = [...el.querySelectorAll('.facet-pane-names text')];
+    expect(names.map((t) => t.textContent)).toEqual(['Sales', 'Margin']);
+    const [a, b] = areas(el);
+    expect(Number(names[0].getAttribute('y'))).toBeLessThan(num(a, 'y'));
+    expect(Number(names[1].getAttribute('x'))).toBeGreaterThan(num(b, 'x'));
+    expect(names.every((t) => !t.getAttribute('transform'))).toBe(true);
+    // No other title on the value axes.
+    expect(el.querySelectorAll('[data-fv-kind="axisTitle"][data-fv-id="yAxis[0]"]')).toHaveLength(2);
+  });
 });
 

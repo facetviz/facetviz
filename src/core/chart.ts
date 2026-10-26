@@ -1879,6 +1879,47 @@ export class FacetViz {
     valAxis2?.renderAbove(aboveLayer);
   }
 
+  /** How wide the names at the left of pane rows need to be: the widest
+   * (bold) name, up to `PANE_NAME_MAX`. */
+  private paneNameWidth(names: string[]): number {
+    const font = { ...FONTS.axisLabel, "font-weight": "600" };
+    return Math.min(PANE_NAME_MAX, Math.max(...names.map((n) => this.renderer.measureText(n, font).width)) + 12);
+  }
+
+  /**
+   * Names of measure panes, in place of their axis titles: centred above
+   * each pane column (in its top axis band) or at the left of each pane
+   * row (the left edge of its left band), cut short to fit. Each reads as
+   * its pane's value axis title for clicks.
+   */
+  private drawPaneNames(
+    layout: CanvasLayout,
+    names: string[],
+    side: "top" | "left",
+    axisId: (i: number) => string,
+    instances: Array<string | undefined>,
+  ): void {
+    const g = this.renderer.group({ class: "facet-pane-names" }, this.renderer.root);
+    const font = { ...FONTS.axisLabel, "font-weight": "600", fill: THEME.axis.labelColor };
+    const bands = side === "top" ? layout.axisBands.top : layout.axisBands.left;
+    names.forEach((name, i) => {
+      const band = bands[i];
+      if (!band) return;
+      const room = side === "top" ? band.width - 4 : PANE_NAME_MAX - 8;
+      let text = name;
+      while (text.length > 1 && this.renderer.measureText(text, font).width > room) text = text.slice(0, -2) + "…";
+      const el =
+        side === "top"
+          ? this.renderer.text(text, band.x + band.width / 2, band.y + band.height - 6, { "text-anchor": "middle", ...font }, g)
+          : this.renderer.text(text, band.x + 2, band.y + band.height / 2, { "text-anchor": "start", "dominant-baseline": "middle", ...font }, g);
+      if (text !== name) el.appendChild(Object.assign(document.createElementNS("http://www.w3.org/2000/svg", "title"), { textContent: name }));
+      el.setAttribute("data-fv-kind", "axisTitle");
+      el.setAttribute("data-fv-id", axisId(i));
+      const instance = instances[i];
+      if (instance) el.setAttribute("data-fv-instance", instance);
+    });
+  }
+
   /**
    * Draw series on one plot: those that can on the canvas `cctx` (bars,
    * stacked series, points and lines past the boost threshold), their marks
@@ -2416,15 +2457,11 @@ export class FacetViz {
       return r;
     };
     // A measure pane's value axis: the chart's with the pane's own laid
-    // over it, titled by its series unless a title is set; one range for
-    // the measure across every panel.
+    // over it, untitled (a header names the measure); one range for the
+    // measure across every panel.
     const paneOpts = this.options.panes ?? [];
-    const measureAxis = (id: number): AxisOptions => {
-      const own = paneOpts[id]?.yAxis ?? {};
-      const merged: AxisOptions = { ...yOpts0, ...own };
-      if (!own.title && !yOpts0.title?.text) merged.title = { ...yOpts0.title, text: [...new Set(allVisible.filter((s) => (s.options.pane ?? 0) === id).map((s) => s.name))].join(", ") };
-      return merged;
-    };
+    const measureAxis = (id: number): AxisOptions => ({ ...yOpts0, ...(paneOpts[id]?.yAxis ?? {}), title: undefined });
+    const measureName = (id: number) => [...new Set(allVisible.filter((s) => (s.options.pane ?? 0) === id).map((s) => s.name))].join(", ");
     const measureOfPane = new Map(grid.panes.map((p) => [p.key, paneOf(p)]));
     const measureRanges = new Map<number, [number, number]>();
     const measureRange = (id: number): [number, number] => {
@@ -2450,16 +2487,18 @@ export class FacetViz {
       o?.title?.text && o.title.enabled !== false
         ? 18 + Math.max(0, (o.title.margin ?? 8) - 8) + Math.max(0, o.title.offset ?? 0)
         : 0;
-    // Measure panes title their own value axes, by their series.
-    const valueTitleRoom = measured ? 18 : 0;
-    const leftBand = leftOpts.size ?? LAYOUT.tickLength + 8 + axisLabelOffset(leftOpts) +
-      (inverted ? this.catLabelWidth(allVisible) : this.valueLabelWidth(primaryVisible, yOpts0)) + (inverted || !measured ? titleRoom(leftOpts) : valueTitleRoom);
+    // Measures in rows are named at the left of each row, before its labels.
+    const leaves = measuresAcross ? grid.columns.leaves : grid.rows.leaves;
+    const measureNames = measured ? leaves.map((l) => measureName(Number(l.measure ?? 0))) : [];
+    const nameLeft = measured && !measuresAcross ? this.paneNameWidth(measureNames) : 0;
+    const nameTop = measuresAcross ? PANE_NAME_HEIGHT : 0;
+    const leftBand = (leftOpts.size ?? LAYOUT.tickLength + 8 + axisLabelOffset(leftOpts) +
+      (inverted ? this.catLabelWidth(allVisible) : this.valueLabelWidth(primaryVisible, yOpts0)) + titleRoom(leftOpts)) + nameLeft;
     const rightBand = hasSecondary && yOpts1
       ? yOpts1.size ?? LAYOUT.tickLength + 8 + axisLabelOffset(yOpts1) + this.valueLabelWidth(secondaryVisible, yOpts1) + titleRoom(yOpts1)
       : 0;
-    const bottomBand = bottomOpts.size ?? LAYOUT.defaultBottomAxisHeight + axisLabelOffset(bottomOpts) + (inverted ? valueTitleRoom : 0);
-    // Horizontal bars' measure panes title their value axes themselves.
-    const bottomTitle = bottomOpts.title?.text && bottomOpts.title.enabled !== false && !(inverted && measured) ? bottomOpts.title : undefined;
+    const bottomBand = bottomOpts.size ?? LAYOUT.defaultBottomAxisHeight + axisLabelOffset(bottomOpts);
+    const bottomTitle = bottomOpts.title?.text && bottomOpts.title.enabled !== false ? bottomOpts.title : undefined;
     const bottomTitleH = bottomTitle ? 18 + Math.max(0, bottomTitle.offset ?? 0) : 0;
 
     // Header levels, and a row above them for the split fields' names.
@@ -2481,7 +2520,7 @@ export class FacetViz {
       ...this.fitBands(),
       rowHeaders: rowDim ? [rowHeaderW] : [],
       columnHeaders: colDim ? [colHeaderH] : [],
-      axes: { left: leftBand, right: rightBand, top: colDim ? 0 : 6, bottom: bottomBand },
+      axes: { left: leftBand, right: rightBand, top: (colDim ? 0 : 6) + nameTop, bottom: bottomBand },
       // Repeated axes sit in the gaps between panes.
       gap: {
         columns: gap + (repeat || (cross && !inverted) ? leftBand + rightBand : 0),
@@ -2498,6 +2537,7 @@ export class FacetViz {
     if (first) this.gateDataLabels(first, this.series);
 
     this.drawSmallMultipleHeaders(layout, { colDim, rowDim, outer, area, nameRowH, canvas });
+    if (measured) this.drawPaneNames(layout, measureNames, measuresAcross ? "top" : "left", () => yOpts0.id ?? "yAxis[0]", []);
 
     // With no gap, each pane's top value tick would sit on the divider above.
     const dropLastTick = (sc: Scale, range: [number, number]): Scale => {
@@ -2510,7 +2550,7 @@ export class FacetViz {
     // With several pane rows the left axis's title is drawn once down them
     // all, as the bottom one is across the columns: in every row it would
     // be longer than the row and overlap the next.
-    const leftOnce = lastRow > 0 && !measured;
+    const leftOnce = lastRow > 0;
 
     // On the canvas past the boost threshold, counting every panel's points
     // together; one hover for all of them.
@@ -2575,7 +2615,7 @@ export class FacetViz {
         plot: cell,
         grid: true,
         cross: catScale,
-        options: valLabelled ? ((inverted && !measured) || leftOnce ? { ...valOpts, title: undefined } : valOpts) : bare,
+        options: valLabelled ? (inverted || leftOnce ? { ...valOpts, title: undefined } : valOpts) : bare,
         id: yOpts0.id ?? "yAxis[0]",
         instance: pane.key,
       });
@@ -2762,10 +2802,17 @@ export class FacetViz {
     const seriesOf = (id: number) => visible.filter((s) => (s.options.pane ?? 0) === id);
     // Each pane's value axis: the chart's, its own laid over it, titled by
     // its series unless a title is set.
+    const nameOf = (id: number) => seriesOf(id).map((s) => s.name).join(", ");
+    // Panes across the value axis's direction are named by a header (above
+    // each column, or at the left of each row) rather than an axis title,
+    // leaving the panes more room.
+    const layoutOpt = this.options.canvas?.paneLayout;
+    const across = layoutOpt ? layoutOpt === "columns" : inverted;
+    const cross = across !== inverted;
     const axisOf = (id: number): AxisOptions => {
       const own = paneOpts[id]?.yAxis ?? {};
       const merged: AxisOptions = { ...yOpts0, ...own };
-      if (!own.title && !yOpts0.title?.text) merged.title = { ...yOpts0.title, text: seriesOf(id).map((s) => s.name).join(", ") };
+      if (!own.title && !yOpts0.title?.text) merged.title = cross ? undefined : { ...yOpts0.title, text: nameOf(id) };
       return merged;
     };
     const categories = this.currentCategories(visible);
@@ -2774,9 +2821,6 @@ export class FacetViz {
     // Panes across (columns) or down (rows): by default along the value
     // axis, sharing the category axis. The other way (`cross`) every pane
     // has its own value axis, in the gap before it, and category labels.
-    const layoutOpt = this.options.canvas?.paneLayout;
-    const across = layoutOpt ? layoutOpt === "columns" : inverted;
-    const cross = across !== inverted;
     const grid = buildCanvasGrid({
       [across ? "columns" : "rows"]: [{ kind: "axis" as const, measures: keys }],
       records: [],
@@ -2789,14 +2833,18 @@ export class FacetViz {
     const paneGap = this.options.canvas?.paneGap ?? 16;
     const gap = cross ? paneGap + valueBand : paneGap;
     const weights = paneIds.map((id) => paneOpts[id]?.weight ?? 1);
+    const names = paneIds.map(nameOf);
+    const nameTop = cross && across ? PANE_NAME_HEIGHT : 0;
+    const nameLeft = cross && !across ? this.paneNameWidth(names) : 0;
     const layout = layoutCanvas(grid, outer, {
       ...this.fitBands(),
       axes: inverted
-        ? { left: catBand, bottom: valueBand, right: 8, top: 6 }
-        : { left: valueBand, bottom: catBand, right: 8, top: 6 },
-      gap: across ? { columns: gap } : { rows: gap },
+        ? { left: catBand + nameLeft, bottom: valueBand, right: 8, top: 6 + nameTop }
+        : { left: valueBand + nameLeft, bottom: catBand, right: 8, top: 6 + nameTop },
+      gap: across ? { columns: gap } : { rows: gap + nameTop },
       weights: across ? { columns: weights } : { rows: weights },
     });
+    if (cross) this.drawPaneNames(layout, names, across ? "top" : "left", (i) => axisOf(paneIds[i]).id ?? "yAxis[0]", paneIds.map((id) => `pane:${id}`));
     this.noteCanvas(layout, outer);
     this.noteCanvasBands(
       layout,
@@ -5717,6 +5765,11 @@ interface BatchCheckpoint {
   needsReflow: boolean;
   animate: boolean;
 }
+
+/** Height of the band naming pane columns. */
+const PANE_NAME_HEIGHT = 20;
+/** The widest the names at the left of pane rows get, cut short past it. */
+const PANE_NAME_MAX = 140;
 
 /** The smallest rectangle holding all of `rects`. */
 function rectAround(rects: Rect[]): Rect {

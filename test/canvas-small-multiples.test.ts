@@ -157,9 +157,13 @@ describe('small multiples on the canvas', () => {
       const tops = valueTops(el);
       expect(tops).toHaveLength(2);
       expect(tops[1]).toBeGreaterThan(tops[0] * 10);
-      // Each row's axis is titled by its measure.
+      // Each row is named by its measure at its left, before its labels.
       const titles = [...el.querySelectorAll('[data-fv-kind="axisTitle"][data-fv-id="yAxis[0]"]')].map((t) => t.textContent);
       expect(titles).toEqual(['Sales', 'Profit']);
+      const names = [...el.querySelectorAll('.facet-pane-names text')];
+      const firstPane = el.querySelector('[data-fv-kind="plotArea"]')!;
+      expect(names.every((t) => !t.getAttribute('transform'))).toBe(true);
+      expect(Number(names[0].getAttribute('x'))).toBeLessThan(Number(firstPane.getAttribute('x')) - 20);
     });
 
     it('puts the measures side by side with paneLayout columns, each labelling its value axis', () => {
@@ -168,6 +172,8 @@ describe('small multiples on the canvas', () => {
       expect(areas).toHaveLength(4);
       expect(new Set(areas.map((a) => a.getAttribute('y'))).size).toBe(1);
       expect(valueTops(el)).toHaveLength(4);
+      // Named above each measure column.
+      expect([...el.querySelectorAll('.facet-pane-names text')].map((t) => t.textContent)).toEqual(['Sales', 'Profit', 'Sales', 'Profit']);
     });
   });
 });

@@ -1701,10 +1701,12 @@ pane `i`'s value axis (laid over `yAxis`; its title defaults to its series'
 names) and its share of the height (`weight`); `canvas.paneGap` the space
 between panes (default 16). `canvas.paneLayout: 'rows' | 'columns'` picks
 the direction; the other way from the default each pane has its own value
-axis (in the gap before it) and category labels. With small multiples
+axis (in the gap before it) and category labels, and is named in a header
+(above each column, at the left of each row) instead of an axis title. With small multiples
 (`trellis`) the panes are the innermost rows or columns of the grid, each
-pane's value scale shared across the panels and its axis titled by its
-series. Series without a pane are in pane 0; with all series in one pane
+pane's value scale shared across the panels, each measure named in a
+header (above its columns, or at the left of its rows) instead of an axis
+title. Series without a pane are in pane 0; with all series in one pane
 the chart is drawn as usual. Each pane's plot area and
 axes carry `data-fv-instance="pane:<n>"`.
 
