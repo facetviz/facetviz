@@ -126,8 +126,8 @@ export function resolveCategories(
     ),
   );
   if (allNumeric) return undefined;
-  // A linear axis places points at their numbers, given as points too.
-  if (axis?.type === "linear" && series.every((entry) => entry.data.every((datum) => datum == null || typeof rawX(datum) === "number"))) return undefined;
+  // A linear or datetime axis places points at their numbers, given as points too.
+  if ((axis?.type === "linear" || axis?.type === "datetime") && series.every((entry) => entry.data.every((datum) => datum == null || typeof rawX(datum) === "number"))) return undefined;
 
   const seen = new Set<string>();
   const categories: string[] = [];

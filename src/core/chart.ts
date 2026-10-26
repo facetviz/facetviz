@@ -2590,7 +2590,7 @@ export class FacetViz {
       const catRange: [number, number] = inverted ? [cell.y, cell.y + cell.height] : [cell.x, cell.x + cell.width];
       const catScale = categories
         ? new CategoryScale({ categories, range: catRange })
-        : this.continuousX(xOpts, this.xNumericDomain(t.sharedX === false && cellSeries.length ? cellSeries : allVisible), catRange, !inverted && lastColumn > 0, inverted);
+        : this.continuousX(xOpts, this.xNumericDomain(t.sharedX === false && cellSeries.length ? cellSeries : allVisible), catRange, !inverted && lastColumn > 0, inverted, this.xMinGap(allVisible));
       const valRange: [number, number] = inverted ? [cell.x, cell.x + cell.width] : [cell.y + cell.height, cell.y];
       const measureId = measureOfPane.get(pane.key) ?? 0;
       // Short panes still get a few ticks to read values by: about one per
@@ -2932,7 +2932,7 @@ export class FacetViz {
       const catRange: [number, number] = inverted ? [r.y, r.y + r.height] : [r.x, r.x + r.width];
       const catScale: Scale = categories
         ? new CategoryScale({ categories, range: catRange, reversed: xOpts.reversed })
-        : this.continuousX(xOpts, this.xNumericDomain(visible), catRange, false, inverted);
+        : this.continuousX(xOpts, this.xNumericDomain(visible), catRange, false, inverted, this.xMinGap(visible));
       let [lo, hi] = this.valueDomain(list, opts);
       const preserveZeroMin = this.hasNonNegativeZeroBasedSeries(list, lo);
       if (!positiveLog(opts) && reachesZero(opts, list.some((s) => zeroTypes.includes(s.type)))) {
@@ -4954,9 +4954,20 @@ export class FacetViz {
    * scaled as a value axis is (its min and max, nice ticks by its width,
    * room at the ends); otherwise its points' extent. Beside other panels,
    * a tick at its right edge is left out. */
-  private continuousX(xOpts: AxisOptions, domain: [number, number], range: [number, number], besideOthers = false, inverted = false): Scale {
+  private continuousX(xOpts: AxisOptions, domain: [number, number], range: [number, number], besideOthers = false, inverted = false, gap = 0): Scale {
     // About one tick per 70px, so narrow panels' labels don't run together.
     const ticks = Math.max(2, Math.min(8, Math.round(Math.abs(range[1] - range[0]) / 70)));
+    if (xOpts.type === "datetime") {
+      // A timeline: half a period's room at each end, and date ticks
+      // (years, months, days…) inside, labelled by their unit.
+      if (inverted) range = [range[1], range[0]];
+      const pad = gap > 0 ? gap / 2 : (domain[1] - domain[0]) * 0.02 || 86_400_000;
+      const min = xOpts.min ?? domain[0] - pad;
+      const max = xOpts.max ?? domain[1] + pad;
+      const { ticks: dates, format } = niceDateTicks(min, max, ticks);
+      const inside = dates.filter((t) => t >= min && t <= max);
+      return new LinearScale({ domain: [min, max], range, reversed: xOpts.reversed, ticks: inside, niceMin: false, niceMax: false, endTicks: false, format: (v) => formatDate(v, format) });
+    }
     if (xOpts.type === "linear") {
       // Up the side of a bar chart, values grow upwards.
       if (inverted) range = [range[1], range[0]];
@@ -4997,6 +5008,18 @@ export class FacetViz {
     let ticks = fixedTicks(opts, min, max) ?? inside(want);
     for (let count = want + 1; ticks.length < 2 && count <= want + 4; count++) ticks = inside(count);
     return new LinearScale({ domain: [min, max], range, reversed: opts.reversed, ticks, niceMin: false, niceMax: false, endTicks: false });
+  }
+
+  /** The smallest step between neighbouring x values of the series: a
+   * timeline's period, about. */
+  private xMinGap(visible: BaseSeries[]): number {
+    const xs = [...new Set(visible.flatMap((s) => s.points.map((p) => p.x)).filter((x): x is number => typeof x === "number"))].sort((a, b) => a - b);
+    let gap = 0;
+    for (let i = 1; i < xs.length; i++) {
+      const d = xs[i] - xs[i - 1];
+      if (d > 0 && (!gap || d < gap)) gap = d;
+    }
+    return gap;
   }
 
   private xNumericDomain(visible: BaseSeries[]): [number, number] {

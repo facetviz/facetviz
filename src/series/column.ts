@@ -48,6 +48,9 @@ export interface ColumnOptions {
    * Fraction (0..0.95) of each category's width left empty between
    * neighbouring categories (default 0.2). Cartesian columns and bars only.
    */
+  /** On a continuous axis (a timeline): each column fills the step to its
+   * nearest neighbour, less `groupPadding` (default 0.1), not 4–24px. */
+  fillGap?: boolean;
   groupPadding?: number;
   /**
    * Fraction (0..0.95) of each bar's slot within its category left empty,
@@ -298,6 +301,17 @@ export class ColumnSeries extends BaseSeries {
     c.restore();
   }
 
+  /** The smallest px step between neighbouring x values of the points. */
+  private minGapPx(scale: Scale): number {
+    const xs = [...new Set(this.points.map((p) => p.x).filter((x): x is number => typeof x === "number"))].sort((a, b) => a - b);
+    let gap = 0;
+    for (let i = 1; i < xs.length; i++) {
+      const d = Math.abs(scale.scale(xs[i]) - scale.scale(xs[i - 1]));
+      if (d > 0 && (!gap || d < gap)) gap = d;
+    }
+    return gap;
+  }
+
   /** Each bar's rectangle, fill and rounded corners, in drawing order. */
   private bars(ctx: SeriesRenderContext): Bar[] {
     const { groupCount, groupIndex } = ctx;
@@ -312,8 +326,13 @@ export class ColumnSeries extends BaseSeries {
     // each column is a share of the plot's width, 4 to 24px.
     const continuous = catScale.bandwidth() === 0 && typeof catScale.fullStep !== "function";
     const span = Math.abs(catScale.range()[1] - catScale.range()[0]);
+    // With `fillGap` (a timeline), a column fills most of the step to its
+    // nearest neighbour, as bars along time touch; else 4 to 24px.
+    const gapPx = continuous && this.options.fillGap ? this.minGapPx(catScale) : 0;
     const band = continuous
-      ? Math.max(4, Math.min(24, span * 0.08)) * groupCount
+      ? gapPx > 0
+        ? gapPx * (1 - clampPadding(this.options.groupPadding, 0.1))
+        : Math.max(4, Math.min(24, span * 0.08)) * groupCount
       : this.options.groupPadding != null && typeof catScale.fullStep === "function"
         ? Math.abs(catScale.fullStep()) * (1 - clampPadding(this.options.groupPadding, 0.2))
         : catScale.bandwidth();
