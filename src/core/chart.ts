@@ -1849,33 +1849,7 @@ export class FacetViz {
       layer: "below",
     });
     const existing = new Set(this.renderer.root.children);
-    for (const s of visible) {
-      const sx = xScaleFor(s);
-      const sy = yScaleFor(s);
-      const ownCanvas =
-        !!cctx &&
-        this.isBoostable(s, inverted) &&
-        (FacetViz.OWN_CANVAS.has(s.type) || !!s.options.stacking);
-      const drawn = ownCanvas
-        ? s.renderCanvas(this.seriesContext(s, axisPlot, sx, sy, group, inverted, false), cctx!)
-        : null;
-      if (drawn) {
-        for (const h of drawn) hits.push({ ...h, series: s });
-      } else if (cctx && !ownCanvas && this.isBoostable(s, inverted)) {
-        this.drawBoostSeries(s, cctx, sx, sy, hits);
-      } else {
-        const ctx = this.seriesContext(
-          s,
-          axisPlot,
-          sx,
-          sy,
-          group,
-          inverted,
-          false,
-        );
-        s.render(ctx);
-      }
-    }
+    this.drawSeries(visible, axisPlot, (s) => [xScaleFor(s), yScaleFor(s)], group, inverted, cctx, hits);
     // Clip series content to the plot so off-range data (e.g. after zoom) can't
     // spill past the axes.
     this.clipToPlot(axisPlot, existing);
@@ -1903,6 +1877,39 @@ export class FacetViz {
     catAxis2?.renderAbove(aboveLayer);
     valAxis.renderAbove(aboveLayer);
     valAxis2?.renderAbove(aboveLayer);
+  }
+
+  /**
+   * Draw series on one plot: those that can on the canvas `cctx` (bars,
+   * stacked series, points and lines past the boost threshold), their marks
+   * going into `hits` for hover, the rest in SVG. The single plot, every
+   * pane of a chart with series in panes and every small-multiple panel
+   * draw through here.
+   */
+  private drawSeries(
+    list: BaseSeries[],
+    plot: Rect,
+    scalesOf: (s: BaseSeries) => [Scale, Scale],
+    group: GroupInfo,
+    inverted: boolean,
+    cctx: CanvasRenderingContext2D | null,
+    hits: BoostHit[],
+  ): void {
+    for (const s of list) {
+      const [sx, sy] = scalesOf(s);
+      const boostable = !!cctx && this.isBoostable(s, inverted);
+      const ownCanvas = boostable && (FacetViz.OWN_CANVAS.has(s.type) || !!s.options.stacking);
+      const drawn = ownCanvas
+        ? s.renderCanvas(this.seriesContext(s, plot, sx, sy, group, inverted, false), cctx!)
+        : null;
+      if (drawn) {
+        for (const h of drawn) hits.push({ ...h, series: s });
+      } else if (boostable && !ownCanvas) {
+        this.drawBoostSeries(s, cctx!, sx, sy, hits);
+      } else {
+        s.render(this.seriesContext(s, plot, sx, sy, group, inverted, false));
+      }
+    }
   }
 
   /** Clip the series groups added since `existing` was captured to the plot rect. */
@@ -2455,6 +2462,10 @@ export class FacetViz {
     const lastRow = grid.rows.leaves.length - 1;
     const lastColumn = grid.columns.leaves.length - 1;
 
+    // On the canvas past the boost threshold, counting every panel's points
+    // together; one hover for all of them.
+    const boost = this.boostEnabled([...paneSeries.values()].flat(), inverted);
+    const hits: BoostHit[] = [];
     for (const pane of layout.panes) {
       const cell = pane.rect;
       const { row, column } = pane;
@@ -2536,18 +2547,9 @@ export class FacetViz {
 
       if (cellSeries.length) {
         const group = this.groupInfo(cellSeries);
-        for (const s of cellSeries) {
-          const ctx = this.seriesContext(
-            s,
-            cell,
-            xScale,
-            valScale2 && onSecondary(s) ? valScale2 : yScale,
-            group,
-            inverted,
-            false,
-          );
-          s.render(ctx);
-        }
+        // Each panel paints on its own canvas, over its own rectangle.
+        const cctx = boost ? this.createBoostCanvas(cell) : null;
+        this.drawSeries(cellSeries, cell, (s) => [xScale, valScale2 && onSecondary(s) ? valScale2 : yScale], group, inverted, cctx, hits);
       }
 
       // Plot lines flagged `zIndex: 'above'` paint on top of this pane's series.
@@ -2556,6 +2558,8 @@ export class FacetViz {
       valAxis.renderAbove(aboveLayer);
       rightAxis?.renderAbove(aboveLayer);
     }
+
+    if (hits.length) this.installBoostHover(rectAround(layout.panes.map((p) => p.rect)), hits);
 
     // The bottom axis's title, once, centred under the panes.
     if (bottomTitle?.text) {
@@ -2725,6 +2729,9 @@ export class FacetViz {
     if (layout.panes[0]) this.gateDataLabels(layout.panes[0].rect, visible, true);
 
     const zeroTypes = ["column", "bar", "area", "areaspline", "errorbar", "lollipop"];
+    // Every pane's points count together toward the canvas; one hover.
+    const boost = this.boostEnabled(visible, inverted);
+    const hits: BoostHit[] = [];
     layout.panes.forEach((pane, i) => {
       const id = paneIds[i];
       const list = seriesOf(id);
@@ -2775,17 +2782,18 @@ export class FacetViz {
       });
       valAxis.render(axisLayer);
 
-      // Every series in the pane reads on its scale (no second axis here).
+      // Every series in the pane reads on its scale (no second axis here),
+      // on the pane's own canvas past the boost threshold.
       const existing = new Set(this.renderer.root.children);
       const group = this.groupInfo(list);
-      for (const s of list) {
-        s.render(this.seriesContext(s, r, inverted ? valScale : catScale, inverted ? catScale : valScale, group, inverted, false));
-      }
+      const cctx = boost ? this.createBoostCanvas(r) : null;
+      this.drawSeries(list, r, () => (inverted ? [valScale, catScale] : [catScale, valScale]), group, inverted, cctx, hits);
       this.clipToPlot(r, existing);
       const aboveLayer = this.renderer.group({ class: "facet-axes-above" }, this.renderer.root);
       catAxis.renderAbove(aboveLayer);
       valAxis.renderAbove(aboveLayer);
     });
+    if (hits.length) this.installBoostHover(rectAround(layout.panes.map((p) => p.rect)), hits);
   }
 
   private renderPolarPanel(plot: Rect, visible: BaseSeries[]): void {
@@ -5630,6 +5638,15 @@ interface BatchCheckpoint {
   preserveAxisRange: boolean;
   needsReflow: boolean;
   animate: boolean;
+}
+
+/** The smallest rectangle holding all of `rects`. */
+function rectAround(rects: Rect[]): Rect {
+  const x = Math.min(...rects.map((r) => r.x));
+  const y = Math.min(...rects.map((r) => r.y));
+  const right = Math.max(...rects.map((r) => r.x + r.width));
+  const bottom = Math.max(...rects.map((r) => r.y + r.height));
+  return { x, y, width: right - x, height: bottom - y };
 }
 
 /** A boosted point's pixel position, for nearest-point hover lookup. */

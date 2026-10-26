@@ -227,18 +227,30 @@ if (scenario === 'svg') {
   const count = Number(params.get('categories') ?? 500);
   const seriesCount = Number(params.get('series') ?? 1);
   const stacked = params.get('stacked') === '1';
+  // &panes=N: series i in pane i % N. &panels=N: small multiples, N
+  // panels side by side, each with every category.
+  const paneCount = Number(params.get('panes') ?? 1);
+  const panelCount = Number(params.get('panels') ?? 0);
   const categories = Array.from({ length: count }, (_, i) => `Category ${i}`);
-  const series = Array.from({ length: seriesCount }, (_, s) => ({
-    name: `Series ${s}`,
-    data: categories.map((_c, i) => Math.round(Math.abs(Math.sin(i / 50 + s)) * 1_000)),
-  }));
-  points = count * seriesCount;
+  const value = (i: number, s: number) => Math.round(Math.abs(Math.sin(i / 50 + s)) * 1_000);
+  const series = panelCount
+    ? Array.from({ length: seriesCount }, (_, s) => ({
+        name: `Series ${s}`,
+        data: Array.from({ length: panelCount }, (_p, k) => categories.map((x, i) => ({ x, y: value(i, s + k), panel: `Panel ${k}` }))).flat(),
+      }))
+    : Array.from({ length: seriesCount }, (_, s) => ({
+        name: `Series ${s}`,
+        data: categories.map((_c, i) => value(i, s)),
+        ...(paneCount > 1 ? { pane: s % paneCount } : {}),
+      }));
+  points = count * seriesCount * Math.max(1, panelCount);
   const start = performance.now();
   chart = new FacetViz(container, {
     chart: { type: type as 'column', width: 960, height: 520, animation: false, reflow: false },
-    xAxis: { categories },
+    xAxis: panelCount ? {} : { categories },
     plotOptions: stacked ? { series: { stacking: 'normal' } } : {},
     legend: { enabled: seriesCount <= 20 },
+    ...(panelCount ? { trellis: { columns: 'panel' } } : {}),
     series,
   });
   renderMs = performance.now() - start;
@@ -259,7 +271,7 @@ const metrics: PerformanceMetrics = {
   renderedRows,
   columns,
   charts,
-  label: scenario === 'large' ? `${params.get('type')}${params.get('stacked') === '1' ? '-stacked' : ''} ${params.get('categories')}x${params.get('series') ?? 1}` : undefined,
+  label: scenario === 'large' ? `${params.get('type')}${params.get('stacked') === '1' ? '-stacked' : ''} ${params.get('categories')}x${params.get('series') ?? 1}${params.get('panes') ? ` in ${params.get('panes')} panes` : ''}${params.get('panels') ? ` in ${params.get('panels')} panels` : ''}` : undefined,
   domNodes: container.querySelectorAll('*').length,
   svgElements: container.querySelectorAll('svg *').length,
   pointElements: container.querySelectorAll('.facet-point, .facet-point-hit').length,

@@ -27,6 +27,10 @@ const cases: LargeCase[] = [
   { name: '50,000 bars', query: 'type=bar&categories=50000', points: 50_000, budget: { chromium: 300, webkit: 400 }, maxNodes: 300 },
   // Bars thinner than a pixel are merged per pixel: 200,000 (the most the
   // app sends) cost about what a few thousand do.
+  // Charts in several plots: a canvas per pane or panel.
+  { name: '60,000 columns in 3 panes (5,000 x 12)', query: 'type=column&categories=5000&series=12&panes=3', points: 60_000, budget: { chromium: 300, webkit: 400 }, maxNodes: 400 },
+  { name: '60,000 stacked columns in 2 panes', query: 'type=column&categories=5000&series=12&panes=2&stacked=1', points: 60_000, budget: { chromium: 300, webkit: 400 }, maxNodes: 400 },
+  { name: '60,000 columns in 6 small multiples (2,500 x 4 x 6)', query: 'type=column&categories=2500&series=4&panels=6', points: 60_000, budget: { chromium: 400, webkit: 500 }, maxNodes: 600 },
   { name: '200,000 columns (50,000 x 4)', query: 'type=column&categories=50000&series=4', points: 200_000, budget: { chromium: 300, webkit: 400 }, maxNodes: 300 },
   { name: 'a 60,000-point stacked area (5,000 x 12)', query: 'type=area&categories=5000&series=12&stacked=1', points: 60_000, budget: { chromium: 300, webkit: 400 }, maxNodes: 300 },
 ];
@@ -56,4 +60,16 @@ test('a column drawn on the canvas shows its tooltip on hover', async ({ page })
   await page.mouse.move(box.x + ((79 + 0.5) / 5000) * box.width, box.y + box.height - 20);
   await expect(page.locator('.facet-tooltip')).toBeVisible();
   await expect(page.locator('.facet-tooltip')).toContainText(/Category (6\d|7\d|8\d|9\d)\b/);
+});
+
+test('a column in a lower pane, drawn on its canvas, shows its tooltip on hover', async ({ page }) => {
+  await page.goto('/test/performance/fixtures.html?scenario=large&type=column&categories=5000&series=2&panes=2');
+  await page.waitForSelector('body[data-ready="true"]');
+  const canvases = page.locator('#chart canvas');
+  await expect(canvases).toHaveCount(2);
+  // The second pane holds series 1, whose sine peaks near category 0.
+  const box = (await canvases.nth(1).boundingBox())!;
+  await page.mouse.move(box.x + 3, box.y + box.height - 10);
+  await expect(page.locator('.facet-tooltip')).toBeVisible();
+  await expect(page.locator('.facet-tooltip')).toContainText('Series 1');
 });
