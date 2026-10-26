@@ -24,4 +24,19 @@ describe('category grid lines between categories', () => {
     expect(between[0]).toBeCloseTo((centres[0] + centres[1]) / 2, 5);
     expect(between[1]).toBeCloseTo((centres[1] + centres[2]) / 2, 5);
   });
+
+  it('draws them in every panel of small multiples, not only the labelled row', () => {
+    const data = [
+      { x: 'A', y: 1, seg: 'P', reg: 'R1' }, { x: 'B', y: 2, seg: 'P', reg: 'R1' }, { x: 'C', y: 3, seg: 'P', reg: 'R1' },
+      { x: 'A', y: 1, seg: 'P', reg: 'R2' }, { x: 'B', y: 2, seg: 'P', reg: 'R2' }, { x: 'C', y: 3, seg: 'P', reg: 'R2' },
+    ];
+    const el = render({
+      xAxis: { categories: ['A', 'B', 'C'], gridLineWidth: 1, gridLinePlacement: 'between' },
+      series: [{ type: 'column', name: 'S', data }],
+      trellis: { rows: 'reg', columns: 'seg' },
+    });
+    const byPane = (k: string) => el.querySelectorAll(`line.facet-gridline[data-fv-id="xAxis[0]"][data-fv-instance="${k}"]`).length;
+    expect(byPane('reg=R1#seg=P')).toBe(2);
+    expect(byPane('reg=R2#seg=P')).toBe(2);
+  });
 });

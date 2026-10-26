@@ -2639,7 +2639,15 @@ export class FacetViz {
         grid: !!xOpts.gridLineWidth,
         options: catLabelled
           ? { ...xOpts, ticks: false, ...(inverted && !leftOnce ? {} : { title: undefined }) }
-          : { ...bare, ticks: false },
+          : {
+              ...bare,
+              ticks: false,
+              // Its grid lines as in the labelled panels (between categories too).
+              gridLineWidth: xOpts.gridLineWidth,
+              gridLineColor: xOpts.gridLineColor,
+              gridLineDashStyle: xOpts.gridLineDashStyle,
+              gridLinePlacement: xOpts.gridLinePlacement,
+            },
         id: xOpts.id ?? "xAxis[0]",
         instance: pane.key,
       });
