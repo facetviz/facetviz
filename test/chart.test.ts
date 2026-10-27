@@ -267,6 +267,28 @@ describe('FacetViz rendering', () => {
     expect(gap(narrowRects)).toBeCloseTo(gap(defaultRects));
   });
 
+  it.each([
+    ['column', 'x', 'width'],
+    ['bar', 'y', 'height'],
+  ] as const)('caps a lone %s at maxColumnWidth, centred on its category', (type, position, dimension) => {
+    const draw = (maxColumnWidth?: number) => {
+      const el = container();
+      new FacetViz(el, {
+        chart: { type, animation: false, responsive: false, width: 600, height: 400 },
+        xAxis: { categories: ['West'] },
+        plotOptions: maxColumnWidth === undefined ? undefined : { [type]: { maxColumnWidth } },
+        series: [{ data: [5] }],
+      });
+      return el.querySelector<SVGRectElement>('.facet-column .facet-point')!;
+    };
+    const capped = draw(48);
+    const wide = draw();
+    expect(Number(capped.getAttribute(dimension))).toBe(48);
+    expect(Number(wide.getAttribute(dimension))).toBeGreaterThan(48);
+    const mid = (r: SVGRectElement) => Number(r.getAttribute(position)) + Number(r.getAttribute(dimension)) / 2;
+    expect(mid(capped)).toBeCloseTo(mid(wide));
+  });
+
   it('inverts the axis mapping for bar charts', () => {
     const el = container();
     new FacetViz(el, { chart: { type: 'bar', animation: false }, xAxis: { categories: ['Jan', 'Feb'] }, yAxis: { title: { text: 'Units' } }, series: [{ name: 'S', data: [5, 3] }] });

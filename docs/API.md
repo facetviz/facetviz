@@ -1930,6 +1930,16 @@ series: [
 ]
 ```
 
+**Bar thickness cap**: `maxColumnWidth` (px, on a column/bar series or in
+`plotOptions.column` / `plotOptions.bar`) is the widest a bar sized by its
+slot grows, so a chart with one or two categories draws bars, not a block
+filling the plot. Capped bars stay centred on their category and keep their
+`pointPadding` gap; an explicit `columnWidth` ignores it:
+
+```ts
+plotOptions: { bar: { maxColumnWidth: 64 } }
+```
+
 **Tick**: like column/bar but draws only a line at each value — the same
 width the bar would have been, with no fill down to a baseline. Because
 there's no fill to visually truncate, its axis is not forced to start at

@@ -59,6 +59,13 @@ export interface ColumnOptions {
    * when an explicit `columnWidth` is set. Cartesian columns and bars only.
    */
   pointPadding?: number;
+  /**
+   * The widest (px) a bar sized by its slot grows, so a chart with one or
+   * two categories doesn't draw a block filling the plot; the group stays
+   * centred on its category. Unset is no limit. Ignored with an explicit
+   * `columnWidth`. Cartesian columns and bars only.
+   */
+  maxColumnWidth?: number;
 }
 
 const clampPadding = (v: number | undefined, fallback: number) =>
@@ -347,7 +354,9 @@ export class ColumnSeries extends BaseSeries {
 
       const vLo = valScale.scale(loVal);
       const vHi = valScale.scale(hiVal);
-      const max_colWidth = Math.max(1, subWidth * (1 - pointPadding));
+      const cap = this.options.maxColumnWidth;
+      const natural = Math.max(1, subWidth * (1 - pointPadding));
+      const max_colWidth = cap != null && cap > 0 ? Math.min(natural, cap * FONT_SCALE_STATE.scale) : natural;
       // Falling back to max_colWidth already scales with chart size for
       // free (it's a share of bandwidth(), itself proportional to the
       // plot's live pixel size) -- an author's own explicit columnWidth/
@@ -370,7 +379,8 @@ export class ColumnSeries extends BaseSeries {
       // every column in its original fixed-width slot would turn the unused
       // width into extra space between neighbouring columns whenever an
       // explicit columnWidth is smaller than the default.
-      const columnGap = subWidth - max_colWidth;
+      // A capped bar keeps the gap its padding gives it, not the slot's rest.
+      const columnGap = max_colWidth < natural ? (max_colWidth * pointPadding) / (1 - pointPadding) : subWidth - max_colWidth;
       const groupWidth = groupCount * colWidth + (groupCount - 1) * columnGap;
       const catStart =
         center - groupWidth / 2 + groupIndex * (colWidth + columnGap);
