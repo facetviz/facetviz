@@ -70,11 +70,16 @@ export class HeatmapSeries extends BaseSeries {
     const top = opts.columnLabels === 'top';
     const leftPad = 8 + rows.reduce((m, r) => Math.max(m, r.length), 0) * 6.6;
     const gx = plot.x + leftPad;
-    const gw = plot.width - leftPad - 8;
-    const cw = gw / cols.length;
+    let gw = plot.width - leftPad - 8;
     // Column labels too wide for their cells are angled (45°), and when
     // even angled ones would touch, only every Nth is drawn.
-    const fit = this.columnLabelFit(renderer, cols, cw, plot.height);
+    let fit = this.columnLabelFit(renderer, cols, gw / cols.length, plot.height);
+    if (top && fit.angled) {
+      // Above the grid they lean right, past the last column: room for that.
+      gw = Math.max(gw / 2, gw - (fit.depth - 6));
+      fit = this.columnLabelFit(renderer, cols, gw / cols.length, plot.height);
+    }
+    const cw = gw / cols.length;
     // Room for the column labels, under the grid or above it.
     const labelPad = fit.angled ? fit.depth + 12 : 22;
     const gy = plot.y + (top ? labelPad : 6);

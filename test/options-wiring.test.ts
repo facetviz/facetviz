@@ -58,6 +58,15 @@ describe('configuration option wiring', () => {
     const bottoms = [...crowded.querySelectorAll('.facet-heatmap rect')].map((r) => Number(r.getAttribute('y')) + Number(r.getAttribute('height')));
     expect(Math.max(...bottoms)).toBeLessThan(Number(labels[0].getAttribute('y')));
 
+    // Above the grid they lean right: the last column leaves them room.
+    const above = container();
+    new FacetViz(above, {
+      chart: { ...baseChart, type: 'heatmap' },
+      series: [{ type: 'heatmap', columnLabels: 'top', data: months.map((m, i) => ({ x: m, y: 'r', value: i })), dataLabels: { enabled: false } }],
+    });
+    const rights = [...above.querySelectorAll('.facet-heatmap rect')].map((r) => Number(r.getAttribute('x')) + Number(r.getAttribute('width')));
+    expect(Math.max(...rights)).toBeLessThan(600 - 40);
+
     const roomy = container();
     new FacetViz(roomy, { chart: { ...baseChart, type: 'heatmap' }, series: [{ type: 'heatmap', data: [{ x: 'a', y: 'r', value: 1 }, { x: 'b', y: 'r', value: 2 }], dataLabels: { enabled: false } }] });
     expect([...roomy.querySelectorAll('.facet-heatmap text')].some((t) => t.hasAttribute('transform'))).toBe(false);
