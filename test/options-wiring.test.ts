@@ -166,6 +166,14 @@ describe('configuration option wiring', () => {
     }
   });
 
+  it('lets a heatmap cell under its value label take the hover', () => {
+    const el = container();
+    new FacetViz(el, { chart: { ...baseChart, type: 'heatmap' }, series: [{ type: 'heatmap', data: [{ x: 'a', y: 'r', value: 5 }], dataLabels: { enabled: true } }] } as never);
+    const t = el.querySelector<SVGTextElement>('.facet-heatmap text')!;
+    expect(t.textContent).toBe('5');
+    expect(t.getAttribute('pointer-events')).toBe('none');
+  });
+
   it('nudges heatmap, funnel and treemap labels by offsetX and offsetY', () => {
     const at = (type: 'heatmap' | 'funnel' | 'treemap', offsets: { offsetX?: number; offsetY?: number } = {}) => {
       const el = container();

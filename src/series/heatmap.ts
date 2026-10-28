@@ -115,6 +115,8 @@ export class HeatmapSeries extends BaseSeries {
         renderer.text(text, x + cw / 2 + (dl?.offsetX || 0), y + ch / 2 + (dl?.offsetY || 0), {
           'text-anchor': 'middle', 'dominant-baseline': 'middle', ...FONTS.dataLabel,
           fill: (value - min) / (max - min || 1) > 0.6 ? '#fff' : shade(hi, -0.4), 'font-size': scaledFontPx(10),
+          // The cell under it takes the hover and clicks, as a pie slice's label lets its slice.
+          'pointer-events': 'none',
         }, g);
       }
       ctx.registerHover(el, p);
