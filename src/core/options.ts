@@ -1015,7 +1015,9 @@ export interface CanvasObjectEvent {
   kind: CanvasObjectKind;
   /** The part's address: an axis's id, `plotArea`, `title`, `subtitle`, `legend`; a header's field. */
   id: string;
-  /** A header cell's value, outer levels first (`['East', 'Tech']`). */
+  /** A header cell's value, outer levels first (`['East', 'Tech']`); on an
+   * `axis`, the category whose label it was (`['West']`); on the `legend`,
+   * the item's label (`['Tech']`). */
   path?: string[];
   /** Which copy of a repeated part, e.g. a small-multiples cell (`row:col`). */
   instance?: string;

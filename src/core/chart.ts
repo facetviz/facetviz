@@ -1216,11 +1216,15 @@ export class FacetViz {
       if (!el && from.classList?.contains("facet-zoom-overlay"))
         el = root.querySelector('[data-fv-kind="plotArea"]');
       if (!el) return null;
+      // A category axis's label or a legend item: the axis or legend, with
+      // the category or item's label as its path.
+      const item = from.closest(".facet-axis-label, .facet-legend-item");
+      const pathOf = el.hasAttribute("data-fv-path") ? el : item && el.contains(item) ? item : null;
       return {
         kind: el.getAttribute("data-fv-kind") as CanvasObjectKind,
         id: el.getAttribute("data-fv-id") ?? "",
         instance: el.getAttribute("data-fv-instance") ?? undefined,
-        ...(el.hasAttribute("data-fv-path") ? { path: el.getAttribute("data-fv-path")!.split("\u001f") } : {}),
+        ...(pathOf?.hasAttribute("data-fv-path") ? { path: pathOf.getAttribute("data-fv-path")!.split("\u001f") } : {}),
         domEvent: e,
       };
     };

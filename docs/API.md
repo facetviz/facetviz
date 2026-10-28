@@ -1762,13 +1762,13 @@ open over canvas parts.
 
 | `kind`      | `id`                                          | What it is                                   |
 | ----------- | --------------------------------------------- | -------------------------------------------- |
-| `axis`      | `xAxis[0]`, `xAxis[1]`, `yAxis[0]`, `yAxis[1]`, or the axis's `id` option | The axis: its line, ticks and labels (nested axes too) |
+| `axis`      | `xAxis[0]`, `xAxis[1]`, `yAxis[0]`, `yAxis[1]`, or the axis's `id` option | The axis: its line, ticks and labels (nested axes too); on a category's label, `path` = `[category]` |
 | `axisTitle` | the axis's id                                 | The axis title                               |
 | `grid`      | the axis's id                                 | Its grid lines and alternate bands           |
 | `plotLine`, `plotBand` | the axis's id                      | Its reference lines and bands                |
 | `plotArea`  | `plotArea`                                    | The empty plot behind the marks (one per pane on a nested axis, `instance` = the pane key) |
 | `title`, `subtitle` | `title`, `subtitle`                   | The chart titles                             |
-| `legend`    | `legend`                                      | The legend                                   |
+| `legend`    | `legend`                                      | The legend; on an item, `path` = `[its label]` |
 | `header`    | the header's field (with `path`)              | A header cell of a nested axis level         |
 | `fieldLabel` | the field                                    | A header field's name                         |
 

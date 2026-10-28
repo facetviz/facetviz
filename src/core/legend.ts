@@ -234,7 +234,7 @@ export class Legend {
       heading.style.userSelect = 'none';
       return;
     }
-    const item = renderer.group({ class: 'facet-legend-item', style: 'cursor:pointer' }, g);
+    const item = renderer.group({ class: 'facet-legend-item', style: 'cursor:pointer', 'data-fv-path': it.label }, g);
     item.addEventListener('click', () => onToggle(index));
     const textAttrs = {
       ...FONTS.legend,

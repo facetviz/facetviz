@@ -326,6 +326,7 @@ export class Axis {
           this.labelText(scale, tick),
           options,
           labelRotation,
+          isCategory ? String(tick) : undefined,
         );
       }
     });
@@ -703,6 +704,8 @@ export class Axis {
     rawText: string,
     options: AxisOptions,
     resolvedRotation?: number,
+    /** A category axis's category: canvas events on the label carry it as `path`. */
+    category?: string,
   ): void {
     const { renderer, plot, position } = this.cfg;
     const style = this.labelStyle();
@@ -762,6 +765,10 @@ export class Axis {
       });
     }
     if (rotation) el.setAttribute('transform', `rotate(${rotation} ${x} ${y})`);
+    if (category !== undefined) {
+      el.classList.add('facet-axis-label');
+      el.setAttribute('data-fv-path', category);
+    }
   }
 
   /**
