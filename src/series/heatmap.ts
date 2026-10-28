@@ -32,6 +32,32 @@ export class HeatmapSeries extends BaseSeries {
     return seen;
   }
 
+  /** How the column labels fit their cells: straight, or angled at 45°
+   * (then `depth` px deep, each cut to fit at most 40% of the chart's
+   * height) with every `step`th drawn so neighbours don't touch. */
+  private columnLabelFit(
+    renderer: SeriesRenderContext['renderer'],
+    cols: string[],
+    cw: number,
+    height: number,
+  ): { angled: boolean; step: number; depth: number; text: (c: string) => string } {
+    const width = (t: string) => renderer.measureText(t, FONTS.axisLabel).width;
+    const widest = Math.max(...cols.map(width));
+    if (widest <= cw - 4) return { angled: false, step: 1, depth: 0, text: (c) => c };
+    // Angled text's lines sit a line height apart across the cells: about
+    // 16 px for 11 px labels.
+    const step = Math.max(1, Math.ceil(16 / Math.max(cw, 1)));
+    const room = Math.max(24, height * 0.4) / Math.SQRT1_2;
+    const text = (c: string) => {
+      if (width(c) <= room) return c;
+      let cut = c;
+      while (cut.length > 1 && width(`${cut}…`) > room) cut = cut.slice(0, -1);
+      return `${cut}…`;
+    };
+    const longest = Math.min(widest, room);
+    return { angled: true, step, depth: Math.ceil(longest * Math.SQRT1_2) + 6, text };
+  }
+
   override render(ctx: SeriesRenderContext): void {
     const { renderer, plot } = ctx;
     const g = renderer.group({ class: `facet-series facet-heatmap ${this.name}` }, renderer.root);
@@ -43,13 +69,16 @@ export class HeatmapSeries extends BaseSeries {
     const opts = this.options as HeatmapSeriesOptions;
     const top = opts.columnLabels === 'top';
     const leftPad = 8 + rows.reduce((m, r) => Math.max(m, r.length), 0) * 6.6;
-    // Room for the column labels, under the grid or above it.
-    const labelPad = 22;
     const gx = plot.x + leftPad;
-    const gy = plot.y + (top ? labelPad : 6);
     const gw = plot.width - leftPad - 8;
-    const gh = plot.height - labelPad - 6;
     const cw = gw / cols.length;
+    // Column labels too wide for their cells are angled (45°), and when
+    // even angled ones would touch, only every Nth is drawn.
+    const fit = this.columnLabelFit(renderer, cols, cw, plot.height);
+    // Room for the column labels, under the grid or above it.
+    const labelPad = fit.angled ? fit.depth + 12 : 22;
+    const gy = plot.y + (top ? labelPad : 6);
+    const gh = plot.height - labelPad - 6;
     const ch = gh / rows.length;
 
     const values = this.points.map((p) => (p.options.value as number) ?? p.y ?? 0);
@@ -91,7 +120,17 @@ export class HeatmapSeries extends BaseSeries {
 
     // Column labels, under the grid or above it.
     cols.forEach((c, i) => {
-      renderer.text(c, gx + i * cw + cw / 2, top ? gy - 8 : gy + gh + 14, { 'text-anchor': 'middle', ...FONTS.axisLabel }, g);
+      if (i % fit.step) return;
+      const x = gx + i * cw + cw / 2;
+      if (!fit.angled) {
+        renderer.text(c, x, top ? gy - 8 : gy + gh + 14, { 'text-anchor': 'middle', ...FONTS.axisLabel }, g);
+        return;
+      }
+      // Angled up and to the right, ending (above) or starting (below) at the cell.
+      const y = top ? gy - 6 : gy + gh + 8;
+      const el = renderer.text(fit.text(c), x, y, { 'text-anchor': top ? 'start' : 'end', 'dominant-baseline': 'middle', ...FONTS.axisLabel }, g);
+      el.setAttribute('transform', `rotate(-45 ${x} ${y})`);
+      if (fit.text(c) !== c) el.appendChild(renderer.create('title', {})).textContent = c;
     });
     // Row labels (left).
     rows.forEach((r, i) => {

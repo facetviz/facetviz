@@ -44,6 +44,25 @@ describe('configuration option wiring', () => {
     expect(Number(draw({ columnLabels: 'top' }).line!.getAttribute('y1'))).toBeLessThan(below.y);
   });
 
+  it('angles crowded heatmap column labels and draws every Nth when they would still touch', () => {
+    const months = Array.from({ length: 48 }, (_, i) => `Month ${i + 1} of the plan`);
+    const crowded = container();
+    new FacetViz(crowded, {
+      chart: { ...baseChart, type: 'heatmap' },
+      series: [{ type: 'heatmap', data: months.map((m, i) => ({ x: m, y: 'r', value: i })), dataLabels: { enabled: false } }],
+    });
+    const labels = [...crowded.querySelectorAll('.facet-heatmap text')].filter((t) => t.getAttribute('transform')?.startsWith('rotate(-45'));
+    expect(labels.length).toBeGreaterThan(0);
+    expect(labels.length).toBeLessThan(months.length);
+    // Cells stay clear of the angled labels.
+    const bottoms = [...crowded.querySelectorAll('.facet-heatmap rect')].map((r) => Number(r.getAttribute('y')) + Number(r.getAttribute('height')));
+    expect(Math.max(...bottoms)).toBeLessThan(Number(labels[0].getAttribute('y')));
+
+    const roomy = container();
+    new FacetViz(roomy, { chart: { ...baseChart, type: 'heatmap' }, series: [{ type: 'heatmap', data: [{ x: 'a', y: 'r', value: 1 }, { x: 'b', y: 'r', value: 2 }], dataLabels: { enabled: false } }] });
+    expect([...roomy.querySelectorAll('.facet-heatmap text')].some((t) => t.hasAttribute('transform'))).toBe(false);
+  });
+
   it('formats or hides heatmap cell and funnel stage labels through dataLabels', () => {
     const texts = (el: HTMLElement, cls: string) => [...el.querySelectorAll(`.${cls} text`)].map((t) => t.textContent);
     const cells = [{ x: 'a', y: 'r', value: 1500 }, { x: 'b', y: 'r', value: 2500 }];
