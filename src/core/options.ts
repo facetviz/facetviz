@@ -37,6 +37,7 @@ import type { WaterfallPointOptions, WaterfallSeriesOptions } from "../series/wa
 import type { SankeyPointOptions } from "../series/sankey.js";
 import type { MapPointOptions, MapSeriesOptions } from "../series/map.js";
 import type { DecompPointOptions, DecompSeriesOptions } from "../series/decomp.js";
+import type { HeatmapSeriesOptions } from "../series/heatmap.js";
 import type { GanttPointOptions } from "../series/gantt.js";
 import type { CalendarPointOptions } from "../series/calendar.js";
 import type { GaugeSeriesOptions } from "../series/gauge.js";
@@ -159,6 +160,7 @@ export interface SeriesOptions
     RadialBarSeriesOptions,
     MapSeriesOptions,
     DecompSeriesOptions,
+    HeatmapSeriesOptions,
     ColumnOptions {
   type?: ChartType;
   name?: string;

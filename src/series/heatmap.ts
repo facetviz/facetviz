@@ -10,6 +10,14 @@ import { lerpColor, shade } from '../core/colors.js';
 import { FONTS } from '../core/defaults.js';
 import { THEME, scaledFontPx } from '../core/theme.js';
 
+/** A heatmap's own options. */
+export interface HeatmapSeriesOptions {
+  /** Where the column labels go: under the grid (default) or above it. */
+  columnLabels?: 'bottom' | 'top';
+  /** false: no line between the grid and the column labels. */
+  axisLine?: boolean;
+}
+
 export class HeatmapSeries extends BaseSeries {
   override capabilities(): SeriesCapabilities {
     return { grouped: false, cartesian: false, stackable: false };
@@ -32,12 +40,15 @@ export class HeatmapSeries extends BaseSeries {
     const rows = this.axisValues('y');
     if (!cols.length || !rows.length) return;
 
+    const opts = this.options as HeatmapSeriesOptions;
+    const top = opts.columnLabels === 'top';
     const leftPad = 8 + rows.reduce((m, r) => Math.max(m, r.length), 0) * 6.6;
-    const bottomPad = 22;
+    // Room for the column labels, under the grid or above it.
+    const labelPad = 22;
     const gx = plot.x + leftPad;
-    const gy = plot.y + 6;
+    const gy = plot.y + (top ? labelPad : 6);
     const gw = plot.width - leftPad - 8;
-    const gh = plot.height - bottomPad - 6;
+    const gh = plot.height - labelPad - 6;
     const cw = gw / cols.length;
     const ch = gh / rows.length;
 
@@ -78,14 +89,18 @@ export class HeatmapSeries extends BaseSeries {
       el.addEventListener('mouseout', (e: Event) => ctx.onPointEvent('mouseOut', p, e));
     }
 
-    // Column labels (bottom).
+    // Column labels, under the grid or above it.
     cols.forEach((c, i) => {
-      renderer.text(c, gx + i * cw + cw / 2, gy + gh + 14, { 'text-anchor': 'middle', ...FONTS.axisLabel }, g);
+      renderer.text(c, gx + i * cw + cw / 2, top ? gy - 8 : gy + gh + 14, { 'text-anchor': 'middle', ...FONTS.axisLabel }, g);
     });
     // Row labels (left).
     rows.forEach((r, i) => {
       renderer.text(r, gx - 6, gy + i * ch + ch / 2, { 'text-anchor': 'end', 'dominant-baseline': 'middle', ...FONTS.axisLabel }, g);
     });
-    renderer.create('line', { x1: gx, y1: gy + gh, x2: gx + gw, y2: gy + gh, stroke: THEME.axis.lineColor }, g);
+    // The line between the grid and the column labels.
+    if (opts.axisLine !== false) {
+      const ly = top ? gy : gy + gh;
+      renderer.create('line', { x1: gx, y1: ly, x2: gx + gw, y2: ly, stroke: THEME.axis.lineColor, class: 'facet-heatmap-line' }, g);
+    }
   }
 }

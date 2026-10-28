@@ -1860,7 +1860,7 @@ raw array for boxplots.
 | `tick`                          | Column-width line at each value; groupable, not zero-anchored (reads like a dot plot).          |
 | `butterfly`                     | Two series mirrored back-to-back around a central axis.                                        |
 | `radialbar`                     | Bars around a polar centre with configurable start/end angles and optional stacking.           |
-| `heatmap`                       | Category × category grid coloured by `value`; draws its own row/column labels.                 |
+| `heatmap`                       | Category × category grid coloured by `value`; draws its own row/column labels. Series `columnLabels: 'top'` puts the column labels above the grid (default `'bottom'`); `axisLine: false` leaves out the line between grid and labels. |
 | `bullet`                        | Measure bar per row against qualitative `ranges` bands and a `target` marker.                  |
 | `candlestick`                   | OHLC candles (`open`/`high`/`low`/`close`); up/down coloured.                                  |
 | `gauge`                         | 180° dial per value; horizontal, or vertical via `chart.inverted`; supports reference markers. |

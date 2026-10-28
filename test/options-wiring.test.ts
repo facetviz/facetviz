@@ -26,6 +26,24 @@ describe('configuration option wiring', () => {
     vi.restoreAllMocks();
   });
 
+  it('puts a heatmap\'s column labels above the grid and leaves out its line when asked', () => {
+    const cells = [{ x: 'a', y: 'r1', value: 1 }, { x: 'b', y: 'r2', value: 2 }];
+    const draw = (extra: object) => {
+      const el = container();
+      new FacetViz(el, { chart: { ...baseChart, type: 'heatmap' }, series: [{ type: 'heatmap', data: cells, dataLabels: { enabled: false }, ...extra }] });
+      const label = [...el.querySelectorAll('.facet-heatmap text')].find((t) => t.textContent === 'a')!;
+      const cellTops = [...el.querySelectorAll('.facet-heatmap rect')].map((r) => Number(r.getAttribute('y')));
+      return { y: Number(label.getAttribute('y')), top: Math.min(...cellTops), line: el.querySelector('.facet-heatmap-line') };
+    };
+    const below = draw({});
+    expect(below.y).toBeGreaterThan(below.top);
+    expect(below.line).not.toBeNull();
+    const above = draw({ columnLabels: 'top', axisLine: false });
+    expect(above.y).toBeLessThan(above.top);
+    expect(above.line).toBeNull();
+    expect(Number(draw({ columnLabels: 'top' }).line!.getAttribute('y1'))).toBeLessThan(below.y);
+  });
+
   it('formats or hides heatmap cell and funnel stage labels through dataLabels', () => {
     const texts = (el: HTMLElement, cls: string) => [...el.querySelectorAll(`.${cls} text`)].map((t) => t.textContent);
     const cells = [{ x: 'a', y: 'r', value: 1500 }, { x: 'b', y: 'r', value: 2500 }];
