@@ -285,7 +285,15 @@ export class FacetViz {
     if (w) this.width = w;
     if (h) this.height = h;
     this.animateNext = false;
+    // The render replaces every mark, so a mark focused by keyboard would
+    // lose focus to the page: give it back to the same mark, found by its label.
+    const active = document.activeElement;
+    const label = active && active !== this.container && this.container.contains(active) ? active.getAttribute("aria-label") : null;
     this.render();
+    if (label) {
+      const again = this.container.querySelector<SVGElement | HTMLElement>(`[aria-label="${CSS.escape(label)}"]`);
+      again?.focus({ preventScroll: true });
+    }
   }
 
   /** Re-render when the container resizes (unless reflow/that dimension is disabled). */

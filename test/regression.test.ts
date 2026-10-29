@@ -76,6 +76,25 @@ describe('regressions', () => {
     expect(chart.series[1].visible).toBe(false);
   });
 
+  it('keeps keyboard focus on the same mark when a resize redraws the chart', () => {
+    const el = container(600, 400);
+    const chart = new FacetViz(el, {
+      chart: { type: 'column', animation: false },
+      xAxis: { categories: ['Jan', 'Feb', 'Mar'] },
+      series: [{ name: 'Sales', data: [1, 3, 2] }],
+    });
+    const marks = () => [...el.querySelectorAll<SVGElement>('.facet-a11y-point')];
+    const second = marks()[1];
+    const label = second.getAttribute('aria-label');
+    second.focus();
+    expect(document.activeElement).toBe(second);
+    Object.defineProperty(el, 'clientHeight', { value: 300, configurable: true });
+    chart.reflow();
+    expect(second.isConnected).toBe(false);
+    expect(document.activeElement?.getAttribute('aria-label')).toBe(label);
+    expect(el.contains(document.activeElement)).toBe(true);
+  });
+
   it('does not recreate overlays after destruction and restores container style', () => {
     const el = container();
     el.style.position = 'static';
