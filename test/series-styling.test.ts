@@ -38,14 +38,42 @@ describe('line dashStyle', () => {
 describe('line opacity', () => {
   beforeEach(() => { document.body.innerHTML = ''; });
 
-  it('fades the whole series group', () => {
+  it('fades the line and its markers, not its data labels', () => {
     const el = render({
       chart: { type: 'line' },
       xAxis: { categories: ['A', 'B'] },
-      series: [{ name: 'F', opacity: 0.4, data: [1, 2] }, { name: 'S', data: [2, 3] }],
+      series: [
+        { name: 'F', opacity: 0.4, marker: { enabled: true }, dataLabels: { enabled: true }, data: [1, 2] },
+        { name: 'S', data: [2, 3] },
+      ],
     });
-    expect(el.querySelector('.facet-line.F')?.getAttribute('opacity')).toBe('0.4');
-    expect(el.querySelector('.facet-line.S')?.getAttribute('opacity')).toBeNull();
+    const marks = el.querySelector('.facet-line.F .facet-line-marks');
+    expect(marks?.getAttribute('opacity')).toBe('0.4');
+    expect(marks?.querySelector('path')).not.toBeNull();
+    expect(marks?.querySelectorAll('.facet-point').length).toBe(2);
+    expect(el.querySelector('.facet-line.F')?.getAttribute('opacity')).toBeNull();
+    // Labels sit outside the faded group, fully opaque.
+    const labels = [...el.querySelectorAll('.facet-line.F text')];
+    expect(labels.length).toBe(2);
+    for (const t of labels) {
+      expect(t.closest('.facet-line-marks')).toBeNull();
+      expect(t.getAttribute('opacity')).toBeNull();
+    }
+    expect(el.querySelector('.facet-line.S .facet-line-marks')).toBeNull();
+  });
+
+  it("gives data labels an opacity of their own, on lines and columns", () => {
+    const el = render({
+      chart: { type: 'line' },
+      xAxis: { categories: ['A', 'B'] },
+      series: [
+        { name: 'L', dataLabels: { enabled: true, opacity: 0.5 }, data: [1, 2] },
+        { name: 'C', type: 'column', dataLabels: { enabled: true, opacity: 0.3 }, data: [2, 3] },
+      ],
+    });
+    const of = (sel: string) => [...el.querySelectorAll(sel)].map((t) => t.getAttribute('opacity'));
+    expect(of('.facet-line.L text')).toEqual(['0.5', '0.5']);
+    expect(of('.facet-column.C text').filter(Boolean)).toEqual(['0.3', '0.3']);
   });
 });
 

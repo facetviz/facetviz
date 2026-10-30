@@ -97,6 +97,8 @@ export function dataLabelTextAttrs(dl: DataLabelOptions | undefined): Record<str
   if (dl?.textDecoration && dl.textDecoration !== 'none') out['text-decoration'] = dl.textDecoration;
   const family = dl?.fontFamily?.replace(/[;{}<>]/g, '').trim();
   if (family) out['font-family'] = family;
+  if (typeof dl?.opacity === 'number' && Number.isFinite(dl.opacity) && dl.opacity < 1)
+    out.opacity = String(Math.max(0, dl.opacity));
   return out;
 }
 
@@ -195,6 +197,7 @@ export function drawDataLabel(
     const chipY = place.verticalAlign === 'middle' ? place.y - 7.5 : place.verticalAlign === 'hanging' ? place.y - 2 : place.y - 11;
     renderer.create('rect', {
       x: anchorX, y: chipY, width: w, height: 15, rx: 3, fill: dl.backgroundColor,
+      ...(attrs.opacity != null ? { opacity: attrs.opacity } : {}),
     }, parent);
   }
   renderer.text(text, place.x, place.y, attrs, parent);

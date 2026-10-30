@@ -211,8 +211,8 @@ export interface SeriesOptions
   /** Line-family and area series: SVG dash pattern for the line, e.g. '6 4'
    * (dashed) or '1 4' (dotted). Unset draws a solid line. */
   dashStyle?: string;
-  /** Line-family series: opacity (0..1) of the whole series -- line,
-   * markers and data labels. Column/bar series: opacity of the bars' fill;
+  /** Line-family series: opacity (0..1) of the line and its markers;
+   * data labels have their own (`dataLabels.opacity`). Column/bar series: opacity of the bars' fill;
    * their data labels stay fully opaque. Scatter series: opacity of the
    * points' fill, also of points with their own color; their outline
    * stays opaque. */
@@ -286,6 +286,9 @@ export interface DataLabelOptions {
    * returns wins over `color`, nothing returned keeps `color`. Column,
    * bar, line, area, scatter, bubble and waterfall labels. */
   colorOf?: (ctx: LabelContext) => string | null | undefined;
+  /** Opacity (0..1) of the labels, text and background, apart from the
+   * series' own `opacity`. Unset: fully opaque. */
+  opacity?: number;
   fontSize?: string;
   fontWeight?: string;
   /** `italic` slants the label. */

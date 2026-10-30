@@ -65,18 +65,18 @@ export class LineSeries extends BaseSeries {
   override render(ctx: SeriesRenderContext): void {
     const { renderer } = ctx;
     const opacity = this.options.opacity;
-    const g = renderer.group(
-      {
-        class: `facet-series facet-line ${this.name}`,
-        ...(typeof opacity === 'number' && Number.isFinite(opacity) ? { opacity: Math.min(1, Math.max(0, opacity)) } : {}),
-      },
-      renderer.root,
-    );
+    const g = renderer.group({ class: `facet-series facet-line ${this.name}` }, renderer.root);
+    // The opacity fades the line and its markers; data labels have their own
+    // (dataLabels.opacity), so they're drawn outside it.
+    const marks =
+      typeof opacity === 'number' && Number.isFinite(opacity)
+        ? renderer.group({ class: 'facet-line-marks', opacity: Math.min(1, Math.max(0, opacity)) }, g)
+        : g;
     const segments = this.pixelSegments(ctx);
     const data = segments.flat();
     if (this.options.blendPointColors === true && !ctx.polar) {
-      this.renderBlended(ctx, g, segments);
-      this.renderMarkers(ctx, g, data);
+      this.renderBlended(ctx, marks, segments);
+      this.renderMarkers(ctx, marks, data);
       drawPointLabels(ctx.renderer, g, this.options.dataLabels, this.name, data, this.color);
       return;
     }
@@ -93,10 +93,10 @@ export class LineSeries extends BaseSeries {
         'stroke-linejoin': 'round',
         'stroke-linecap': 'round',
         ...(this.options.dashStyle ? { 'stroke-dasharray': this.options.dashStyle } : {}),
-      }, g);
+      }, marks);
     }
 
-    this.renderMarkers(ctx, g, data);
+    this.renderMarkers(ctx, marks, data);
     drawPointLabels(ctx.renderer, g, this.options.dataLabels, this.name, data, this.color);
   }
 
