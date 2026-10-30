@@ -144,6 +144,33 @@ describe('series borders', () => {
     expect(arcs('B')).toBe(4);
   });
 
+  it('rounds only the outer ends of a stack', () => {
+    const arcs = (el: HTMLElement, name: string) =>
+      [...el.querySelectorAll(`.facet-column.${name} .facet-point`)].map((n) => (n.getAttribute('d')?.match(/A/g) ?? []).length);
+    const stack = (ends?: 'both') =>
+      render({
+        chart: { type: 'column' },
+        plotOptions: { series: { stacking: 'normal' } },
+        xAxis: { categories: ['A', 'B'] },
+        series: [
+          { name: 'Low', borderRadius: 4, borderRadiusEnds: ends, data: [2, 2] },
+          { name: 'Mid', borderRadius: 4, borderRadiusEnds: ends, data: [2, 0] },
+          { name: 'Top', borderRadius: 4, borderRadiusEnds: ends, data: [2, null] },
+        ],
+      });
+    let el = stack();
+    // A: only Top rounds; B: Low is its stack's top (Mid is 0, Top empty).
+    expect(arcs(el, 'Low')).toEqual([0, 2]);
+    expect(arcs(el, 'Mid')).toEqual([0, 0]);
+    expect(arcs(el, 'Top')).toEqual([2]);
+    document.body.innerHTML = '';
+    el = stack('both');
+    // Both ends: the base rounds too; a lone segment rounds all round.
+    expect(arcs(el, 'Low')).toEqual([2, 4]);
+    expect(arcs(el, 'Mid')).toEqual([0, 0]);
+    expect(arcs(el, 'Top')).toEqual([2]);
+  });
+
   it('sets the line between pie slices, or none', () => {
     const pie = (extra: object) =>
       render({ chart: { type: 'pie' }, series: [{ name: 'S', ...extra, data: [{ name: 'a', y: 1 }, { name: 'b', y: 2 }] }] });

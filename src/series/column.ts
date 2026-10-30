@@ -416,16 +416,15 @@ export class ColumnSeries extends BaseSeries {
       // flush against the baseline/axis, whichever pixel side that is --
       // unless the series rounds both ends.
       const ends = p.options.borderRadiusEnds ?? this.options.borderRadiusEnds;
-      const side: Bar["side"] = ends === "both"
-        ? "all"
-        : horizontal
-        ? vHi >= vLo
-          ? "right"
-          : "left"
-        : vHi <= vLo
-          ? "top"
-          : "bottom";
-      bars.push({ p, rect, fill: p.color ?? this.color, borderRadius, side });
+      const far: Bar["side"] = horizontal ? (vHi >= vLo ? "right" : "left") : vHi <= vLo ? "top" : "bottom";
+      const near: Bar["side"] = ({ right: "left", left: "right", top: "bottom", bottom: "top" } as const)[far as "right" | "left" | "top" | "bottom"];
+      // Stacked, only the stack's outer ends round: its far end on the last
+      // segment, and with both ends its base on the first.
+      const stacked = p.stackHigh !== undefined;
+      const atFar = !stacked || !!p.stackEnd;
+      const atNear = ends === "both" && (!stacked || !!p.stackStart);
+      const side: Bar["side"] | null = atFar && atNear ? "all" : atFar ? far : atNear ? near : null;
+      bars.push({ p, rect, fill: p.color ?? this.color, borderRadius: side ? borderRadius : 0, side: side ?? far });
     }
     return bars;
   }

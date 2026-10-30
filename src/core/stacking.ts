@@ -10,6 +10,8 @@ export function computeStacks(visible: BaseSeries[]): void {
     for (const p of s.points) {
       p.stackLow = undefined;
       p.stackHigh = undefined;
+      p.stackEnd = undefined;
+      p.stackStart = undefined;
     }
   }
 
@@ -45,9 +47,12 @@ export function computeStacks(visible: BaseSeries[]): void {
           total += Math.abs(pointsBySeries.get(s)?.get(key)?.y ?? 0);
       }
 
+      // The first and last segments with a value, up and down.
+      const ends = { up: [] as Point[], down: [] as Point[] };
       for (const s of group) {
         const point = pointsBySeries.get(s)?.get(key);
         if (!point || point.y === undefined) continue;
+        if (point.y !== 0) (point.y > 0 ? ends.up : ends.down).push(point);
         let value = point.y;
         if (mode === 'percent' && total > 0) value = (value / total) * 100;
         if (value >= 0) {
@@ -59,6 +64,11 @@ export function computeStacks(visible: BaseSeries[]): void {
           point.stackLow = negativeBase + value;
           negativeBase += value;
         }
+      }
+      for (const run of [ends.up, ends.down]) {
+        if (!run.length) continue;
+        run[0].stackStart = true;
+        run[run.length - 1].stackEnd = true;
       }
     }
   }

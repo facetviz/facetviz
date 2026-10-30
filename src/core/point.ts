@@ -27,6 +27,10 @@ export interface Point {
   /** Stack accumulation bottom / top (value-space). */
   stackLow?: number;
   stackHigh?: number;
+  /** Stacked: whether it's the segment at its stack's far end (the top of
+   * a stack up, the bottom of one down), and at its base. */
+  stackEnd?: boolean;
+  stackStart?: boolean;
   /** Percentage within a percent stack. */
   percent?: number;
 }
