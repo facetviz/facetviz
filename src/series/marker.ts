@@ -1,10 +1,10 @@
-/** Draws point markers (circle, square, diamond, triangle) for series. */
+/** Draws point markers (circle, square, diamond, triangle, line) for series. */
 
 import type { Renderer } from "../core/renderer.js";
 import { FONT_SCALE_STATE } from "../core/theme.js";
 
 export interface MarkerSpec {
-  symbol: "circle" | "square" | "diamond" | "triangle" | "rectangle";
+  symbol: "circle" | "square" | "diamond" | "triangle" | "rectangle" | "line";
   radius: number;
   fill: string;
   stroke: string;
@@ -13,6 +13,9 @@ export interface MarkerSpec {
   fillOpacity?: number;
   width?: number; // for rectangle symbol only
   height?: number; // for rectangle symbol only
+  /** For the line symbol: drawn up and down (the value axis runs across)
+   * instead of side to side. */
+  vertical?: boolean;
 }
 
 export function drawMarker(
@@ -72,6 +75,18 @@ export function drawMarker(
       return renderer.create(
         "rect",
         { x: cx - w / 2, y: cy - h / 2, width: w, height: h, ...common },
+        parent,
+      );
+    }
+    case "line": {
+      // A barcode's line: across the value axis, 4 radii long, its
+      // thickness growing with the size; no outline to thin it further.
+      const long = r * 4;
+      const thin = Math.max(1, r * 0.3);
+      const [w, h] = spec.vertical ? [thin, long] : [long, thin];
+      return renderer.create(
+        "rect",
+        { x: cx - w / 2, y: cy - h / 2, width: w, height: h, ...common, stroke: "none" },
         parent,
       );
     }

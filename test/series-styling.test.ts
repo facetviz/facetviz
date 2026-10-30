@@ -192,3 +192,29 @@ describe('series borders', () => {
     expect([rect.getAttribute('stroke'), rect.getAttribute('stroke-width')]).toEqual(['#123456', '3']);
   });
 });
+
+describe('line marker symbol', () => {
+  beforeEach(() => { document.body.innerHTML = ''; });
+
+  const marks = (el: HTMLElement) =>
+    [...el.querySelectorAll('.facet-scatter rect.facet-point')].map((r) => ({
+      w: Number(r.getAttribute('width')),
+      h: Number(r.getAttribute('height')),
+      stroke: r.getAttribute('stroke'),
+    }));
+
+  it('draws a thin line across the value axis, with no outline', () => {
+    const opts = (inverted: boolean) => ({
+      chart: { type: 'scatter', inverted },
+      xAxis: { categories: ['A', 'B'] },
+      series: [{ name: 'S', marker: { symbol: 'line', radius: 5 }, data: [[0, 1], [0, 3], [1, 2]] }],
+    });
+    const across = marks(render(opts(false)));
+    expect(across).toHaveLength(3);
+    expect(across[0].w).toBeGreaterThan(across[0].h * 5);
+    expect(across[0].stroke).toBe('none');
+    document.body.innerHTML = '';
+    const upright = marks(render(opts(true)));
+    expect(upright[0].h).toBeGreaterThan(upright[0].w * 5);
+  });
+});

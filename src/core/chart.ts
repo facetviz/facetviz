@@ -2272,6 +2272,15 @@ export class FacetViz {
         c.rect(x - width / 2, y - height / 2, width, height);
         break;
       }
+      case "line": {
+        // Boosted points are never inverted: the value axis runs up and
+        // down, so the line runs side to side, with no outline.
+        const thin = Math.max(1, r * 0.3);
+        c.rect(x - r * 2, y - thin / 2, r * 4, thin);
+        c.fillStyle = spec.fill;
+        c.fill();
+        return;
+      }
       default:
         c.arc(x, y, r, 0, Math.PI * 2);
     }

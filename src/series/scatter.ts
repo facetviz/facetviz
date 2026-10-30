@@ -104,6 +104,7 @@ export class ScatterSeries extends BaseSeries {
               fillOpacity: this.options.opacity,
               width: marker.width,
               height: marker.height,
+              vertical: !ctx.polar && ctx.inverted,
             });
       ctx.registerHover(el, p);
       el.addEventListener("click", (e: Event) =>

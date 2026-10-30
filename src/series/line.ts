@@ -158,6 +158,7 @@ export class LineSeries extends BaseSeries {
           strokeWidth: marker!.lineWidth ?? 1,
           width: marker!.width,
           height: marker!.height,
+          vertical: !ctx.polar && ctx.inverted,
         });
       } else {
         // Invisible hit target so tooltips/events work even without markers

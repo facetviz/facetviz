@@ -268,7 +268,8 @@ export type AreaFillColor = string | LinearGradientColor;
 export interface MarkerOptions {
   enabled?: boolean;
   radius?: number;
-  symbol?: "circle" | "square" | "diamond" | "triangle" | "rectangle";
+  /** `line`: a thin line across the value axis, as in a barcode chart. */
+  symbol?: "circle" | "square" | "diamond" | "triangle" | "rectangle" | "line";
   fillColor?: string;
   lineColor?: string;
   lineWidth?: number;
