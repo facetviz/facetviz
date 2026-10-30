@@ -5643,6 +5643,8 @@ export class FacetViz {
     // Series sharing a legend key: the item they share.
     const keyed = new Map<string, LegendItem & { seriesIndexes: number[] }>();
     let group: string | undefined;
+    // Each item's key for `legend.order`.
+    const orderKeys = new Map<LegendItem & { seriesIndex?: number; seriesIndexes?: number[] }, string>();
     this.series.forEach((s, seriesIndex) => {
       if (s.options.showInLegend === false) return;
       const key = s.options.legendKey;
@@ -5660,11 +5662,27 @@ export class FacetViz {
         const item = { label: s.options.legendLabel ?? s.name, color: s.color, visible: s.visible, seriesIndexes: [seriesIndex] };
         keyed.set(key, item);
         items.push(item);
+        orderKeys.set(item, key);
       } else {
-        items.push({ label: s.name, color: s.color, visible: s.visible, seriesIndex });
+        const item = { label: s.name, color: s.color, visible: s.visible, seriesIndex };
+        items.push(item);
+        orderKeys.set(item, s.name);
       }
     });
-    return [...scales, ...items];
+    return [...scales, ...this.orderLegendItems(items, orderKeys)];
+  }
+
+  /** `legend.order`: the listed items, in its order, in the places listed
+   *  items had; the rest (and headings) stay put. */
+  private orderLegendItems<T extends LegendItem>(items: T[], keys: Map<T, string>): T[] {
+    const order = this.options.legend?.order;
+    if (!order?.length) return items;
+    const rank = new Map(order.map((k, i) => [k, i]));
+    const at = items.map((item, i) => (rank.has(keys.get(item) ?? "") ? i : -1)).filter((i) => i >= 0);
+    const sorted = at.map((i) => items[i]).sort((a, b) => rank.get(keys.get(a)!)! - rank.get(keys.get(b)!)!);
+    const out = [...items];
+    at.forEach((i, j) => (out[i] = sorted[j]));
+    return out;
   }
 
   /** `legend.colorKeys` as legend items: each key's heading, then its swatches. */

@@ -661,6 +661,28 @@ describe('FacetViz rendering', () => {
     expect(chart.series.map((s) => s.visible)).toEqual([true, true, true, true]);
   });
 
+  it('orders the legend items by legend.order, the series and the rest staying put', () => {
+    const el = container();
+    const chart = new FacetViz(el, {
+      chart: { type: 'column', animation: false },
+      xAxis: { categories: ['A'] },
+      legend: { order: ['c', 'b', 'a'] },
+      series: [
+        { name: 'Total', data: [9] },
+        { name: 'A', data: [6], legendKey: 'a' },
+        { name: 'B', data: [4], legendKey: 'b' },
+        { name: 'A · Q2', data: [5], legendKey: 'a', legendLabel: 'A' },
+        { name: 'c', data: [1] },
+      ],
+    });
+
+    expect(chart.legendItems.map((item) => item.label)).toEqual(['Total', 'c', 'B', 'A']);
+    expect(chart.series.map((s) => s.name)).toEqual(['Total', 'A', 'B', 'A · Q2', 'c']);
+    // An item still toggles its own series.
+    el.querySelectorAll('.facet-legend-item')[3].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(chart.series.map((s) => s.visible)).toEqual([true, false, true, false, true]);
+  });
+
   it('gives tooltip formatters the series index and options', () => {
     const el = container();
     const seen: unknown[] = [];

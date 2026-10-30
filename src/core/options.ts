@@ -740,6 +740,13 @@ export interface LegendOptions {
    * entry.
    */
   colorKeys?: LegendColorKey[];
+  /**
+   * The order of the series items, by their `legendKey` (else the series'
+   * name). Listed items take the places of the listed ones in this order;
+   * items not listed stay where they are. Series order (stacking, colours)
+   * is unchanged.
+   */
+  order?: string[];
   /** Horizontal alignment (top/bottom legends) or which side (vertical legends). */
   align?: "left" | "center" | "right";
   /** Vertical placement for a horizontal legend. */
