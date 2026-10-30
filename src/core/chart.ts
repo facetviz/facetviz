@@ -27,6 +27,7 @@ import type {
   AppendDataOptions,
   MarkerOptions,
   DataLabelOptions,
+  LabelContext,
 } from "./options.js";
 import { Renderer } from "./renderer.js";
 import { Axis, Rect, minorGridPositions, SUBTITLE_LINE, widestText } from "./axis.js";
@@ -79,8 +80,14 @@ import {
   dataLabelFontSize,
   dataLabelTextAttrs,
   drawDataLabel,
+  labelEnds,
+  labelsWanted,
   labelString,
+  pointLabelOptions,
 } from "../series/data-label.js";
+
+/** Series whose data labels can sit beside their points. */
+const SIDE_LABEL_TYPES = new Set(["line", "spline", "step", "area", "areaspline", "scatter", "bubble"]);
 import { drawMarker } from "../series/marker.js";
 import { renderAnnotations } from "./annotations.js";
 import { renderChartTexts, resolveChartTextStyle } from "./chart-text.js";
@@ -453,10 +460,11 @@ export class FacetViz {
       // source's options object, so key the stash on it.
       const options = item.options;
       if (suppress && !(cartesian && item.fitsLabelsPerSegment())) {
-        if (!options.dataLabels?.enabled) continue;
+        if (!labelsWanted(options.dataLabels)) continue;
         if (!this.suppressedLabels.has(options))
           this.suppressedLabels.set(options, options.dataLabels);
-        options.dataLabels = { ...options.dataLabels, enabled: false };
+        // Points' own labels go too.
+        options.dataLabels = { ...options.dataLabels, enabled: false, first: undefined, last: undefined, pointOf: undefined };
       } else if (this.suppressedLabels.has(options)) {
         options.dataLabels = this.suppressedLabels.get(options);
         this.suppressedLabels.delete(options);
@@ -4805,9 +4813,16 @@ export class FacetViz {
       return { xScale, yScale, yScale2 };
     }
 
-    const xRange: [number, number] = [plot.x, plot.x + plot.width];
+    let xRange: [number, number] = [plot.x, plot.x + plot.width];
     const primaryX = primaryXSource.length ? primaryXSource : xSource;
-    const xScale = horizontalScale(primaryX, xAxisOpts, categories, xRange);
+    let xScale = horizontalScale(primaryX, xAxisOpts, categories, xRange);
+    // Labels beside their points (left or right) that would stick out of
+    // the plot: the points move in, so they fit.
+    const [inLeft, inRight] = this.sideLabelOverflow(primaryX, xScale, xRange);
+    if ((inLeft || inRight) && inLeft + inRight < plot.width / 2) {
+      xRange = [plot.x + inLeft, plot.x + plot.width - inRight];
+      xScale = horizontalScale(primaryX, xAxisOpts, categories, xRange);
+    }
     const xScale2 = secondaryXSource.length
       ? horizontalScale(
           secondaryXSource,
@@ -4827,6 +4842,46 @@ export class FacetViz {
 
     const yScale2 = secondaryScale([plot.y + plot.height, plot.y], yScale);
     return { xScale, xScale2, yScale, yScale2 };
+  }
+
+  /**
+   * How far data labels set beside their points (`left` / `right`, for
+   * every point, the first or last, or a point of its own) would stick out
+   * of the plot's left and right edges, `range`, with the points drawn by
+   * `xScale`: line, area and scatter labels, not rotated.
+   */
+  private sideLabelOverflow(series: BaseSeries[], xScale: Scale, range: [number, number]): [number, number] {
+    let left = 0;
+    let right = 0;
+    for (const s of series) {
+      if (!SIDE_LABEL_TYPES.has(s.type) || s.points.length > 5000) continue;
+      const dl = s.options.dataLabels;
+      if (!dl || !labelsWanted(dl)) continue;
+      const beside = (pos: string | undefined) => pos === "left" || pos === "right";
+      if (!dl.pointOf && !beside(dl.position) && !beside(dl.first?.position) && !beside(dl.last?.position)) continue;
+      const ends = labelEnds(s.points);
+      const total = s.points.reduce((sum, p) => sum + (p.y ?? 0), 0);
+      for (const p of s.points) {
+        if (p.y == null) continue;
+        const ctx: LabelContext = {
+          x: p.x, y: p.y, point: p.options, series: s.name,
+          name: p.name ?? p.x, index: p.index, color: p.color ?? s.color,
+          total, percentage: total ? (p.y / total) * 100 : undefined,
+        };
+        const own = pointLabelOptions(dl, ctx, ends);
+        if (!own || own.rotation || !beside(own.position)) continue;
+        const px = xScale.scale(p.x as never);
+        if (!Number.isFinite(px)) continue;
+        const text = labelString(own, ctx);
+        if (!text) continue;
+        const w = this.renderer.measureText(text, { "font-size": dataLabelFontSize(own), ...dataLabelTextAttrs(own) }).width;
+        const gap = 8 + (own.distance ?? 0);
+        const at = px + (own.offsetX ?? 0);
+        if (own.position === "left") left = Math.max(left, range[0] - (at - gap - w) + 2);
+        else right = Math.max(right, at + gap + w - range[1] + 2);
+      }
+    }
+    return [Math.ceil(left), Math.ceil(right)];
   }
 
   /**

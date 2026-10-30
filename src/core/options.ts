@@ -333,8 +333,29 @@ export interface DataLabelOptions {
    * or 1: every point. Line, area, scatter, bubble, column and bar.
    */
   every?: number;
+  /**
+   * Label only the series' first point with a value, its last, or both
+   * (`ends`), in the series' own order. Unset: every point (or every
+   * `every`th). Line, area, scatter, bubble, column and bar.
+   */
+  only?: "first" | "last" | "ends";
+  /** The first point with a value: its label's own settings over the
+   * series' (e.g. `{ position: "left" }`). `enabled` shows or hides it. */
+  first?: DataLabelPointOptions;
+  /** The last point with a value: its label's own settings, as `first`. */
+  last?: DataLabelPointOptions;
+  /**
+   * A point's own label settings, over the series' and `first` / `last`:
+   * `enabled: false` hides its label, `true` shows it with the series'
+   * labels off. Nothing returned: as the series. Line, area, scatter,
+   * bubble, column and bar.
+   */
+  pointOf?: (ctx: LabelContext) => DataLabelPointOptions | null | undefined;
   backgroundColor?: string;
 }
+
+/** One point's data label settings, over its series'. */
+export type DataLabelPointOptions = Omit<DataLabelOptions, "only" | "first" | "last" | "pointOf" | "every">;
 
 export interface LabelContext {
   x: number | string;

@@ -122,6 +122,7 @@ export type {
   AppendDataOptions,
   MarkerOptions,
   DataLabelOptions,
+  DataLabelPointOptions,
   LabelContext,
   PlotLineOptions,
   PlotBandOptions,

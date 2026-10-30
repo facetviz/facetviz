@@ -1160,6 +1160,9 @@ scatter/jitter, pie/donut and butterfly.
 | `distance`        | `number`                        | `0`            | Extra offset in the label's natural direction.                                                                                                                                              |
 | `rotation`        | `number`                        | `0`            | Rotate the text.                                                                                                                                                                            |
 | `every`           | `number`                        | `1`            | Label only points 0, n, 2n … of each series (line, area, scatter, bubble, column, bar). |
+| `only`            | `'first' \| 'last' \| 'ends'`    | –              | Label only the series' first point with a value, its last, or both. |
+| `first` / `last`  | `DataLabelPointOptions`         | –              | The first / last point with a value: its label's own settings over the series', e.g. `{ position: 'left' }`; `enabled` shows or hides that one label. |
+| `pointOf`         | `(ctx: LabelContext) => DataLabelPointOptions \| null` | – | A point's own label settings, over the series' and `first` / `last`: `enabled: false` hides its label, `true` shows it with the series' labels off. |
 | `backgroundColor` | `string`                        | –              | Draw a background chip behind the label.                                                                                                                                                    |
 
 **`position` values by series family:**
@@ -1171,6 +1174,12 @@ scatter/jitter, pie/donut and butterfly.
 | pie / donut           | adaptive inside-first (default), `inside` (same adaptive behaviour), `outside` (forced)                                                                                                         |
 
 `LabelContext` (passed to `formatter`): `{ x, y, point, series }`.
+
+`DataLabelPointOptions` is `DataLabelOptions` without `only`, `first`, `last`, `pointOf` and `every`. A line labelled at its two ends, left of the first point and right of the last:
+
+```js
+dataLabels: { enabled: true, only: 'ends', first: { position: 'left' }, last: { position: 'right' } }
+```
 
 ### PieCenterLabelOptions
 

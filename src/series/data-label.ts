@@ -109,6 +109,54 @@ export function labelEvery(dl: DataLabelOptions | undefined, index: number | und
   return !(n > 1) || (index ?? 0) % n === 0;
 }
 
+/** The indexes of a series' first and last points with a value (-1: none). */
+export interface LabelEnds {
+  first: number;
+  last: number;
+}
+
+export function labelEnds(points: Iterable<Point>): LabelEnds {
+  let first = -1;
+  let last = -1;
+  for (const p of points) {
+    if (p.y == null || !Number.isFinite(p.y)) continue;
+    if (first < 0 || p.index < first) first = p.index;
+    if (p.index > last) last = p.index;
+  }
+  return { first, last };
+}
+
+/** Whether `dl` may label any point: on for the series, or for a point. */
+export function labelsWanted(dl: DataLabelOptions | undefined): boolean {
+  return !!dl && (!!dl.enabled || !!dl.pointOf || !!dl.first?.enabled || !!dl.last?.enabled);
+}
+
+/**
+ * The label settings for the point `ctx` is of, or null when it has no
+ * label: the series' (`every`, `only`), then `first` / `last` at the
+ * series' ends, then `pointOf`'s, each over the one before.
+ */
+export function pointLabelOptions(
+  dl: DataLabelOptions | undefined,
+  ctx: LabelContext,
+  ends: LabelEnds,
+): DataLabelOptions | null {
+  if (!dl || !labelsWanted(dl)) return null;
+  const at = ctx.index ?? -1;
+  const isFirst = at >= 0 && at === ends.first;
+  const isLast = at >= 0 && at === ends.last;
+  let on = !!dl.enabled && (dl.only
+    ? (dl.only !== 'last' && isFirst) || (dl.only !== 'first' && isLast)
+    : labelEvery(dl, ctx.index));
+  let out: DataLabelOptions = dl;
+  for (const own of [isFirst ? dl.first : undefined, isLast ? dl.last : undefined, dl.pointOf?.(ctx)]) {
+    if (!own) continue;
+    out = { ...out, ...own };
+    if (own.enabled != null) on = own.enabled;
+  }
+  return on ? out : null;
+}
+
 /** Draw a single data label with the series' styling options. */
 export function drawDataLabel(
   renderer: Renderer,
@@ -164,31 +212,34 @@ export function drawPointLabels(
   data: Array<{ pt: Pt; p: Point }>,
   seriesColor?: string,
 ): void {
-  if (!dl?.enabled) return;
-  const d = dl.distance ?? 0;
-  const pos = dl.position ?? 'top';
+  if (!labelsWanted(dl)) return;
+  const ends = labelEnds(data.map(({ p }) => p));
   const total = data.reduce((sum, { p }) => sum + (p.y ?? 0), 0);
   for (const { pt, p } of data) {
-    if (!labelEvery(dl, p.index)) continue;
     const ctx: LabelContext = {
       x: p.x, y: p.y, point: p.options, series: seriesName,
       name: p.name ?? p.x, index: p.index, color: p.color ?? seriesColor,
       total, percentage: total ? ((p.y ?? 0) / total) * 100 : undefined,
     };
-    const text = labelString(dl, ctx);
+    // The point's own settings, over the series'.
+    const own = pointLabelOptions(dl, ctx, ends);
+    if (!own) continue;
+    const d = own.distance ?? 0;
+    const pos = own.position ?? 'top';
+    const text = labelString(own, ctx);
     let place: LabelPlacement;
     switch (pos) {
       // Rotated, a label below the point hangs from just under it.
-      case 'bottom': place = dl.rotation
+      case 'bottom': place = own.rotation
         ? { x: pt.x, y: pt.y + 8 + d, anchor: 'middle', side: 'down' }
         : { x: pt.x, y: pt.y + 16 + d, anchor: 'middle' }; break;
-      case 'center': place = dl.rotation
+      case 'center': place = own.rotation
         ? { x: pt.x, y: pt.y, anchor: 'middle', verticalAlign: 'middle' }
         : { x: pt.x, y: pt.y + 4, anchor: 'middle' }; break;
       case 'left': place = { x: pt.x - 8 - d, y: pt.y + 4, anchor: 'end', side: 'left' }; break;
       case 'right': place = { x: pt.x + 8 + d, y: pt.y + 4, anchor: 'start', side: 'right' }; break;
       default: place = { x: pt.x, y: pt.y - 8 - d, anchor: 'middle' }; // top
     }
-    drawDataLabel(renderer, parent, text, place, dl, ctx);
+    drawDataLabel(renderer, parent, text, place, own, ctx);
   }
 }

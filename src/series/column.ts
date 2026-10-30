@@ -12,9 +12,13 @@ import {
   dataLabelFontSize,
   dataLabelTextAttrs,
   drawDataLabel,
+  labelEnds,
+  LabelEnds,
   labelEvery,
+  labelsWanted,
   labelString,
   LabelPlacement,
+  pointLabelOptions,
 } from "./data-label.js";
 import { FONTS } from "../core/defaults.js";
 import { annularSectorPath, polarCenter, projectPolar } from "./polar.js";
@@ -126,6 +130,8 @@ interface Bar {
 export class ColumnSeries extends BaseSeries {
   /** The series' total for data labels' percentage, worked out once a render. */
   private labelTotal: number | undefined;
+  /** And its first and last points with a value. */
+  private labelEnds: LabelEnds | undefined;
 
   override capabilities(): SeriesCapabilities {
     return { grouped: true, cartesian: true, stackable: true };
@@ -169,6 +175,7 @@ export class ColumnSeries extends BaseSeries {
       class: `facet-series facet-column ${this.name}`,
     });
     this.labelTotal = undefined;
+    this.labelEnds = undefined;
     for (const { p, rect, fill, borderRadius, side } of this.bars(ctx)) {
       let el: SVGElement;
       if (borderRadius > 0) {
@@ -207,12 +214,13 @@ export class ColumnSeries extends BaseSeries {
     if (ctx.polar) return null;
     const bars = this.bars(ctx);
     if (bars.some((b) => b.fill.startsWith("url("))) return null;
-    const g = this.options.dataLabels?.enabled
+    const g = labelsWanted(this.options.dataLabels)
       ? ctx.renderer.group({ class: `facet-series facet-column ${this.name}` })
       : null;
     const opacity = this.fillOpacityAttr()["fill-opacity"] ?? 1;
     const hits: CanvasHit[] = [];
     this.labelTotal = undefined;
+    this.labelEnds = undefined;
     const horizontal = this.type === "bar" || ctx.inverted;
     const catScale = (horizontal ? ctx.yScale : ctx.xScale) as CategoryScale;
     if (typeof catScale.fullStep === "function" && Math.abs(catScale.fullStep()) < 1) {
@@ -595,8 +603,7 @@ export class ColumnSeries extends BaseSeries {
     rect: { x: number; y: number; width: number; height: number },
     parent: SVGElement,
   ): void {
-    const dl = this.options.dataLabels;
-    if (!dl?.enabled || !labelEvery(dl, p.index)) return;
+    if (!labelsWanted(this.options.dataLabels)) return;
     const total = (this.labelTotal ??= this.points.reduce((s, pt) => s + (pt.y ?? 0), 0));
     const labelCtx: LabelContext = {
       x: p.x,
@@ -609,6 +616,9 @@ export class ColumnSeries extends BaseSeries {
       total,
       percentage: total ? ((p.y ?? 0) / total) * 100 : undefined,
     };
+    // The bar's own settings, over the series'.
+    const dl = pointLabelOptions(this.options.dataLabels, labelCtx, (this.labelEnds ??= labelEnds(this.points)));
+    if (!dl) return;
     const text = labelString(dl, labelCtx);
     const d = dl.distance ?? 0;
     // 'outside' only makes sense for a lone bar or the topmost stacked

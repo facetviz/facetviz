@@ -797,7 +797,9 @@ interface SeriesOptions {
     color?: string; colorOf?: (ctx)=>string|null; fontSize?: string; fontWeight?: string;
     align?: 'left'|'center'|'right';
     position?: 'outside'|'inside'|'center'|'base'|'top'|'bottom'|'left'|'right';
-    distance?: number; rotation?: number; backgroundColor?: string };
+    distance?: number; rotation?: number; backgroundColor?: string; every?: number;
+    only?: 'first'|'last'|'ends'; first?: {...}; last?: {...};   // the end points' own settings
+    pointOf?: (ctx)=>({ enabled?, position?, ... }|null) };       // a point's own settings
   tooltip?: { enabled?: boolean; format?: string; formatter?: (ctx)=>string;
     valuePrefix?: string; valueSuffix?: string; valueDecimals?: number };
   states?: { hover?: { enabled?: boolean; scale?: number; brightness?: number; borderWidth?: number; borderColor?: string } };
