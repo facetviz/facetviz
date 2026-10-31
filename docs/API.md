@@ -1084,6 +1084,9 @@ arranged left-to-right by default and top-to-bottom with
 | `centerFormatter` | `(value: number) => string`                   | `String(value)`     | Formats each dial's centre value.                                    |
 | `centerFontSize`  | `string`                                      | adaptive, 10–22 px  | CSS centre-value font size, e.g. `'20px'`. Scales with chart size.   |
 | `namePosition`    | `'top' \| 'center' \| 'bottom'`             | `'center'`          | Positions the point or series name within each dial. With `top` or `bottom`, the value moves to the dial centre. |
+| `bands`           | `{ from, to, color, opacity? }[]`             | –                   | Coloured zones over the track (e.g. red / amber / green). Opacity defaults to 1, or 0.35 under a value band. |
+| `needle`          | `boolean \| { color?, width?, length? }`      | –                   | A pointer from the centre to the value; the value moves under its hub. `length` is a fraction of the radius. |
+| `valueBand`       | `boolean`                                     | `true` (`false` with a needle) | Draw the coloured band from the minimum to the value.      |
 
 #### GaugeMarkerOptions
 

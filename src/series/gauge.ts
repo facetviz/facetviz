@@ -63,6 +63,35 @@ export interface GaugeSeriesOptions {
   namePosition?: "top" | "center" | "bottom";
   /** Track/bg track opacity (default 0.15). */
   trackOpacity?: number;
+  /** Coloured stretches of the dial (zones such as red / amber / green),
+   * drawn over the track. Values are clamped to min–max. */
+  bands?: Array<{
+    from: number;
+    to: number;
+    color: string;
+    /** Opacity (default 1 without a value band, 0.35 under one). */
+    opacity?: number;
+  }>;
+  /** A pointer from the centre to the value. `true` uses the defaults. */
+  needle?:
+    | boolean
+    | {
+        /** Default: the theme's title colour. */
+        color?: string;
+        /** Width at the hub in pixels (default ~5% of the radius, at least 3). */
+        width?: number;
+        /** Reach as a fraction of the radius (default: the band's middle). */
+        length?: number;
+      };
+  /** Draw the coloured band from min to the value (default: true, false
+   * with a needle). */
+  valueBand?: boolean;
+}
+
+/** The needle option filled in, or null without one. */
+function needleOf(n: GaugeSeriesOptions["needle"]): { color?: string; width?: number; length?: number } | null {
+  if (!n) return null;
+  return n === true ? {} : n;
 }
 
 /** SVG arc band (filled ring segment) between two radii. */
@@ -268,22 +297,61 @@ export class GaugeSeries extends BaseSeries {
     if (!isFullCircle)
       addCaps(START_DEG, END_DEG, trackColor, trackOpacity, "facet-gauge-track-cap");
 
+    const degOf = (v: number) =>
+      START_DEG + SWEEP_DEG * (max === min ? 0 : (Math.max(min, Math.min(max, v)) - min) / (max - min));
+    const needle = needleOf(opts.needle);
+    const showValueBand = opts.valueBand ?? !needle;
+
+    // Zones over the track. Only the dial's own ends get rounded caps.
+    for (const b of opts.bands ?? []) {
+      const lo = Math.min(b.from, b.to);
+      const hi = Math.max(b.from, b.to);
+      const d0 = degOf(lo);
+      const d1 = degOf(hi);
+      if (d1 <= d0) continue;
+      const opacity = b.opacity ?? (showValueBand ? 0.35 : 1);
+      renderer.create(
+        "path",
+        {
+          d: arcBandPath(cx, cy, rInner, rOuter, d0, d1),
+          fill: b.color,
+          opacity,
+          stroke: "none",
+          class: "facet-gauge-band",
+        },
+        g,
+      );
+      if (roundedEnds && !isFullCircle) {
+        for (const deg of [d0, d1]) {
+          if (deg !== START_DEG && deg !== END_DEG) continue;
+          const cap = pointOnCircle(cx, cy, capCentreRadius, deg);
+          renderer.create(
+            "circle",
+            { cx: cap.x, cy: cap.y, r: capRadius, fill: b.color, opacity, class: "facet-gauge-cap facet-gauge-band-cap" },
+            g,
+          );
+        }
+      }
+    }
+
     // Value band (from start to current value)
     const valueEndDeg = START_DEG + SWEEP_DEG * frac;
     const bandColor = p.color ?? this.color ?? opts.color;
-    renderer.create(
-      "path",
-      {
-        d: arcBandPath(cx, cy, rInner, rOuter, START_DEG, valueEndDeg),
-        fill: bandColor,
-        stroke: "none",
-      },
-      g,
-    );
-    // A zero value has no band to cap; a completed full-circle band has no
-    // open ends. Partial bands (including a completed semicircle) cap both.
-    if (valueEndDeg > START_DEG && !(isFullCircle && frac >= 1))
-      addCaps(START_DEG, valueEndDeg, bandColor, undefined, "facet-gauge-value-cap");
+    if (showValueBand) {
+      renderer.create(
+        "path",
+        {
+          d: arcBandPath(cx, cy, rInner, rOuter, START_DEG, valueEndDeg),
+          fill: bandColor,
+          stroke: "none",
+        },
+        g,
+      );
+      // A zero value has no band to cap; a completed full-circle band has no
+      // open ends. Partial bands (including a completed semicircle) cap both.
+      if (valueEndDeg > START_DEG && !(isFullCircle && frac >= 1))
+        addCaps(START_DEG, valueEndDeg, bandColor, undefined, "facet-gauge-value-cap");
+    }
 
     // Hover target (transparent path over the band area for events)
     const hitEl = renderer.create(
@@ -370,6 +438,31 @@ export class GaugeSeries extends BaseSeries {
       }
     }
 
+    // Needle: a tapered pointer from the hub to the value, over the band.
+    let hubRadius = 0;
+    if (needle) {
+      const color = needle.color ?? THEME.axis.titleColor;
+      const width = needle.width ?? Math.max(3, radius * 0.05);
+      const reach = needle.length != null ? radius * needle.length : (rInner + rOuter) / 2;
+      const tip = pointOnCircle(cx, cy, reach, valueEndDeg);
+      const left = pointOnCircle(cx, cy, width / 2, valueEndDeg - 90);
+      const right = pointOnCircle(cx, cy, width / 2, valueEndDeg + 90);
+      renderer.create(
+        "path",
+        {
+          d: `M ${left.x} ${left.y} L ${tip.x} ${tip.y} L ${right.x} ${right.y} Z`,
+          fill: color,
+          stroke: color,
+          "stroke-width": 1,
+          "stroke-linejoin": "round",
+          class: "facet-gauge-needle",
+        },
+        g,
+      );
+      hubRadius = width * 1.3;
+      renderer.create("circle", { cx, cy, r: hubRadius, fill: color, class: "facet-gauge-needle-hub" }, g);
+    }
+
     // A full circle has a shared start/end seam, so separate its labels.
     if (opts.showMinMax !== false && (opts.showMinLabel !== false || opts.showMaxLabel !== false)) {
       const labelRadius = isFullCircle
@@ -423,11 +516,16 @@ export class GaugeSeries extends BaseSeries {
     const centerFontSize = opts.centerFontSize
       ? parseFloat(sanitizeStyle({ "font-size": opts.centerFontSize })["font-size"])
       : Math.max(10, Math.min(22, radius * 0.32));
-    const valueY = namePosition === "center"
+    // With a needle the value sits under the hub, clear of the pointer.
+    const valueY = needle
       ? isFullCircle
-        ? cy - 4
-        : cy - rInner / 2 + centerFontSize / 2
-      : cy;
+        ? cy + rInner * 0.5
+        : cy + hubRadius + centerFontSize + 2
+      : namePosition === "center"
+        ? isFullCircle
+          ? cy - 4
+          : cy - rInner / 2 + centerFontSize / 2
+        : cy;
     renderer.text(
       centerValue,
       cx,
@@ -450,7 +548,9 @@ export class GaugeSeries extends BaseSeries {
         ? plot.y + nameFontSize
         : namePosition === "bottom"
           ? plot.y + plot.height - nameFontSize / 2
-          : isFullCircle
+          : needle
+            ? valueY + nameFontSize + 2
+            : isFullCircle
             ? cy + centerFontSize + 4
             : cy;
       renderer.text(

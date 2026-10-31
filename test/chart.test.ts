@@ -441,6 +441,49 @@ describe('FacetViz rendering', () => {
     expect(el.querySelectorAll('.facet-gauge-value-cap')).toHaveLength(2);
   });
 
+  it('draws gauge zones and a needle in place of the value band', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { type: 'gauge', animation: false },
+      series: [{
+        min: 0, max: 100, needle: true, data: [72],
+        bands: [{ from: 0, to: 50, color: 'red' }, { from: 50, to: 75, color: 'orange' }, { from: 75, to: 120, color: 'green' }],
+      }],
+    });
+    const bands = [...el.querySelectorAll<SVGPathElement>('.facet-gauge-band')];
+    expect(bands.map((b) => b.getAttribute('fill'))).toEqual(['red', 'orange', 'green']);
+    // Without a value band the zones are solid.
+    expect(bands.every((b) => b.getAttribute('opacity') === '1')).toBe(true);
+    // Track, three zones and the needle: no value band.
+    expect(el.querySelectorAll('.facet-gauge-item path:not(.facet-point)')).toHaveLength(5);
+    const needle = el.querySelector<SVGPathElement>('.facet-gauge-needle')!;
+    const hub = el.querySelector<SVGCircleElement>('.facet-gauge-needle-hub')!;
+    // The tip points at 72% of a 180° dial: up and to the right of the hub.
+    const tip = needle.getAttribute('d')!.split(' L ')[1].split(' ').map(Number);
+    const angle = (Math.atan2(tip[1] - Number(hub.getAttribute('cy')), tip[0] - Number(hub.getAttribute('cx'))) * 180) / Math.PI + 360;
+    expect(angle).toBeCloseTo(180 + 0.72 * 180, 0);
+    // The value moves under the hub.
+    const value = el.querySelector<SVGTextElement>('.facet-gauge-value')!;
+    expect(Number(value.getAttribute('y'))).toBeGreaterThan(Number(hub.getAttribute('cy')));
+  });
+
+  it('keeps the value band over faded zones unless asked otherwise', () => {
+    const el = container();
+    new FacetViz(el, {
+      chart: { type: 'gauge', animation: false },
+      series: [{ min: 0, max: 100, data: [40], bands: [{ from: 0, to: 100, color: 'red' }] }],
+    });
+    expect(el.querySelector('.facet-gauge-band')?.getAttribute('opacity')).toBe('0.35');
+    expect(el.querySelector('.facet-gauge-needle')).toBeNull();
+    const both = container();
+    new FacetViz(both, {
+      chart: { type: 'gauge', animation: false },
+      series: [{ min: 0, max: 100, data: [40], needle: { color: 'black' }, valueBand: true }],
+    });
+    expect(both.querySelectorAll('.facet-gauge-item path:not(.facet-point)')).toHaveLength(3);
+    expect(both.querySelector('.facet-gauge-needle')?.getAttribute('fill')).toBe('black');
+  });
+
   it('sizes the gauge band in pixels or as a percentage of the radius', () => {
     const band = (thickness: number | string) => {
       const el = container();

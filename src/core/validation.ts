@@ -357,6 +357,11 @@ export function validateChartOptions(options: unknown): ChartValidationResult {
       }
       if (entry.namePosition !== undefined && !["top", "center", "bottom"].includes(String(entry.namePosition)))
         add("gauge.name_position.unknown", "error", `${base}.namePosition`, "Gauge namePosition must be top, center, or bottom.");
+      if (Array.isArray(entry.bands))
+        entry.bands.forEach((band, bandIndex) => {
+          if (!isRecord(band) || !Number.isFinite(band.from) || !Number.isFinite(band.to))
+            add("gauge.band.finite", "error", `${base}.bands[${bandIndex}]`, "A gauge band needs finite from and to values.");
+        });
       data.forEach((point, pointIndex) => {
         const value = pointValue(point);
         if (value !== undefined && (value < min || value > max))
