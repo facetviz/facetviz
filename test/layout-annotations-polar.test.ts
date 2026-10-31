@@ -382,6 +382,23 @@ describe("layout, annotations, responsive rules, and polar projection", () => {
     expect(element.querySelectorAll(".facet-polar-value-label").length).toBeGreaterThan(1);
   });
 
+  it("draws ring values above the marks and fits names curved round a small hole", () => {
+    const element = container();
+    const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    new FacetViz(element, {
+      chart: { ...chart, type: "column", polar: true, polarInnerSize: "20%" },
+      xAxis: { categories: months, labels: { position: "inner" } },
+      series: [{ data: months.map((_, i) => i + 3) }],
+    });
+    const svg = element.querySelector("svg")!;
+    const order = [...svg.querySelectorAll(".facet-series, .facet-polar-value-labels")].map((n) => n.getAttribute("class"));
+    expect(order.at(-1)).toContain("facet-polar-value-labels");
+    const names = [...element.querySelectorAll(".facet-polar-curved-label textPath")].map((n) => n.textContent ?? "");
+    expect(names.length).toBeGreaterThan(0);
+    expect(names.some((n) => n.endsWith("…"))).toBe(true);
+    expect(names.includes("September")).toBe(false);
+  });
+
   it("leaves a polar line with a gap open", () => {
     const element = container();
     new FacetViz(element, {

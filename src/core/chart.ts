@@ -3253,15 +3253,18 @@ export class FacetViz {
         ? formatString(options.labels.format, { value: typeof tick === "number" ? tick : base })
         : base;
     };
-    // A category label no wider than labels.maxWidth, cut with "…".
+    // A category label no wider than `max` px, cut with "…".
+    const cutTo = (text: string, max: number): string => {
+      const width = (t: string) => this.renderer.measureText(t, labelStyle).width;
+      if (width(text) <= max) return text;
+      let cut = text;
+      while (cut.length > 1 && width(`${cut}…`) > max) cut = cut.slice(0, -1);
+      return `${cut.trimEnd()}…`;
+    };
+    // A category label no wider than labels.maxWidth.
     const spokeText = (tick: number | string): string => {
       const text = tickText(xScale, xOptions, tick);
-      if (!spokeMaxWidth) return text;
-      const width = (t: string) => this.renderer.measureText(t, labelStyle).width;
-      if (width(text) <= spokeMaxWidth) return text;
-      let cut = text;
-      while (cut.length > 1 && width(`${cut}…`) > spokeMaxWidth) cut = cut.slice(0, -1);
-      return `${cut.trimEnd()}…`;
+      return spokeMaxWidth ? cutTo(text, spokeMaxWidth) : text;
     };
     // A radar's web: each value ring straight from spoke to spoke.
     const webAngles =
@@ -3336,9 +3339,13 @@ export class FacetViz {
         );
         const arcSpan = Math.min(
           Math.PI * 0.9,
-          ((Math.PI * 2) / categories!.length) * 0.78,
+          ((Math.PI * 2) / categories!.length) * 0.94,
         );
         for (const tick of xTicks) {
+          // Each name fits its stretch of the hole's edge, else is cut short;
+          // one with no room for a letter is left out.
+          const fitted = cutTo(spokeText(tick), arcSpan * textRadius);
+          if (fitted.length < 2 && fitted.endsWith("…")) continue;
           const angle = xScale.scale(tick);
           const flipped = Math.sin(angle) > 0.05;
           const start = flipped ? angle + arcSpan / 2 : angle - arcSpan / 2;
@@ -3375,7 +3382,7 @@ export class FacetViz {
             },
             text,
           );
-          textPath.textContent = spokeText(tick);
+          textPath.textContent = fitted;
         }
         return;
       }
@@ -3400,6 +3407,8 @@ export class FacetViz {
         );
       }
     };
+    // The rings' values, moved above the marks once they're drawn.
+    let valueLabels: SVGElement | null = null;
     const axes = this.renderer.group(
       { class: "facet-polar-axes" },
       this.renderer.root,
@@ -3601,6 +3610,10 @@ export class FacetViz {
         drawMinorRings(yScale, yOptions, "facet-polar-minor-ring");
         // Rings with no width aren't drawn; their values still are.
         const rings = (yOptions.gridLineWidth ?? 1) > 0;
+        valueLabels = this.renderer.group(
+          { class: "facet-polar-value-labels" },
+          axes,
+        );
         for (const tick of yTicks) {
           const radial = yScale.scale(tick);
           if (radial < 0 || radial > radius + 0.5) continue;
@@ -3635,7 +3648,7 @@ export class FacetViz {
                 "dominant-baseline": "hanging",
                 class: "facet-polar-value-label",
               },
-              axes,
+              valueLabels,
             );
           }
         }
@@ -3769,6 +3782,7 @@ export class FacetViz {
         ),
       );
     }
+    if (valueLabels) this.renderer.root.appendChild(valueLabels);
     if (inverted) {
       const labelOverlay = this.renderer.group(
         { class: "facet-polar-axis-label-overlay" },
