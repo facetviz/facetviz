@@ -8,6 +8,7 @@ import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
 import { paletteColor, alpha } from '../core/colors.js';
 import { FONTS } from '../core/defaults.js';
 import { scaledFontPx } from '../core/theme.js';
+import { roundedSectorPath } from './polar.js';
 
 export interface RadialBarSeriesOptions {
   /** Arc start in degrees (default -90, at 12 o'clock). */
@@ -152,6 +153,8 @@ export class RadialBarSeries extends BaseSeries {
   /** A filled band between two radii swept between two angles. */
   private arcBand(cx: number, cy: number, ri: number, ro: number, a0: number, a1: number): string {
     if (a1 <= a0 + 1e-4) return '';
+    const rounded = roundedSectorPath(cx, cy, ri, ro, a0, a1, this.options.borderRadius ?? 0);
+    if (rounded) return rounded;
     if (a1 - a0 >= Math.PI * 2 - 1e-6) {
       const mid = a0 + Math.PI;
       const ox0 = cx + ro * Math.cos(a0);

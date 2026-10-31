@@ -9,6 +9,7 @@ import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
 import { paletteColor, shade } from '../core/colors.js';
 import { FONTS } from '../core/defaults.js';
 import { scaledFontPx } from '../core/theme.js';
+import { roundedSectorPath } from './polar.js';
 import type { Point } from '../core/point.js';
 
 interface Node { point?: Point; id: string; name: string; value: number; depth: number; children: Node[]; color?: string; }
@@ -104,6 +105,8 @@ export class SunburstSeries extends BaseSeries {
   }
 
   private arc(cx: number, cy: number, rIn: number, rOut: number, a0: number, a1: number): string {
+    const rounded = roundedSectorPath(cx, cy, rIn, rOut, a0, a1, this.options.borderRadius ?? 0);
+    if (rounded) return rounded;
     const large = a1 - a0 > Math.PI ? 1 : 0;
     const p = (r: number, a: number) => `${cx + r * Math.cos(a)} ${cy + r * Math.sin(a)}`;
     if (rIn <= 0) {

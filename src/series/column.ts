@@ -479,6 +479,7 @@ export class ColumnSeries extends BaseSeries {
               Math.max(1, outer),
               start,
               end,
+              p.options.borderRadius ?? this.options.borderRadius ?? 0,
             ),
             fill: p.color ?? this.color,
             ...this.fillOpacityAttr(),
@@ -543,7 +544,7 @@ export class ColumnSeries extends BaseSeries {
       const el = renderer.create(
         "path",
         {
-          d: annularSectorPath(center.x, center.y, inner, outer, start, end),
+          d: annularSectorPath(center.x, center.y, inner, outer, start, end, p.options.borderRadius ?? this.options.borderRadius ?? 0),
           fill: p.color ?? this.color,
           ...this.fillOpacityAttr(),
           class: "facet-point facet-polar-sector",

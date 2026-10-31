@@ -9,6 +9,7 @@ import { FONTS } from '../core/defaults.js';
 import { formatNumber, formatString, sum } from '../core/utils.js';
 import type { Point } from '../core/point.js';
 import type { LabelContext } from '../core/options.js';
+import { roundedSectorPath } from './polar.js';
 import { drawDataLabel, dataLabelFontSize, dataLabelTextAttrs } from './data-label.js';
 
 /** Hovered-value label drawn inside a pie/donut's hollow centre. */
@@ -518,6 +519,8 @@ export class PieSeries extends BaseSeries {
   }
 
   private slicePath(cx: number, cy: number, r: number, ir: number, a0: number, a1: number): string {
+    const rounded = roundedSectorPath(cx, cy, ir, r, a0, a1, this.options.borderRadius ?? 0);
+    if (rounded) return rounded;
     // SVG cannot represent a full circle with a single arc because its start
     // and end points coincide. Split a 100% slice into two half-arcs so pies
     // and donuts with only one point remain visible.
