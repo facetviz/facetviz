@@ -347,6 +347,41 @@ describe("layout, annotations, responsive rules, and polar projection", () => {
     expect(spokes).toEqual(["N", "E", "S", "W"]);
   });
 
+  it("styles polar labels as asked: colors, a max width, and web minor rings", () => {
+    const element = container();
+    new FacetViz(element, {
+      chart: { ...chart, type: "area", polar: true, polarGridShape: "polygon" },
+      xAxis: {
+        categories: ["Northwest territories", "East", "South", "West"],
+        labels: { maxWidth: 40, style: { color: "#aa0000" } },
+      },
+      yAxis: { min: 0, max: 10, minorTickInterval: "auto", minorGridLineWidth: 1, labels: { style: { color: "#0000aa", fontWeight: "bold" } } },
+      series: [{ data: [4, 7, 5, 8] }],
+    });
+    const spokes = [...element.querySelectorAll(".facet-polar-category-label")];
+    expect(spokes.every((n) => n.getAttribute("fill") === "#aa0000")).toBe(true);
+    expect(spokes[0].textContent).toMatch(/…$/);
+    expect(spokes[1].textContent).toBe("East");
+    const rings = [...element.querySelectorAll(".facet-polar-value-label")];
+    expect(rings.every((n) => n.getAttribute("fill") === "#0000aa" && n.getAttribute("font-weight") === "bold")).toBe(true);
+    expect(element.querySelectorAll("polygon.facet-minor-gridline").length).toBeGreaterThan(0);
+    expect(element.querySelectorAll("circle.facet-minor-gridline")).toHaveLength(0);
+  });
+
+  it("leaves out polar rings and spokes of no width, keeping their labels", () => {
+    const element = container();
+    new FacetViz(element, {
+      chart: { ...chart, type: "line", polar: true },
+      xAxis: { categories: ["N", "E", "S", "W"], gridLineWidth: 0 },
+      yAxis: { min: 0, max: 10, gridLineWidth: 0 },
+      series: [{ data: [4, 7, 5, 8] }],
+    });
+    expect(element.querySelectorAll(".facet-polar-spoke")).toHaveLength(0);
+    expect(element.querySelectorAll(".facet-polar-ring")).toHaveLength(0);
+    expect(element.querySelectorAll(".facet-polar-category-label")).toHaveLength(4);
+    expect(element.querySelectorAll(".facet-polar-value-label").length).toBeGreaterThan(1);
+  });
+
   it("leaves a polar line with a gap open", () => {
     const element = container();
     new FacetViz(element, {

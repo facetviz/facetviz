@@ -3139,6 +3139,11 @@ export class FacetViz {
       ...FONTS.axisLabel,
       ...sanitizeStyle(xOptions.labels?.style),
     };
+    // Each axis's own label color, else the theme's.
+    const categoryLabelFill = labelStyle.fill ?? THEME.axis.labelColor;
+    const valueLabelFill =
+      sanitizeStyle(yOptions.labels?.style).fill ?? THEME.axis.labelColor;
+    const spokeMaxWidth = xOptions.labels?.maxWidth;
     const framePadding =
       xOptions.labels?.enabled === false
         ? 12
@@ -3147,7 +3152,12 @@ export class FacetViz {
             ...series.flatMap((item) =>
               item.points.map(
                 (point) =>
-                  this.renderer.measureText(String(point.x), labelStyle).width / 2 + 8,
+                  Math.min(
+                    this.renderer.measureText(String(point.x), labelStyle).width,
+                    spokeMaxWidth ?? Infinity,
+                  ) /
+                    2 +
+                  8,
               ),
             ),
           );
@@ -3243,6 +3253,34 @@ export class FacetViz {
         ? formatString(options.labels.format, { value: typeof tick === "number" ? tick : base })
         : base;
     };
+    // A category label no wider than labels.maxWidth, cut with "…".
+    const spokeText = (tick: number | string): string => {
+      const text = tickText(xScale, xOptions, tick);
+      if (!spokeMaxWidth) return text;
+      const width = (t: string) => this.renderer.measureText(t, labelStyle).width;
+      if (width(text) <= spokeMaxWidth) return text;
+      let cut = text;
+      while (cut.length > 1 && width(`${cut}…`) > spokeMaxWidth) cut = cut.slice(0, -1);
+      return `${cut.trimEnd()}…`;
+    };
+    // A radar's web: each value ring straight from spoke to spoke.
+    const webAngles =
+      !inverted &&
+      this.options.chart?.polarGridShape === "polygon" &&
+      (categories?.length ?? 0) >= 3
+        ? xTicks.map((tick) => xScale.scale(tick))
+        : null;
+    const ringShape = (radial: number) =>
+      webAngles
+        ? {
+            points: webAngles
+              .map((angle) => {
+                const corner = project(angle, radial);
+                return `${corner.x},${corner.y}`;
+              })
+              .join(" "),
+          }
+        : { cx: center.x, cy: center.y, r: radial };
     const annotationProject = inverted
       ? (radial: number, angle: number) => project(angle, radial)
       : project;
@@ -3262,12 +3300,12 @@ export class FacetViz {
         if (radial < 0 || radial > radius + 0.5) continue;
         const label = project(-Math.PI / 2, radial);
         this.renderer.text(
-          tickText(xScale, xOptions, tick),
+          spokeText(tick),
           label.x + (xOptions.labels?.offset ?? 6),
           label.y + 4,
           {
             ...labelStyle,
-            fill: THEME.axis.labelColor,
+            fill: categoryLabelFill,
             stroke: holeColor,
             "stroke-width": 3,
             "stroke-linejoin": "round",
@@ -3322,7 +3360,7 @@ export class FacetViz {
             "text",
             {
               ...labelStyle,
-              fill: THEME.axis.labelColor,
+              fill: categoryLabelFill,
               class:
                 "facet-polar-category-label facet-polar-curved-label",
             },
@@ -3337,7 +3375,7 @@ export class FacetViz {
             },
             text,
           );
-          textPath.textContent = tickText(xScale, xOptions, tick);
+          textPath.textContent = spokeText(tick);
         }
         return;
       }
@@ -3347,12 +3385,12 @@ export class FacetViz {
         const label = project(angle, labelRadius);
         const cosine = Math.cos(angle);
         this.renderer.text(
-          tickText(xScale, xOptions, tick),
+          spokeText(tick),
           label.x,
           label.y,
           {
             ...labelStyle,
-            fill: THEME.axis.labelColor,
+            fill: categoryLabelFill,
             "text-anchor":
               cosine < -0.15 ? "end" : cosine > 0.15 ? "start" : "middle",
             "dominant-baseline": "middle",
@@ -3393,12 +3431,12 @@ export class FacetViz {
         return;
       for (const radial of minorGridPositions(scale, options.minorTickInterval)) {
         if (radial < 0 || radial > radius + 0.5) continue;
+        // Value rings follow the web; an inverted chart's x rings are round.
+        const web = scale === yScale && !!webAngles;
         this.renderer.create(
-          "circle",
+          web ? "polygon" : "circle",
           {
-            cx: center.x,
-            cy: center.y,
-            r: radial,
+            ...(web ? ringShape(radial) : { cx: center.x, cy: center.y, r: radial }),
             fill: "none",
             stroke:
               options.minorGridLineColor ??
@@ -3543,7 +3581,7 @@ export class FacetViz {
               {
                 ...FONTS.axisLabel,
                 ...sanitizeStyle(yOptions.labels?.style),
-                fill: THEME.axis.labelColor,
+                fill: valueLabelFill,
                 "text-anchor":
                   cosine < -0.15
                     ? "end"
@@ -3561,28 +3599,15 @@ export class FacetViz {
     } else {
       if (yOptions.visible !== false) {
         drawMinorRings(yScale, yOptions, "facet-polar-minor-ring");
-        // A radar's web: each ring straight from spoke to spoke.
-        const ringAngles =
-          this.options.chart?.polarGridShape === "polygon" &&
-          (categories?.length ?? 0) >= 3
-            ? xTicks.map((tick) => xScale.scale(tick))
-            : null;
+        // Rings with no width aren't drawn; their values still are.
+        const rings = (yOptions.gridLineWidth ?? 1) > 0;
         for (const tick of yTicks) {
           const radial = yScale.scale(tick);
           if (radial < 0 || radial > radius + 0.5) continue;
-          this.renderer.create(
-            ringAngles ? "polygon" : "circle",
+          if (rings) this.renderer.create(
+            webAngles ? "polygon" : "circle",
             {
-              ...(ringAngles
-                ? {
-                    points: ringAngles
-                      .map((angle) => {
-                        const corner = project(angle, radial);
-                        return `${corner.x},${corner.y}`;
-                      })
-                      .join(" "),
-                  }
-                : { cx: center.x, cy: center.y, r: radial }),
+              ...ringShape(radial),
               fill: "none",
               stroke: gridColor,
               "stroke-width": yOptions.gridLineWidth ?? 1,
@@ -3602,7 +3627,7 @@ export class FacetViz {
               {
                 ...FONTS.axisLabel,
                 ...sanitizeStyle(yOptions.labels?.style),
-                fill: THEME.axis.labelColor,
+                fill: valueLabelFill,
                 stroke: holeColor,
                 "stroke-width": 3,
                 "stroke-linejoin": "round",
@@ -3629,7 +3654,8 @@ export class FacetViz {
           : xTicks.map((tick) => xScale.scale(tick));
         if (!categories?.length)
           drawMinorSpokes(xScale, xOptions, "facet-polar-minor-spoke");
-        for (const angle of gridAngles) {
+        // Spokes with no width aren't drawn; their names still are.
+        for (const angle of (xOptions.gridLineWidth ?? 1) > 0 ? gridAngles : []) {
           const innerEdge = project(angle, innerRadius);
           const edge = project(angle, radius);
           this.renderer.create(
