@@ -1063,7 +1063,11 @@ A gauge series renders one dial for every point in `data`. It defaults to a
 a complete circle (`135`–`405` for a three-quarter dial open at the bottom,
 `270`–`630` for a full circle from 12 o'clock). An arc other than the half
 circle is sized to fit its own extent, its end labels under its ends and, when
-wider than a half, the value at its centre. Dials are
+wider than a half, the value at its centre. Every dial is sized so its texts fit
+its box: end labels, marker labels (moved along the dial clear of each other,
+with a thin line back to their tick, or left out; one repeating an end label is
+left out), the value and the name (under the dial when it would cross the band);
+a dial too small for its labels leaves them to the tooltip. Dials are
 arranged left-to-right by default and top-to-bottom with
 `chart.inverted: true`. Values outside `min`–`max` are clamped when rendered.
 
@@ -1077,14 +1081,14 @@ arranged left-to-right by default and top-to-bottom with
 | `trackColor`      | `string`                                      | theme grid colour   | Background-track colour.                                             |
 | `trackOpacity`    | `number`                                      | `0.15`              | Background-track opacity.                                            |
 | `thickness`       | `number`                                      | adaptive, about 18% | Band thickness in pixels, capped to fit small dials.                 |
-| `roundedEnds`     | `boolean`                                     | `false`             | Draw circular caps on open track and value-band ends.                |
+| `roundedEnds`     | `boolean`                                     | `false`             | Round the dial's ends and the value band's end: a round end on a thin band, rounded corners (≤ 12% of the radius) on a thick one, inside the end's angle so the band reads its value. |
 | `startAngle`      | `number`                                      | `180`               | Arc start in degrees; 180 is 9 o'clock.                              |
 | `endAngle`        | `number`                                      | `360`               | Arc end in degrees. The sweep must be greater than 0 and at most 360°. |
 | `markers`         | [`GaugeMarkerOptions[]`](#gaugemarkeroptions) | –                   | Reference lines and labels drawn on every dial in the series.        |
 | `showMinMax`      | `boolean`                                     | `true`              | Show the minimum and maximum labels at the band ends.                |
 | `showMinLabel`    | `boolean`                                     | `true`              | Show the minimum label. `showMinMax: false` overrides this option.   |
 | `showMaxLabel`    | `boolean`                                     | `true`              | Show the maximum label. `showMinMax: false` overrides this option.   |
-| `centerFormatter` | `(value: number) => string`                   | `String(value)`     | Formats each dial's centre value.                                    |
+| `centerFormatter` | `(value: number) => string`                   | `String(value)`     | Formats each dial's centre value: the real value, not clamped to `min`–`max`; one past either end is marked ▲ / ▼ (the band and needle stop at the end). |
 | `centerFontSize`  | `string`                                      | adaptive, 10–22 px  | CSS centre-value font size, e.g. `'20px'`. Scales with chart size.   |
 | `namePosition`    | `'top' \| 'center' \| 'bottom'`             | `'center'`          | Positions the point or series name within each dial. With `top` or `bottom`, the value moves to the dial centre. |
 | `bands`           | `{ from, to, color, opacity? }[]`             | –                   | Coloured zones over the track (e.g. red / amber / green). Opacity defaults to 1, or 0.35 under a value band. |
@@ -1097,7 +1101,7 @@ arranged left-to-right by default and top-to-bottom with
 | --------------- | ----------------------- | ----------------- | ----------------------------------------------------------------- |
 | `value`         | `number`                | **required**      | Position on the dial; values outside the gauge range are clamped. |
 | `label`         | `string`                | marker value      | Marker label text.                                                |
-| `color`         | `string`                | value-band colour | Marker line and label colour.                                     |
+| `color`         | `string`                | the axis title colour | Marker line and label colour; the line has a thin background halo so it reads on any band. |
 | `labelPosition` | `'outside' \| 'inside'` | `'outside'`       | Places the label outside the track or inside the value band.      |
 | `fontSize`      | `string`                | `'10px'`          | CSS marker-label font size, e.g. `'14px'`. Scales with chart size.|
 

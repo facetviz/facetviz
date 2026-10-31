@@ -450,8 +450,12 @@ describe('FacetViz rendering', () => {
       series: [{ roundedEnds: true, data: [50] }],
     });
 
-    expect(el.querySelectorAll('.facet-gauge-track-cap')).toHaveLength(2);
-    expect(el.querySelectorAll('.facet-gauge-value-cap')).toHaveLength(2);
+    // Rounded ends are part of each band's own path: two corner arcs at
+    // each end, beside the band's outer and inner arcs.
+    const arcs = (sel: string) => (el.querySelector(sel)?.getAttribute('d')?.match(/A /g) ?? []).length;
+    expect(arcs('.facet-gauge-track')).toBe(6);
+    expect(arcs('.facet-gauge-value-band')).toBe(6);
+    expect(el.querySelectorAll('.facet-gauge-cap')).toHaveLength(0);
   });
 
   it('draws gauge zones and a needle in place of the value band', () => {
@@ -536,21 +540,21 @@ describe('FacetViz rendering', () => {
     expect(center).toBeLessThan(bottom);
   });
 
-  it('centres a gauge value when its name is at the top or bottom', () => {
-    const renderValueY = (namePosition: 'top' | 'center' | 'bottom') => {
+  it('keeps a gauge value clear of its name at the top or bottom', () => {
+    const render = (namePosition: 'top' | 'bottom') => {
       const el = container();
       new FacetViz(el, {
         chart: { type: 'gauge', animation: false },
         series: [{ namePosition, data: [{ name: 'API', y: 50 }] }],
       });
-      return Number(el.querySelector<SVGTextElement>('.facet-gauge-value')?.getAttribute('y'));
+      const y = (sel: string) => Number(el.querySelector<SVGTextElement>(sel)?.getAttribute('y'));
+      return { value: y('.facet-gauge-value'), name: y('.facet-gauge-label') };
     };
 
-    const top = renderValueY('top');
-    const center = renderValueY('center');
-    const bottom = renderValueY('bottom');
-    expect(top).toBe(bottom);
-    expect(top).toBeGreaterThan(center);
+    const top = render('top');
+    const bottom = render('bottom');
+    expect(top.name).toBeLessThan(top.value);
+    expect(bottom.value).toBeLessThan(bottom.name);
   });
 
   it('shows the hovered donut slice value in the hollow centre', () => {
