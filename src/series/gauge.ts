@@ -48,6 +48,8 @@ export interface GaugeSeriesOptions {
     labelPosition?: "outside" | "inside";
     /** CSS font size, e.g. '14px'. Default '10px'. */
     fontSize?: string;
+    /** Opacity of the line and label, 0–1 (default 1). */
+    opacity?: number;
   }>;
   /** Show min/max labels at the band ends (default: true). */
   showMinMax?: boolean;
@@ -82,16 +84,25 @@ export interface GaugeSeriesOptions {
         width?: number;
         /** Reach as a fraction of the radius (default: the band's middle). */
         length?: number;
+        /** 0–1 (default 1). */
+        opacity?: number;
       };
   /** Draw the coloured band from min to the value (default: true, false
    * with a needle). */
   valueBand?: boolean;
+  /** The value band's opacity, 0–1 (default 1). */
+  valueOpacity?: number;
 }
 
 /** The needle option filled in, or null without one. */
-function needleOf(n: GaugeSeriesOptions["needle"]): { color?: string; width?: number; length?: number } | null {
+function needleOf(n: GaugeSeriesOptions["needle"]): { color?: string; width?: number; length?: number; opacity?: number } | null {
   if (!n) return null;
   return n === true ? {} : n;
+}
+
+/** An opacity option clamped to 0–1; 1 when unset or not a number. */
+function unit(v: number | undefined): number {
+  return typeof v === "number" && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1;
 }
 
 /** SVG arc band (filled ring segment) between two radii. */
@@ -357,6 +368,7 @@ export class GaugeSeries extends BaseSeries {
           label,
           showLabel: !atEnd && label !== "",
           color: m.color ?? THEME.axis.titleColor,
+          opacity: unit(m.opacity),
           inside: m.labelPosition === "inside",
           attrs,
           size: renderer.measureText(label, attrs),
@@ -566,6 +578,7 @@ export class GaugeSeries extends BaseSeries {
         {
           d: roundedBandPath(cx, cy, rInner, rOuter, START_DEG, valueEndDeg, roundValue && !isFullCircle, roundValue, corner),
           fill: bandColor,
+          ...(unit(opts.valueOpacity) < 1 ? { opacity: unit(opts.valueOpacity) } : {}),
           stroke: "none",
           class: "facet-gauge-value-band",
         },
@@ -592,14 +605,15 @@ export class GaugeSeries extends BaseSeries {
       const pInner = pointOnCircle(cx, cy, rInner - 2, m.deg);
       const line = { x1: pInner.x, y1: pInner.y, x2: pOuter.x, y2: pOuter.y, "stroke-linecap": "round" };
       renderer.create("line", { ...line, stroke: THEME.backgroundColor, "stroke-width": 4, class: "facet-gauge-marker-halo" }, g);
-      renderer.create("line", { ...line, stroke: m.color, "stroke-width": 2, class: "facet-gauge-marker" }, g);
+      const fade = m.opacity < 1 ? { opacity: m.opacity } : {};
+      renderer.create("line", { ...line, stroke: m.color, "stroke-width": 2, ...fade, class: "facet-gauge-marker" }, g);
       const lab = placed?.label;
       if (!lab) return;
       // A label moved along the dial keeps a thin line back to its tick.
       if (!lab.inside && Math.abs(lab.deg - m.deg) > 1e-6) {
         const from = pointOnCircle(cx, cy, rOuter + 3, m.deg);
         const to = pointOnCircle(cx, cy, rOuter + 12, lab.deg);
-        renderer.create("line", { x1: from.x, y1: from.y, x2: to.x, y2: to.y, stroke: m.color, "stroke-width": 0.75, opacity: 0.6, class: "facet-gauge-marker-leader" }, g);
+        renderer.create("line", { x1: from.x, y1: from.y, x2: to.x, y2: to.y, stroke: m.color, "stroke-width": 0.75, opacity: 0.6 * m.opacity, class: "facet-gauge-marker-leader" }, g);
       }
       renderer.text(
         m.label,
@@ -609,6 +623,7 @@ export class GaugeSeries extends BaseSeries {
           "text-anchor": lab.anchor,
           ...m.attrs,
           fill: lab.inside ? THEME.axis.titleColor : m.color,
+          ...fade,
           ...(lab.inside ? { "dominant-baseline": "central", ...halo, "stroke-width": 3 } : {}),
           class: "facet-gauge-marker-label",
         },
@@ -632,11 +647,12 @@ export class GaugeSeries extends BaseSeries {
           stroke: color,
           "stroke-width": 1,
           "stroke-linejoin": "round",
+          ...(unit(needle.opacity) < 1 ? { opacity: unit(needle.opacity) } : {}),
           class: "facet-gauge-needle",
         },
         g,
       );
-      renderer.create("circle", { cx, cy, r: L.hub, fill: color, class: "facet-gauge-needle-hub" }, g);
+      renderer.create("circle", { cx, cy, r: L.hub, fill: color, ...(unit(needle.opacity) < 1 ? { opacity: unit(needle.opacity) } : {}), class: "facet-gauge-needle-hub" }, g);
     }
 
     // End labels: under the dial's ends, or either side of a full circle's seam.

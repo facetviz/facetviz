@@ -1092,7 +1092,8 @@ arranged left-to-right by default and top-to-bottom with
 | `centerFontSize`  | `string`                                      | adaptive, 10–22 px  | CSS centre-value font size, e.g. `'20px'`. Scales with chart size.   |
 | `namePosition`    | `'top' \| 'center' \| 'bottom'`             | `'center'`          | Positions the point or series name within each dial. With `top` or `bottom`, the value moves to the dial centre. |
 | `bands`           | `{ from, to, color, opacity? }[]`             | –                   | Coloured zones over the track (e.g. red / amber / green). Opacity defaults to 1, or 0.35 under a value band. |
-| `needle`          | `boolean \| { color?, width?, length? }`      | –                   | A pointer from the centre to the value; the value moves under its hub. `length` is a fraction of the radius. |
+| `needle`          | `boolean \| { color?, width?, length?, opacity? }` | –                   | A pointer from the centre to the value; the value moves under its hub. `length` is a fraction of the radius. |
+| `valueOpacity`    | `number`                                      | `1`                 | The value band's opacity (0–1). `trackOpacity` sets the track's, a band's `opacity` a zone's, a marker's `opacity` its line and label. |
 | `valueBand`       | `boolean`                                     | `true` (`false` with a needle) | Draw the coloured band from the minimum to the value.      |
 
 #### GaugeMarkerOptions
@@ -1104,6 +1105,7 @@ arranged left-to-right by default and top-to-bottom with
 | `color`         | `string`                | the axis title colour | Marker line and label colour; the line has a thin background halo so it reads on any band. |
 | `labelPosition` | `'outside' \| 'inside'` | `'outside'`       | Places the label outside the track or inside the value band.      |
 | `fontSize`      | `string`                | `'10px'`          | CSS marker-label font size, e.g. `'14px'`. Scales with chart size.|
+| `opacity`       | `number`                | `1`               | Opacity of the marker's line and label (0–1).                     |
 
 Defaults can be set through `plotOptions.gauge`; an explicit series value
 replaces the plot-level value:

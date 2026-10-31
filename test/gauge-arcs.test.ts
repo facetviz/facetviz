@@ -116,4 +116,16 @@ describe("gauge arcs other than a half circle", () => {
     const ends = [...el.querySelectorAll(".facet-gauge-end-label")].map((n) => Number(n.getAttribute("y")));
     expect(name).toBeGreaterThan(Math.max(...ends));
   });
+
+  it("takes an opacity for the value band, needle, markers and track", () => {
+    const el = gauge(180, 360, { valueOpacity: 0.5, trackOpacity: 0.8, valueBand: true, needle: { opacity: 0.4 }, markers: [{ value: 90, label: "Target", opacity: 0.6 }] });
+    expect(el.querySelector(".facet-gauge-value-band")!.getAttribute("opacity")).toBe("0.5");
+    expect(el.querySelector(".facet-gauge-track")!.getAttribute("opacity")).toBe("0.8");
+    expect(el.querySelector(".facet-gauge-needle")!.getAttribute("opacity")).toBe("0.4");
+    expect(el.querySelector(".facet-gauge-marker")!.getAttribute("opacity")).toBe("0.6");
+    expect(el.querySelector(".facet-gauge-marker-label")!.getAttribute("opacity")).toBe("0.6");
+    document.body.innerHTML = "";
+    // Unset: fully opaque, no attribute.
+    expect(gauge(180, 360).querySelector(".facet-gauge-value-band")!.getAttribute("opacity")).toBeNull();
+  });
 });
