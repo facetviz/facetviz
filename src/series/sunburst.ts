@@ -13,6 +13,14 @@ import type { Point } from '../core/point.js';
 
 interface Node { point?: Point; id: string; name: string; value: number; depth: number; children: Node[]; color?: string; }
 
+/** `name` cut with … to fit `room` px; null when not even three letters fit. */
+function fitName(name: string, room: number, width: (t: string) => number): string | null {
+  if (width(name) <= room) return name;
+  let cut = name;
+  while (cut.length > 2 && width(`${cut}…`) > room) cut = cut.slice(0, -1);
+  return cut.length > 2 ? `${cut.trimEnd()}…` : null;
+}
+
 export class SunburstSeries extends BaseSeries {
   override capabilities(): SeriesCapabilities {
     return { grouped: false, cartesian: false, stackable: false };
@@ -72,9 +80,17 @@ export class SunburstSeries extends BaseSeries {
         // for data-style labels (see `Chart.suppressDataLabels`).
         if (!ctx.suppressDataLabels && a1 - a0 > 0.18 && rOut - rIn > 14) {
           const mid = (a0 + a1) / 2, rMid = (rIn + rOut) / 2;
-          renderer.text(n.name, cx + rMid * Math.cos(mid), cy + rMid * Math.sin(mid), {
-            'text-anchor': 'middle', 'dominant-baseline': 'middle', ...FONTS.dataLabel, fill: '#fff', 'font-size': scaledFontPx(10),
-          }, g);
+          const style = { ...FONTS.dataLabel, 'font-size': scaledFontPx(10) };
+          // As wide as the piece's arc (or the full circle's width), and no
+          // wider than its ring is deep when it runs across the ring: cut
+          // with … to fit, left out with no room for three letters.
+          const room = Math.min((a1 - a0) * rMid, 2 * rMid) * 0.86;
+          const text = fitName(n.name, room, (t) => renderer.measureText(t, style).width);
+          if (text) {
+            renderer.text(text, cx + rMid * Math.cos(mid), cy + rMid * Math.sin(mid), {
+              'text-anchor': 'middle', 'dominant-baseline': 'middle', ...style, fill: '#fff',
+            }, g);
+          }
         }
       }
       let a = a0;
