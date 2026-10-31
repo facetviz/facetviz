@@ -143,6 +143,19 @@ describe('FacetViz rendering', () => {
     expect(el.querySelectorAll('.facet-column .facet-point').length).toBe(4);
   });
 
+  it('fills the largest radial bar ring even when every value is under 1', () => {
+    const arcs = (values: number[]) => {
+      const el = container();
+      new FacetViz(el, {
+        chart: { type: 'radialbar', animation: false },
+        series: [{ name: 'Rate', data: values.map((y, i) => ({ name: `R${i}`, y })) }],
+      });
+      return [...el.querySelectorAll<SVGPathElement>('.facet-radialbar .facet-point')].map((p) => p.getAttribute('d'));
+    };
+    // Shares and their scaled-up copies draw the same rings.
+    expect(arcs([0.5, 0.25, 0.125])).toEqual(arcs([400, 200, 100]));
+  });
+
   it.each([
     ['normal', 2, 3, 2, 5],
     ['percent', 1, 3, 25, 100],

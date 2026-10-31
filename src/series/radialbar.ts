@@ -41,10 +41,13 @@ export class RadialBarSeries extends BaseSeries {
         index,
       ]),
     );
+    // The largest value fills its ring, however small (rates, shares); 1
+    // only when nothing is above zero.
+    const largest = (vs: number[]) => Math.max(0, ...vs) || 1;
     const max = stacked
       ? (ctx.radialValueMax ??
-        Math.max(1, ...points.map((p) => p.stackHigh ?? p.y ?? 0)))
-      : Math.max(1, ...points.map((p) => p.y ?? 0));
+        largest(points.map((p) => p.stackHigh ?? p.y ?? 0)))
+      : largest(points.map((p) => p.y ?? 0));
     const n = categories.length || 1;
     const ringWidth = (outer * 0.7) / n;
     const gap = ringWidth * 0.25;

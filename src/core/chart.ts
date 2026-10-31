@@ -3080,12 +3080,13 @@ export class FacetViz {
         radialCategories.push(point.x);
       }
     }
-    const radialValueMax = Math.max(
-      1,
-      ...stackedRadialBars.flatMap((item) =>
-        item.points.map((point) => point.stackHigh ?? point.y ?? 0),
-      ),
-    );
+    const radialValueMax =
+      Math.max(
+        0,
+        ...stackedRadialBars.flatMap((item) =>
+          item.points.map((point) => point.stackHigh ?? point.y ?? 0),
+        ),
+      ) || 1;
     const radialSeriesIndex = new Map(
       stackedRadialBars.map((item, index) => [item.index, index]),
     );
