@@ -68,54 +68,81 @@ export class SankeySeries extends BaseSeries {
     const maxDepth = Math.max(...[...nodes.values()].map((n) => n.depth));
 
     const nodeW = 14;
-    const vGap = 8;
     const colWidth = maxDepth > 0 ? (plot.width - nodeW - 16) / maxDepth : 0;
     const columns: Node[][] = Array.from({ length: maxDepth + 1 }, () => []);
-    let ci = 0;
-    for (const n of nodes.values()) { columns[n.depth].push(n); n.color = paletteColor(colors, ci++); }
+    // One colour per name, so a value keeps its colour at every step (names
+    // may carry zero-width marks to keep each step's nodes apart).
+    const colorByName = new Map<string, string>();
+    for (const n of nodes.values()) {
+      columns[n.depth].push(n);
+      const name = n.id.replace(/[\u200b-\u200d\ufeff]/g, '');
+      if (!colorByName.has(name)) colorByName.set(name, paletteColor(colors, colorByName.size));
+      n.color = colorByName.get(name)!;
+    }
 
     // ONE value→pixel scale for the whole diagram (driven by the tallest column)
     // so node heights and link thicknesses agree and ribbons fill node edges.
+    // The gap between nodes shrinks so the tallest column always fits.
     const colValue = (col: Node[]) => col.reduce((s, n) => s + Math.max(n.inflow, n.outflow), 0);
     const maxColVal = Math.max(1, ...columns.map(colValue));
     const maxColCount = Math.max(1, ...columns.map((c) => c.length));
-    const unit = (plot.height - vGap * (maxColCount - 1)) / maxColVal;
+    const vGap = maxColCount > 1 ? Math.min(8, (plot.height * 0.3) / (maxColCount - 1)) : 8;
+    const unit = Math.max(0, plot.height - vGap * (maxColCount - 1)) / maxColVal;
 
-    for (const col of columns) {
+    // The first column largest first; each next one in the order of where
+    // its flows come from, so ribbons cross as little as they can.
+    const centre = (n: Node) => n.y + n.h / 2;
+    columns.forEach((col, depth) => {
+      if (depth === 0) col.sort((a, b) => Math.max(b.inflow, b.outflow) - Math.max(a.inflow, a.outflow));
+      else {
+        const from = new Map<string, number>();
+        for (const n of col) {
+          const ins = links.filter((l) => l.to === n.id);
+          const w = ins.reduce((s, l) => s + l.weight, 0);
+          from.set(n.id, w > 0 ? ins.reduce((s, l) => s + centre(node(l.from)) * l.weight, 0) / w : Infinity);
+        }
+        col.sort((a, b) => from.get(a.id)! - from.get(b.id)!);
+      }
       const colH = col.reduce((s, n) => s + Math.max(n.inflow, n.outflow) * unit, 0) + vGap * (col.length - 1);
-      let y = plot.y + (plot.height - colH) / 2; // centre shorter columns vertically
+      let y = plot.y + Math.max(0, (plot.height - colH) / 2); // centre shorter columns vertically
       for (const n of col) {
-        n.h = Math.max(2, Math.max(n.inflow, n.outflow) * unit);
+        n.h = Math.max(1, Math.max(n.inflow, n.outflow) * unit);
         n.x = plot.x + n.depth * colWidth;
         n.y = y;
         y += n.h + vGap;
       }
-    }
+    });
 
-    // Links (behind nodes) — same `unit` scale, so they stack to fill node edges.
+    // Links (behind nodes) — same `unit` scale, so they stack to fill node
+    // edges, each node's in the order of the node at their other end.
     const outOff = new Map<string, number>(), inOff = new Map<string, number>();
+    const outOrder = [...links].sort((a, b) => centre(node(a.to)) - centre(node(b.to)));
+    const inOrder = [...links].sort((a, b) => centre(node(a.from)) - centre(node(b.from)));
+    const startAt = new Map<Link, number>(), endAt = new Map<Link, number>();
+    for (const l of outOrder) { const o = outOff.get(l.from) ?? 0; startAt.set(l, o); outOff.set(l.from, o + l.weight * unit); }
+    for (const l of inOrder) { const o = inOff.get(l.to) ?? 0; endAt.set(l, o); inOff.set(l.to, o + l.weight * unit); }
     for (const l of links) {
       const s = node(l.from), t = node(l.to);
-      const th = Math.max(1, l.weight * unit);
-      const so = outOff.get(s.id) ?? 0, to = inOff.get(t.id) ?? 0;
-      const y1 = s.y + so + th / 2, y2 = t.y + to + th / 2;
+      const th = l.weight * unit;
+      const y1 = s.y + startAt.get(l)! + th / 2, y2 = t.y + endAt.get(l)! + th / 2;
       const x1 = s.x + nodeW, x2 = t.x;
       const mx = (x1 + x2) / 2;
       const path = renderer.create('path', {
         d: `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`,
-        fill: 'none', stroke: alpha(s.color, 0.4), 'stroke-width': th, class: 'facet-point',
+        fill: 'none', stroke: alpha(s.color, 0.4), 'stroke-width': Math.max(1, th), class: 'facet-point',
       }, g);
       ctx.registerHover(path, l.point);
       path.addEventListener('click', (e: Event) => ctx.onPointEvent('click', l.point, e));
       path.addEventListener('mouseover', (e: Event) => ctx.onPointEvent('mouseOver', l.point, e));
       path.addEventListener('mouseout', (e: Event) => ctx.onPointEvent('mouseOut', l.point, e));
-      outOff.set(s.id, so + th); inOff.set(t.id, to + th);
     }
 
     // Nodes + labels.
     for (const n of nodes.values()) {
       renderer.create('rect', { x: n.x, y: n.y, width: nodeW, height: n.h, fill: n.color, rx: 2 }, g);
       const leftSide = n.depth < maxDepth / 2;
+      // A node too thin for a line of text gets no label.
+      if (n.h + vGap < 11) continue;
       renderer.text(n.id, leftSide ? n.x + nodeW + 4 : n.x - 4, n.y + n.h / 2, {
         'text-anchor': leftSide ? 'start' : 'end', 'dominant-baseline': 'middle', ...FONTS.axisLabel,
       }, g);

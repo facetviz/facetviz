@@ -742,6 +742,7 @@ The root object passed to `new FacetViz(container, options)`.
 | `polarInnerBackgroundColor` | `string`                           | chart background | Fill of the polar centre hole; use `'#fff'` for a white circle.                                                   |
 | `polarGridLineMode`         | `'spoke' \| 'sector'`              | `'spoke'`        | Draw angular grid lines through category centres or along sector boundaries.                                      |
 | `polarGridShape`            | `'circle' \| 'polygon'`            | `'circle'`       | Value rings as circles, or polygons straight from spoke to spoke (a radar's web); needs 3+ categories.             |
+| `polarRadius`               | `'linear' \| 'sqrt'`              | `'linear'`       | How values map to radius on a polar chart: `'sqrt'` makes a wedge's area (not its length) grow with its value, as a rose's should. |
 | `colors`                    | `string[]`                         | –                | Alias of top-level `colors`.                                                                                      |
 | `events`                    | [`ChartEvents`](#events)           | –                | Chart-level `load` / `render` / `click` callbacks.                                                                |
 | `responsive`                | `boolean`                          | `true`           | Compact default axis-title/legend gaps on constrained charts, hide data labels when the plot area (inside axes, title and legend) is under 100 px on its short side (stacked columns and bars instead drop only the labels that don't fit their own segment), and hide axis lines below 110 px; explicit margins stay fixed and `false` disables automatic simplification. |
@@ -782,7 +783,8 @@ Applies to both `xAxis` and `yAxis`. A **category axis** is used when
 | `title`                  | [`AxisTitleOptions`](#axis-titles)              | –            | Axis title and its placement.                                                                                                                      |
 | `min`                    | `number`                                        | data min     | Force the axis minimum (value axes).                                                                                                               |
 | `max`                    | `number`                                        | data max     | Force the axis maximum (value axes).                                                                                                               |
-| `tickCount`              | `number`                                        | `4`          | Approximate number of ticks (linear axes).                                                                                                         |
+| `tickCount`              | `number`                                        | `4`          | Approximate number of ticks (linear and log axes).                                                                                                         |
+| `alignTicks`             | `boolean`                                       | `false`      | On a second value axis with its own range: its ticks fall on the first axis's grid lines (as many) and its zero is level with the first's. Ignored with `min`/`max` set or `sync`. |
 | `labels`                 | [`AxisLabelOptions`](#axis-labels)              | enabled      | Tick label config.                                                                                                                                 |
 | `gridLineWidth`          | `number`                                        | `1`          | Major grid line thickness (value axis). `0` hides major grid lines.                                                                                |
 | `gridLinePlacement` | `'on' \| 'between'` | `'on'` | On a category axis: grid lines through each category, or between neighbouring categories (none before the first). |
@@ -1162,6 +1164,7 @@ scatter/jitter, pie/donut and butterfly.
 | Key               | Type                            | Default        | Description                                                                                                                                                                                 |
 | ----------------- | ------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `enabled`         | `boolean`                       | `false`        | Show labels.                                                                                                                                                                                |
+| `allowOverlap`    | `boolean`                       | `false`        | Draw the label even where it overlaps a label already drawn in the chart; by default such a label is left out. Turned labels are never left out. |
 | `format`          | `string`                        | `'{y}'`        | Token string with tokens/specs — `{x}`, `{y}`, `{name}`, `{series}`, `{percentage}`, `{total}`, `{point.<field>}`, e.g. `{y:,.1f}`. See [Text & label formatting](#text--label-formatting). |
 | `formatter`       | `(ctx: LabelContext) => string` | –              | Custom label function (overrides `format`).                                                                                                                                                 |
 | `color`           | `string`                        | theme          | Text colour.                                                                                                                                                                                |
@@ -1723,6 +1726,7 @@ canvas: { axes: { 'sales@rows': { range: { mode: 'fixed', start: 0, end: 'auto' 
 | `title.subtitle` | A second, smaller line beyond the title (`title.subtitleStyle`) |
 | `size` | The axis band's thickness in px |
 | `sync` | On a second value axis: the first's range and ticks, both series on one scale |
+| `alignTicks` | On a second value axis: its own range, ticks on the first's grid lines, zero level with zero |
 
 ### Panes
 
@@ -1882,7 +1886,7 @@ raw array for boxplots.
 | `tick`                          | Column-width line at each value; groupable, not zero-anchored (reads like a dot plot).          |
 | `butterfly`                     | Two series mirrored back-to-back around a central axis.                                        |
 | `radialbar`                     | Bars around a polar centre with configurable start/end angles and optional stacking.           |
-| `heatmap`                       | Category × category grid coloured by `value`; draws its own row/column labels. Series `columnLabels: 'top'` puts the column labels above the grid (default `'bottom'`); `axisLine: false` leaves out the line between grid and labels. Column labels too wide for their cells are angled 45° (cut with … past 40% of the chart's height, whole on hover), and only every Nth is drawn when angled ones would touch. |
+| `heatmap`                       | Category × category grid coloured by `value`; draws its own row/column labels. Series `columnLabels: 'top'` puts the column labels above the grid (default `'bottom'`); `axisLine: false` leaves out the line between grid and labels; `columns` / `rows` give the columns' and rows' order (else the order they first appear in); `borderRadius` rounds the cells (default 2). Labels take `dataLabels` `color`, `colorOf`, `fontSize` and text style, else light or dark by the cell's fill; long row labels are cut with …. Column labels too wide for their cells are angled 45° (cut with … past 40% of the chart's height, whole on hover), and only every Nth is drawn when angled ones would touch. |
 | `bullet`                        | Measure bar per row against qualitative `ranges` bands and a `target` marker.                  |
 | `candlestick`                   | OHLC candles (`open`/`high`/`low`/`close`); up/down coloured.                                  |
 | `gauge`                         | 180° dial per value; horizontal, or vertical via `chart.inverted`; supports reference markers. |

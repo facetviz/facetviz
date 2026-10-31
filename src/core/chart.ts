@@ -84,6 +84,8 @@ import {
   labelsWanted,
   labelString,
   pointLabelOptions,
+  beginLabelLayout,
+  endLabelLayout,
 } from "../series/data-label.js";
 
 /** Series whose data labels can sit beside their points. */
@@ -1999,6 +2001,23 @@ export class FacetViz {
     cctx: CanvasRenderingContext2D | null,
     hits: BoostHit[],
   ): void {
+    beginLabelLayout(this.renderer);
+    try {
+      this.drawEachSeries(list, plot, scalesOf, group, inverted, cctx, hits);
+    } finally {
+      endLabelLayout(this.renderer);
+    }
+  }
+
+  private drawEachSeries(
+    list: BaseSeries[],
+    plot: Rect,
+    scalesOf: (s: BaseSeries) => [Scale, Scale],
+    group: GroupInfo,
+    inverted: boolean,
+    cctx: CanvasRenderingContext2D | null,
+    hits: BoostHit[],
+  ): void {
     for (const s of list) {
       const [sx, sy] = scalesOf(s);
       const boostable = !!cctx && this.isBoostable(s, inverted);
@@ -2142,22 +2161,43 @@ export class FacetViz {
       const drawSegment = () => {
         if (!raw.length) return;
         const pts = decimateLine(raw);
-        c.beginPath();
-        pts.forEach((p, i) =>
-          i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y),
-        );
+        // Steps and curves keep their shape: the series' own SVG path,
+        // through Path2D (straight lines go point to point).
+        const shaped = s.type !== "line" && s.type !== "area" &&
+          typeof Path2D !== "undefined" && typeof (s as unknown as { buildPath?: unknown }).buildPath === "function";
+        const d = shaped ? (s as unknown as { buildPath(p: Array<{ x: number; y: number }>): string }).buildPath(pts) : "";
+        c.save();
+        const opacity = s.options.opacity;
+        if (typeof opacity === "number" && Number.isFinite(opacity)) c.globalAlpha = Math.min(1, Math.max(0, opacity));
+        const line = () => {
+          c.beginPath();
+          pts.forEach((p, i) =>
+            i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y),
+          );
+        };
         if (s.type.startsWith("area")) {
           const zeroY = yScale.scale(0);
-          c.lineTo(pts[pts.length - 1].x, zeroY);
-          c.lineTo(pts[0].x, zeroY);
-          c.closePath();
           c.fillStyle = alpha(color, s.options.fillOpacity ?? 0.35);
-          c.fill();
+          if (shaped) c.fill(new Path2D(`${d} L ${pts[pts.length - 1].x} ${zeroY} L ${pts[0].x} ${zeroY} Z`));
+          else {
+            line();
+            c.lineTo(pts[pts.length - 1].x, zeroY);
+            c.lineTo(pts[0].x, zeroY);
+            c.closePath();
+            c.fill();
+          }
         }
         c.strokeStyle = color;
         c.lineWidth = s.options.lineWidth ?? s.options.size ?? 2;
         c.lineJoin = "round";
-        c.stroke();
+        const dash = String(s.options.dashStyle ?? "").split(/[\s,]+/).map(Number).filter((n) => Number.isFinite(n) && n > 0);
+        if (dash.length) c.setLineDash(dash);
+        if (shaped) c.stroke(new Path2D(d));
+        else {
+          line();
+          c.stroke();
+        }
+        c.restore();
         for (const p of raw) {
           hits.push({ x: p.x, y: p.y, point: p.point, series: s });
           if (s.options.marker?.enabled === true) {
@@ -3235,9 +3275,25 @@ export class FacetViz {
         preserveZeroMin,
       );
     };
-    const yScale = polarValueScale(primary, yOptions);
+    // Square-root radius: the linear scale's share of the way out, rooted,
+    // so a wedge's area grows with its value.
+    const byArea = (s: Scale): Scale => {
+      if (this.options.chart?.polarRadius !== "sqrt" || inverted) return s;
+      const [r0, r1] = s.range();
+      const span = r1 - r0 || 1;
+      return {
+        ...s,
+        ticks: () => s.ticks(),
+        tickLabel: (v) => s.tickLabel(v),
+        bandwidth: () => s.bandwidth(),
+        range: () => s.range(),
+        scale: (v) => r0 + span * Math.sqrt(Math.max(0, (s.scale(v) - r0) / span)),
+        invert: s.invert ? (px) => s.invert!(r0 + span * ((px - r0) / span) ** 2) : undefined,
+      };
+    };
+    const yScale = byArea(polarValueScale(primary, yOptions));
     const yScale2 = secondary.length
-      ? polarValueScale(secondary, axisAt(this.options.yAxis, 1))
+      ? byArea(polarValueScale(secondary, axisAt(this.options.yAxis, 1)))
       : undefined;
 
     const project = (angle: number, radial: number) => ({
@@ -4776,6 +4832,11 @@ export class FacetViz {
           vMax *= logPadFactor(labelRoom, valuePx, vMin, vMax);
         else vMax += (labelRoom / Math.max(1, valuePx)) * (vMax - vMin || 1);
       }
+      // Bars below zero carry their outside label past their lower end:
+      // the same room at the bottom.
+      if (valueAxisOpts.min === undefined && !positiveLog(valueAxisOpts) && vMin < 0 &&
+        primaryVisible.some((s) => (s.type === "column" || s.type === "bar") && s.points.some((p) => (p.y ?? 0) < 0)))
+        vMin -= (labelRoom / Math.max(1, valuePx)) * (vMax - vMin || 1);
     }
 
     // Numeric/datetime/log x scales.
@@ -4842,6 +4903,11 @@ export class FacetViz {
       const secondaryVisible = ySource.filter(onSecondary);
       const secondaryOpts = axisAt(this.options.yAxis, 1);
       let [vMin2, vMax2] = this.valueDomain(secondaryVisible, secondaryOpts);
+      if (secondaryOpts.alignTicks && !positiveLog(secondaryOpts) && secondaryOpts.min === undefined && secondaryOpts.max === undefined) {
+        const lo = Math.min(vMin2, reachesZero(secondaryOpts, secondaryVisible.some((s) => ["column", "bar", "area", "areaspline"].includes(s.type))) ? 0 : vMin2);
+        const aligned = alignedScale(primary, range, lo, vMax2, secondaryOpts.reversed);
+        if (aligned) return aligned;
+      }
       const preserveSecondaryZeroMin = this.hasNonNegativeZeroBasedSeries(
         secondaryVisible,
         vMin2,
@@ -5063,6 +5129,17 @@ export class FacetViz {
   ): Scale {
     let min = opts.min ?? domain[0];
     let max = opts.max ?? domain[1];
+    // A fixed bound past the data's other end (or a min above the max)
+    // would turn the axis inside out, with no ticks and the marks off the
+    // plot: the other end moves past it by the data's span, and two fixed
+    // ends the wrong way round are swapped.
+    if (!(max > min)) {
+      const span = Math.abs(domain[1] - domain[0]) || Math.abs(min) || Math.abs(max) || 1;
+      if (opts.min !== undefined && opts.max !== undefined && min > max) [min, max] = [max, min];
+      else if (opts.max === undefined) max = min + span;
+      else if (opts.min === undefined) min = max - span;
+      if (!(max > min)) max = min + span;
+    }
     if (positiveLog(opts)) {
       // A logarithmic axis needs multiplicative padding so its lower bound
       // remains positive. Explicit bounds continue to opt out independently.
@@ -5325,6 +5402,7 @@ export class FacetViz {
       onPointEvent: (kind, p, dom) => this.handlePointEvent(kind, s, p, dom),
       registerHover: (el, p) => this.bindPointInteraction(el, s, p),
       suppressDataLabels: this.labelsSuppressed,
+      background: this.theme.backgroundColor,
     };
   }
 
@@ -6165,6 +6243,9 @@ function reachesZero(opts: AxisOptions, byDefault: boolean): boolean {
 function fixedTicks(opts: AxisOptions, lo: number, hi: number): number[] | undefined {
   if (opts.tickInterval === "none") return [];
   if (typeof opts.tickInterval === "number") {
+    // An interval so small it would give hundreds of ticks (they'd pile up
+    // unreadably) falls back to automatic ticks.
+    if (!(opts.tickInterval > 0) || (hi - lo) / opts.tickInterval > 200) return undefined;
     // Counted from an origin, a tick may fall just past zero; values all on
     // one side of it keep the axis there.
     return intervalTicks(lo, hi, opts.tickInterval, opts.tickOrigin ?? 0).filter(
@@ -6184,10 +6265,53 @@ function logScale(opts: AxisOptions, domain: [number, number], range: [number, n
     range,
     reversed,
     base: opts.log?.base,
+    tickCount: opts.tickCount,
     niceMin: opts.min === undefined,
     niceMax: opts.max === undefined,
     ...(ticks ? { ticks } : {}),
   });
+}
+
+/** The smallest of 1, 2, 2.5, 5 × 10^k at least `x`. */
+function niceCeil(x: number): number {
+  if (!(x > 0)) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(x)));
+  return ([1, 2, 2.5, 5, 10].map((m) => m * p).find((v) => v >= x * (1 - 1e-9)) ?? 10 * p);
+}
+
+/**
+ * A second value axis whose ticks fall on `primary`'s (as many, evenly
+ * spaced) and whose zero is level with the primary's, covering [lo, hi];
+ * undefined when the primary isn't evenly ticked or zero can't line up.
+ */
+function alignedScale(primary: Scale, range: [number, number], lo: number, hi: number, reversed?: boolean): Scale | undefined {
+  if (!(primary instanceof LinearScale)) return undefined;
+  const ticks = primary.ticks() as number[];
+  const domain = primary.domain;
+  const n = ticks.length - 1;
+  if (n < 1 || !domain) return undefined;
+  const step = ticks[1] - ticks[0];
+  if (!(step > 0) || ticks.some((t, i) => Math.abs(t - (ticks[0] + i * step)) > step * 1e-6)) return undefined;
+  if (Math.abs(domain[0] - ticks[0]) > step * 1e-6 || Math.abs(domain[1] - ticks[n]) > step * 1e-6) return undefined;
+  const z = -ticks[0] / step; // index of the primary's zero
+  let s: number;
+  let start: number;
+  if (z >= -1e-9 && z <= n + 1e-9) {
+    const need: number[] = [];
+    if (hi > 0) { if (n - z < 1e-9) return undefined; need.push(hi / (n - z)); }
+    if (lo < 0) { if (z < 1e-9) return undefined; need.push(-lo / z); }
+    s = niceCeil(Math.max(...need, 0) || 1);
+    start = -z * s;
+  } else {
+    s = niceCeil((hi - lo) / n || 1);
+    start = Math.floor(lo / s) * s;
+    for (let k = 0; start + n * s < hi && k < 20; k++) {
+      s = niceCeil(s * 1.0001);
+      start = Math.floor(lo / s) * s;
+    }
+  }
+  const values = Array.from({ length: n + 1 }, (_, i) => Number((start + i * s).toPrecision(12)));
+  return new LinearScale({ domain: [values[0], values[n]], range, reversed, ticks: values, nice: false });
 }
 
 /** A second value axis's scale on `primary`'s range and ticks, over `range`. */

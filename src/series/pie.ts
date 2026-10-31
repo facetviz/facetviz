@@ -4,7 +4,7 @@
  */
 
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext, LegendEntry } from './base.js';
-import { paletteColor, shade } from '../core/colors.js';
+import { paletteColor, shade, textOn } from '../core/colors.js';
 import { FONTS } from '../core/defaults.js';
 import { formatNumber, formatString, sum } from '../core/utils.js';
 import type { Point } from '../core/point.js';
@@ -65,7 +65,9 @@ interface PieCenter {
  * so a shrunk chart with cramped slices thins its own labels out — skipping
  * whichever would collide — instead of the chart forcing every label off.
  */
-interface LabelLayout { lastY: { left?: number; right?: number } }
+/** Where outside labels already sit, per side, so a new one keeps clear of
+ * every one placed (with a start angle a side is walked in two passes). */
+interface LabelLayout { placed: { left: number[]; right: number[] } }
 
 export class PieSeries extends BaseSeries {
   override capabilities(): SeriesCapabilities {
@@ -103,11 +105,11 @@ export class PieSeries extends BaseSeries {
   }
 
   /** The first slice's start: 12 o'clock, turned clockwise by `startAngle`. */
-  /** The line between slices: white and 1px unless the series sets
-   *  `borderColor` / `borderWidth` (0 draws none). */
-  private sliceBorder(): { stroke?: string; 'stroke-width'?: number } {
+  /** The line between slices: the background's colour and 1px unless the
+   *  series sets `borderColor` / `borderWidth` (0 draws none). */
+  private sliceBorder(ctx: SeriesRenderContext): { stroke?: string; 'stroke-width'?: number } {
     const width = this.options.borderWidth ?? 1;
-    return width > 0 ? { stroke: this.options.borderColor ?? '#ffffff', 'stroke-width': width } : {};
+    return width > 0 ? { stroke: this.options.borderColor ?? ctx.background ?? '#ffffff', 'stroke-width': width } : {};
   }
 
   private startRadians(): number {
@@ -139,13 +141,15 @@ export class PieSeries extends BaseSeries {
 
     if (this.dims()) { this.renderMultiLevel(ctx, g, c); return; }
 
-    const layout: LabelLayout = { lastY: {} };
+    const layout: LabelLayout = { placed: { left: [], right: [] } };
     const innerR = c.radius * this.innerRatio();
     const centerValue = this.drawCenterValue(ctx, g, c, innerR);
     // Only draw visible slices; total is over visible points so hiding a slice
-    // via the legend redistributes the remaining ones.
+    // via the legend redistributes the remaining ones. A negative or zero
+    // value has no slice, so it isn't in the total either (else the slices
+    // would add up past a full turn and the shares past 100%).
     const points = this.visiblePoints();
-    const total = sum(points.map((p) => p.y ?? 0));
+    const total = sum(points.map((p) => Math.max(0, p.y ?? 0)));
     if (total <= 0) return;
 
     // Variable-radius pie: when points carry a `z`, each slice's outer radius
@@ -171,7 +175,7 @@ export class PieSeries extends BaseSeries {
       const rr = radiusFor(p);
 
       const path = this.slicePath(c.cx, c.cy, rr, innerR, angle, end);
-      const el = renderer.create('path', { d: path, fill: color, ...this.sliceBorder(), class: 'facet-point' }, g);
+      const el = renderer.create('path', { d: path, fill: color, ...this.sliceBorder(ctx), class: 'facet-point' }, g);
       ctx.registerHover(el, p);
       this.bindCenterValue(el, p, centerValue, total, color);
       el.addEventListener('click', (e: Event) => ctx.onPointEvent('click', p, e));
@@ -200,11 +204,11 @@ export class PieSeries extends BaseSeries {
       const k = String(p.options[dims[0]] ?? '');
       buckets.get(k)?.push(p);
     }
-    const groupTotal = (ps: Point[]) => sum(ps.map((p) => p.y ?? 0));
+    const groupTotal = (ps: Point[]) => sum(ps.map((p) => Math.max(0, p.y ?? 0)));
     const total = sum([...buckets.values()].map(groupTotal));
     if (total <= 0) return;
 
-    const layout: LabelLayout = { lastY: {} };
+    const layout: LabelLayout = { placed: { left: [], right: [] } };
     let angle = this.startRadians();
     order.forEach((g0, gi) => {
       const ps = buckets.get(g0) ?? [];
@@ -216,7 +220,7 @@ export class PieSeries extends BaseSeries {
 
       // Inner slice (the group itself).
       const innerPath = this.slicePath(c.cx, c.cy, midR, holeR, angle, end);
-      renderer.create('path', { d: innerPath, fill: base, ...this.sliceBorder(), class: 'facet-point' }, g);
+      renderer.create('path', { d: innerPath, fill: base, ...this.sliceBorder(ctx), class: 'facet-point' }, g);
       // Inner label centred within its band, abbreviated to fit the wedge.
       const innerLabelR = (holeR + midR) / 2;
       const mid = (angle + end) / 2;
@@ -239,7 +243,7 @@ export class PieSeries extends BaseSeries {
         const e2 = a2 + cs;
         const color = p.color ?? shade(base, 0.12 + 0.5 * (ps.length === 1 ? 0 : j / (ps.length - 1)));
         const outerPath = this.slicePath(c.cx, c.cy, c.radius, midR, a2, e2);
-        const el = renderer.create('path', { d: outerPath, fill: color, ...this.sliceBorder(), class: 'facet-point' }, g);
+        const el = renderer.create('path', { d: outerPath, fill: color, ...this.sliceBorder(ctx), class: 'facet-point' }, g);
         ctx.registerHover(el, p);
         this.bindCenterValue(el, p, centerValue, total, color);
         el.addEventListener('click', (e: Event) => ctx.onPointEvent('click', p, e));
@@ -408,7 +412,7 @@ export class PieSeries extends BaseSeries {
           dl.rotation
             ? { x: inside.x, y: inside.y, anchor: 'middle', verticalAlign: 'middle' }
             : { x: inside.x, y: inside.y + fontPx * 0.35, anchor: 'middle' },
-          { ...dl, color: dl.color ?? '#ffffff' },
+          { ...dl, color: dl.color ?? textOn(sliceColor) },
         );
         return;
       }
@@ -424,12 +428,12 @@ export class PieSeries extends BaseSeries {
     const elbowY = c.cy + elbowR * Math.sin(mid);
     const stubX = elbowX + dir * 16;
 
-    // Points are walked in angle order and stay on one side for a full half
-    // revolution, so comparing against only the last label drawn on this side
-    // is enough to keep every remaining one legibly spaced.
-    const lastY = layout.lastY[side];
-    if (lastY !== undefined && Math.abs(elbowY - lastY) < fontPx + 3) return;
-    layout.lastY[side] = elbowY;
+    // Keep clear of every label already on this side: with a start angle
+    // other than 12 o'clock a side is walked in two passes, so the last one
+    // alone isn't enough.
+    const placed = layout.placed[side];
+    if (placed.some((y) => Math.abs(elbowY - y) < fontPx + 3)) return;
+    placed.push(elbowY);
 
     renderer.create('polyline', {
       points: `${rimX},${rimY} ${elbowX},${elbowY} ${stubX},${elbowY}`,

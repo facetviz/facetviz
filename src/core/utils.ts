@@ -228,7 +228,7 @@ export function formatDate(value: string | number | Date, pattern: string): stri
  * Produce nice datetime ticks (timestamps) and a matching strftime format for
  * the span, so a `type: 'datetime'` axis reads with sensible date labels.
  */
-export function niceDateTicks(min: number, max: number, count = 6): { ticks: number[]; format: string } {
+export function niceDateTicks(min: number, max: number, count = 6, weekStart = 1): { ticks: number[]; format: string } {
   const span = max - min || 1;
   const SEC = 1000, MIN = 60 * SEC, HOUR = 60 * MIN, DAY = 24 * HOUR, YEAR = 365 * DAY;
   let step: number, format: string, floor: (t: number) => number, next: (t: number) => number;
@@ -246,14 +246,23 @@ export function niceDateTicks(min: number, max: number, count = 6): { ticks: num
     next = (t) => { const d = new Date(t); return new Date(d.getFullYear(), d.getMonth() + mStep, 1).getTime(); };
     step = 0;
   } else if (span > 2 * DAY) {
+    // Local days (dates are local midnights), stepping by calendar day so a
+    // daylight-saving change doesn't shift them; weeks start on `weekStart`.
     format = '%b %d';
-    step = niceUnit(span / count, [DAY, 2 * DAY, 7 * DAY, 14 * DAY]);
-    floor = (t) => Math.floor(t / DAY) * DAY;
-    next = (t) => t + step;
+    const days = niceUnit(span / count, [DAY, 2 * DAY, 7 * DAY, 14 * DAY]) / DAY;
+    floor = (t) => {
+      const d = new Date(t);
+      const back = days >= 7 ? (d.getDay() - weekStart + 7) % 7 : 0;
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate() - back).getTime();
+    };
+    next = (t) => { const d = new Date(t); return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days).getTime(); };
+    step = 0;
   } else if (span > 2 * HOUR) {
     format = '%H:%M';
     step = niceUnit(span / count, [HOUR, 2 * HOUR, 3 * HOUR, 6 * HOUR, 12 * HOUR]);
-    floor = (t) => Math.floor(t / HOUR) * HOUR;
+    const hours = step / HOUR;
+    // Local hours (a half-hour time zone would put UTC hours on :30).
+    floor = (t) => { const d = new Date(t); return new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(d.getHours() / hours) * hours).getTime(); };
     next = (t) => t + step;
   } else {
     format = '%H:%M';

@@ -80,7 +80,9 @@ function normalizePoint(
   const point: Point = {
     x: opts.x ?? nameOrCat,
     index,
-    y: opts.y,
+    // A null value is a gap, as a bare null is (stacking and lines test for
+    // undefined).
+    y: opts.y ?? undefined,
     low: opts.low,
     high: opts.high,
     name: opts.name,

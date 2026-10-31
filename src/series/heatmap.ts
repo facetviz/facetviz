@@ -6,7 +6,8 @@
  */
 
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
-import { lerpColor, shade } from '../core/colors.js';
+import { lerpColor, textOn } from '../core/colors.js';
+import { cellLabelAttrs } from './data-label.js';
 import { FONTS } from '../core/defaults.js';
 import { THEME, scaledFontPx } from '../core/theme.js';
 
@@ -16,6 +17,13 @@ export interface HeatmapSeriesOptions {
   columnLabels?: 'bottom' | 'top';
   /** false: no line between the grid and the column labels. */
   axisLine?: boolean;
+  /** The columns' order (x values), and which there are: else the order
+   * they first appear in, so a first row missing one would move it last. */
+  columns?: Array<string | number>;
+  /** The rows' order (y values), likewise. */
+  rows?: Array<string | number>;
+  /** Corner radius of each cell, px (default 2). */
+  borderRadius?: number;
 }
 
 export class HeatmapSeries extends BaseSeries {
@@ -24,6 +32,8 @@ export class HeatmapSeries extends BaseSeries {
   }
 
   private axisValues(field: 'x' | 'y'): string[] {
+    const given = (this.options as HeatmapSeriesOptions)[field === 'x' ? 'columns' : 'rows'];
+    if (given?.length) return given.map((v) => String(v ?? ''));
     const seen: string[] = [];
     for (const p of this.points) {
       const v = String((field === 'x' ? p.x : p.options.y) ?? '');
@@ -68,7 +78,8 @@ export class HeatmapSeries extends BaseSeries {
 
     const opts = this.options as HeatmapSeriesOptions;
     const top = opts.columnLabels === 'top';
-    const leftPad = 8 + rows.reduce((m, r) => Math.max(m, r.length), 0) * 6.6;
+    // Room for the widest row label, as measured (at most 40% of the width).
+    const leftPad = 8 + Math.min(plot.width * 0.4, Math.max(0, ...rows.map((r) => renderer.measureText(r, FONTS.axisLabel).width)));
     const gx = plot.x + leftPad;
     let gw = plot.width - leftPad - 8;
     // Column labels too wide for their cells are angled (45°), and when
@@ -101,7 +112,7 @@ export class HeatmapSeries extends BaseSeries {
       const x = gx + ci * cw;
       const y = gy + ri * ch;
       const el = renderer.create('rect', {
-        x: x + 1, y: y + 1, width: cw - 2, height: ch - 2, rx: 2,
+        x: x + 1, y: y + 1, width: cw - 2, height: ch - 2, rx: Math.max(0, Math.min(opts.borderRadius ?? 2, cw / 2 - 1, ch / 2 - 1)),
         fill: p.color ?? colorFor(value), class: 'facet-point',
       }, g);
       // Value label if the cell is roomy enough and the chart itself isn't
@@ -109,12 +120,13 @@ export class HeatmapSeries extends BaseSeries {
       // `dataLabels.enabled: false` hides them; a `formatter` writes them.
       const dl = this.options.dataLabels;
       if (dl?.enabled !== false && !ctx.suppressDataLabels && cw > 26 && ch > 16) {
-        const text = dl?.formatter
-          ? dl.formatter({ x: p.x ?? '', y: value, point: p.options, series: this.name, name: p.name, index: p.index, color: p.color ?? colorFor(value) })
-          : String(value);
+        const fill = p.color ?? colorFor(value);
+        const lctx = { x: p.x ?? '', y: value, point: p.options, series: this.name, name: p.name, index: p.index, color: fill };
+        const text = dl?.formatter ? dl.formatter(lctx) : String(value);
         renderer.text(text, x + cw / 2 + (dl?.offsetX || 0), y + ch / 2 + (dl?.offsetY || 0), {
           'text-anchor': 'middle', 'dominant-baseline': 'middle', ...FONTS.dataLabel,
-          fill: (value - min) / (max - min || 1) > 0.6 ? '#fff' : shade(hi, -0.4), 'font-size': scaledFontPx(10),
+          // Light or dark by the cell's own fill, whatever ramp drew it.
+          ...cellLabelAttrs(dl, textOn(fill), scaledFontPx(10), lctx),
           // The cell under it takes the hover and clicks, as a pie slice's label lets its slice.
           'pointer-events': 'none',
         }, g);
@@ -140,8 +152,19 @@ export class HeatmapSeries extends BaseSeries {
       if (fit.text(c) !== c) el.appendChild(renderer.create('title', {})).textContent = c;
     });
     // Row labels (left).
+    // Row labels (cut with … past their room, the whole name in a title).
+    const rowRoom = leftPad - 8;
+    const rowText = (r: string) => {
+      const width = (t: string) => renderer.measureText(t, FONTS.axisLabel).width;
+      if (width(r) <= rowRoom) return r;
+      let cut = r;
+      while (cut.length > 1 && width(`${cut}…`) > rowRoom) cut = cut.slice(0, -1);
+      return `${cut}…`;
+    };
     rows.forEach((r, i) => {
-      renderer.text(r, gx - 6, gy + i * ch + ch / 2, { 'text-anchor': 'end', 'dominant-baseline': 'middle', ...FONTS.axisLabel }, g);
+      const t = rowText(r);
+      const el = renderer.text(t, gx - 6, gy + i * ch + ch / 2, { 'text-anchor': 'end', 'dominant-baseline': 'middle', ...FONTS.axisLabel }, g);
+      if (t !== r) el.appendChild(renderer.create('title', {})).textContent = r;
     });
     // The line between the grid and the column labels.
     if (opts.axisLine !== false) {

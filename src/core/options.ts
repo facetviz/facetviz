@@ -278,6 +278,11 @@ export interface MarkerOptions {
 }
 
 export interface DataLabelOptions {
+  /**
+   * Draw the label even where it overlaps one already drawn in the chart
+   * (default false: a label that would overlap is left out).
+   */
+  allowOverlap?: boolean;
   enabled?: boolean;
   format?: string; // e.g. '{y}' or '{point.name}: {y}'
   formatter?: (ctx: LabelContext) => string;
@@ -553,6 +558,12 @@ export interface AxisOptions {
   size?: number;
   /** On a second value axis: the first axis's range and ticks, so both read on one scale. */
   sync?: boolean;
+  /**
+   * On a second value axis with its own range: ticks on the first axis's
+   * grid lines (as many, at the same heights) and zero level with the
+   * first axis's zero, so the two read against one grid.
+   */
+  alignTicks?: boolean;
   /**
    * Dimension splitting: bind this axis to a data dimension so the chart
    * is broken into a grid of panels (small multiples). See `trellis`.
@@ -1210,6 +1221,12 @@ export interface ChartOptions {
      * circles. Ignored when inverted.
      */
     polarGridShape?: "circle" | "polygon";
+    /**
+     * How a polar chart's values map to radius: "linear" (default), or
+     * "sqrt" so a wedge's area (not its length) grows with its value, as a
+     * rose's should.
+     */
+    polarRadius?: "linear" | "sqrt";
     events?: ChartEvents;
     /** Colours cycled through by series without an explicit colour. */
     colors?: string[];

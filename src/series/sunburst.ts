@@ -6,7 +6,7 @@
  */
 
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
-import { paletteColor, shade } from '../core/colors.js';
+import { paletteColor, shade, textOn } from '../core/colors.js';
 import { FONTS } from '../core/defaults.js';
 import { scaledFontPx } from '../core/theme.js';
 import { roundedSectorPath } from './polar.js';
@@ -43,7 +43,10 @@ export class SunburstSeries extends BaseSeries {
       if (parent) parent.children.push(n);
       else roots.push(n);
     }
-    const root: Node = roots.length === 1 ? roots[0] : { id: '__root', name: '', value: 0, depth: -1, children: roots };
+    // Always under a hidden root, so a lone top-level piece is the first ring
+    // (not drawn over by its own children) and its children get their own
+    // colours.
+    const root: Node = { id: '__root', name: '', value: 0, depth: -1, children: roots };
     const rollup = (n: Node): number => {
       if (n.children.length) n.value = n.children.reduce((s, c) => s + rollup(c), 0);
       return n.value;
@@ -69,7 +72,7 @@ export class SunburstSeries extends BaseSeries {
         const base = n.color ?? paletteColor(colors, ci);
         const color = n.point?.color ?? shade(base, n.depth * 0.12);
         const el = renderer.create('path', {
-          d: this.arc(cx, cy, rIn, rOut, a0, a1), fill: color, stroke: '#fff', 'stroke-width': 1, class: 'facet-point',
+          d: this.arc(cx, cy, rIn, rOut, a0, a1), fill: color, stroke: ctx.background ?? '#fff', 'stroke-width': 1, class: 'facet-point',
         }, g);
         if (n.point) {
           ctx.registerHover(el, n.point);
@@ -89,7 +92,7 @@ export class SunburstSeries extends BaseSeries {
           const text = fitName(n.name, room, (t) => renderer.measureText(t, style).width);
           if (text) {
             renderer.text(text, cx + rMid * Math.cos(mid), cy + rMid * Math.sin(mid), {
-              'text-anchor': 'middle', 'dominant-baseline': 'middle', ...style, fill: '#fff',
+              'text-anchor': 'middle', 'dominant-baseline': 'middle', ...style, fill: textOn(color),
             }, g);
           }
         }
@@ -97,7 +100,10 @@ export class SunburstSeries extends BaseSeries {
       let a = a0;
       n.children.forEach((c, i) => {
         const span = (c.value / n.value) * (a1 - a0);
-        draw(c, a, a + span, n.depth < 0 ? i : ci);
+        // Each top-level piece takes its own colour; with only one, its
+        // pieces do (else the whole chart is shades of one colour).
+        const own = n.depth < 0 || (n.depth === 0 && root.children.length === 1);
+        draw(c, a, a + span, own ? i : ci);
         a += span;
       });
     };
@@ -105,10 +111,19 @@ export class SunburstSeries extends BaseSeries {
   }
 
   private arc(cx: number, cy: number, rIn: number, rOut: number, a0: number, a1: number): string {
+    const p = (r: number, a: number) => `${cx + r * Math.cos(a)} ${cy + r * Math.sin(a)}`;
+    // A whole turn starts and ends on the same point, which an SVG arc draws
+    // as nothing: draw it as two halves.
+    if (a1 - a0 >= Math.PI * 2 - 1e-6) {
+      const half = a0 + Math.PI;
+      const ring = (r: number, sweep: 0 | 1, from: number, mid: number, to: number) =>
+        `${p(r, from)} A ${r} ${r} 0 0 ${sweep} ${p(r, mid)} A ${r} ${r} 0 0 ${sweep} ${p(r, to)}`;
+      const outer = `M ${ring(rOut, 1, a0, half, a0)} Z`;
+      return rIn <= 0 ? outer : `${outer} M ${ring(rIn, 0, a0, half, a0)} Z`;
+    }
     const rounded = roundedSectorPath(cx, cy, rIn, rOut, a0, a1, this.options.borderRadius ?? 0);
     if (rounded) return rounded;
     const large = a1 - a0 > Math.PI ? 1 : 0;
-    const p = (r: number, a: number) => `${cx + r * Math.cos(a)} ${cy + r * Math.sin(a)}`;
     if (rIn <= 0) {
       return `M ${cx} ${cy} L ${p(rOut, a0)} A ${rOut} ${rOut} 0 ${large} 1 ${p(rOut, a1)} Z`;
     }

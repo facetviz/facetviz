@@ -204,13 +204,13 @@ describe('series borders', () => {
     let el = stack();
     // A: only Top rounds; B: Low is its stack's top (Mid is 0, Top empty).
     expect(arcs(el, 'Low')).toEqual([0, 2]);
-    expect(arcs(el, 'Mid')).toEqual([0, 0]);
+    expect(arcs(el, 'Mid')).toEqual([0]); // B's Mid is 0: no segment (BUG-304)
     expect(arcs(el, 'Top')).toEqual([2]);
     document.body.innerHTML = '';
     el = stack('both');
     // Both ends: the base rounds too; a lone segment rounds all round.
     expect(arcs(el, 'Low')).toEqual([2, 4]);
-    expect(arcs(el, 'Mid')).toEqual([0, 0]);
+    expect(arcs(el, 'Mid')).toEqual([0]);
     expect(arcs(el, 'Top')).toEqual([2]);
   });
 

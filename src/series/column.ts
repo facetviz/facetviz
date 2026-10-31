@@ -378,6 +378,9 @@ export class ColumnSeries extends BaseSeries {
     for (const p of this.points) {
       const [loVal, hiVal] = this.valuePair(p);
       if (loVal === undefined || hiVal === undefined) continue;
+      // A zero segment in a stack has no height: drawn at the 1 px minimum
+      // it would show as a sliver of its colour across the stack.
+      if (p.stackHigh !== undefined && hiVal === loVal) continue;
 
       const vLo = valScale.scale(loVal);
       const vHi = valScale.scale(hiVal);
@@ -648,11 +651,19 @@ export class ColumnSeries extends BaseSeries {
       dl.position ?? (p.stackHigh !== undefined ? "center" : "outside");
     let place: LabelPlacement;
 
+    // A bar whose value runs the other way (a negative one, or any on a
+    // reversed axis) ends at its other edge: its labels mirror.
+    const [lo, hi] = this.valuePair(p);
+    const sLo = ctx.yScale.scale(lo ?? 0), sHi = ctx.yScale.scale(hi ?? 0);
     if (this.type === "bar" || ctx.inverted) {
       const cy = rect.y + rect.height / 2;
-      const end = rect.x + rect.width;
+      const flip = sHi < sLo;
+      const end = flip ? rect.x : rect.x + rect.width;
+      const start = flip ? rect.x + rect.width : rect.x;
+      const out = flip ? -1 : 1;
+      const toward = (k: 1 | -1) => (k === 1 ? "start" : "end") as "start" | "end";
       if (pos === "inside")
-        place = { x: end - 4 - d, y: cy, anchor: "end", verticalAlign: "middle" };
+        place = { x: end - out * (4 + d), y: cy, anchor: toward(-out as 1 | -1), verticalAlign: "middle" };
       else if (pos === "center")
         place = {
           x: rect.x + rect.width / 2,
@@ -661,9 +672,9 @@ export class ColumnSeries extends BaseSeries {
           verticalAlign: "middle",
         };
       else if (pos === "base")
-        place = { x: rect.x + 4 + d, y: cy, anchor: "start", verticalAlign: "middle" };
+        place = { x: start + out * (4 + d), y: cy, anchor: toward(out as 1 | -1), verticalAlign: "middle" };
       else
-        place = { x: end + 4 + d, y: cy, anchor: "start", verticalAlign: "middle" }; // outside
+        place = { x: end + out * (4 + d), y: cy, anchor: toward(out as 1 | -1), verticalAlign: "middle" }; // outside
       // Across the bar: hang from its top edge or sit on its bottom edge.
       if (dl.crossAlign === "start")
         place = { ...place, y: rect.y + 1, verticalAlign: "hanging" };
@@ -671,11 +682,17 @@ export class ColumnSeries extends BaseSeries {
         place = { ...place, y: rect.y + rect.height - 2, verticalAlign: undefined };
     } else {
       const cx = rect.x + rect.width / 2;
-      // Rotated, an inside label hangs from just below the column's top.
+      const flip = sHi > sLo;
+      const top = rect.y, bottom = rect.y + rect.height;
+      // Rotated, an inside label hangs from just below the column's end.
       if (pos === "inside")
-        place = dl.rotation
-          ? { x: cx, y: rect.y + 4 + d, anchor: "middle", side: "down" }
-          : { x: cx, y: rect.y + 12 + d, anchor: "middle" };
+        place = flip
+          ? dl.rotation
+            ? { x: cx, y: bottom - 4 - d, anchor: "middle", side: "up" }
+            : { x: cx, y: bottom - 4 - d, anchor: "middle" }
+          : dl.rotation
+            ? { x: cx, y: top + 4 + d, anchor: "middle", side: "down" }
+            : { x: cx, y: top + 12 + d, anchor: "middle" };
       else if (pos === "center")
         place = {
           x: cx,
@@ -684,8 +701,11 @@ export class ColumnSeries extends BaseSeries {
           verticalAlign: "middle",
         };
       else if (pos === "base")
-        place = { x: cx, y: rect.y + rect.height - 5 - d, anchor: "middle" };
-      else place = { x: cx, y: rect.y - 4 - d, anchor: "middle" }; // outside
+        place = flip ? { x: cx, y: top + 12 + d, anchor: "middle" } : { x: cx, y: bottom - 5 - d, anchor: "middle" };
+      // Outside: past the end, under a column that runs down.
+      else place = flip
+        ? { x: cx, y: bottom + 4 + d, anchor: "middle", verticalAlign: "hanging", side: "down" }
+        : { x: cx, y: top - 4 - d, anchor: "middle" };
       // Across the column: line up with its left or right edge, still
       // above or below the coordinate when rotated.
       const side = place.side ?? (place.verticalAlign === "middle" ? undefined : "up");

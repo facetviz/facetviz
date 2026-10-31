@@ -112,6 +112,8 @@ export class LinearScale implements Scale {
 }
 
 export interface LogScaleConfig {
+  /** About how many ticks to keep: past it, every so many decades are dropped. */
+  tickCount?: number;
   domain: [number, number];
   range: [number, number];
   reversed?: boolean;
@@ -208,6 +210,15 @@ export class LogScale implements Scale {
       this.tickValues = niceTicks(lo, hi, 4).filter(
         (t) => t > 0 && t >= lo * (1 - eps) && t <= hi * (1 + eps),
       );
+    }
+    if (!cfg.ticks && cfg.tickCount && cfg.tickCount >= 2 && this.tickValues.length > cfg.tickCount) {
+      const every = Math.ceil(this.tickValues.length / cfg.tickCount);
+      this.tickValues = this.tickValues.filter((_, i) => i % every === 0);
+    } else if (!cfg.ticks && cfg.tickCount && this.tickValues.length < cfg.tickCount) {
+      // More ticks than decades: the 2s and 5s between them too.
+      const more = logTickCandidates(lo, hi, cfg.base).flatMap((t) => [t, t * 2, t * 5]).filter((t) => t >= lo * (1 - eps) && t <= hi * (1 + eps));
+      const uniq = [...new Set(more.map(cleanLog))].sort((a, b) => a - b);
+      if (uniq.length <= cfg.tickCount * 2) this.tickValues = uniq;
     }
     [this.r0, this.r1] = cfg.reversed ? [cfg.range[1], cfg.range[0]] : cfg.range;
     this.format = cfg.format;

@@ -29,6 +29,17 @@ function parseHex(hex: string): [number, number, number] | null {
 }
 
 /** Lighten (amount > 0) or darken (amount < 0) a hex colour by a ratio. */
+/** Light text on a dark fill, dark text on a light one (hex or rgb()). */
+export function textOn(fill: string): string {
+  const hex = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(fill);
+  const rgb = /^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i.exec(fill);
+  const parts = hex ? [hex[1], hex[2], hex[3]].map((h) => parseInt(h, 16)) : rgb ? [rgb[1], rgb[2], rgb[3]].map(Number) : null;
+  if (!parts) return '#fff';
+  const [r, g, b] = parts.map((v) => v / 255);
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return lum > 0.6 ? '#1f2328' : '#fff';
+}
+
 export function shade(hex: string, amount: number): string {
   const rgb = parseHex(hex);
   if (!rgb) return hex;

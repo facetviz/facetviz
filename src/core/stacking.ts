@@ -38,7 +38,13 @@ export function computeStacks(visible: BaseSeries[]): void {
       pointsBySeries.set(s, byKey);
     }
 
+    // Areas whose series cross zero stack on one running (signed) base:
+    // with ups and downs on bases of their own, a series' band would jump
+    // between them from one x to the next and cross the others.
+    const signed = group.every((s) => s.type === 'area' || s.type === 'areaspline') &&
+      group.some((s) => s.points.some((p) => (p.y ?? 0) > 0) && s.points.some((p) => (p.y ?? 0) < 0));
     for (const key of keys) {
+      let runningBase = 0;
       let positiveBase = 0;
       let negativeBase = 0;
       let total = 0;
@@ -55,7 +61,11 @@ export function computeStacks(visible: BaseSeries[]): void {
         if (point.y !== 0) (point.y > 0 ? ends.up : ends.down).push(point);
         let value = point.y;
         if (mode === 'percent' && total > 0) value = (value / total) * 100;
-        if (value >= 0) {
+        if (signed) {
+          point.stackLow = runningBase;
+          point.stackHigh = runningBase + value;
+          runningBase += value;
+        } else if (value >= 0) {
           point.stackLow = positiveBase;
           point.stackHigh = positiveBase + value;
           positiveBase += value;

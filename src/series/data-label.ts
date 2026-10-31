@@ -103,6 +103,21 @@ export function dataLabelTextAttrs(dl: DataLabelOptions | undefined): Record<str
 }
 
 /**
+ * A label drawn inside a cell, tile or stage (heatmap, treemap, funnel):
+ * its fill (the label's `colorOf` / `color`, else the series' own pick for
+ * contrast), size (the label's `fontSize`, else `size`) and text style.
+ */
+export function cellLabelAttrs(
+  dl: DataLabelOptions | undefined,
+  fallbackFill: string,
+  size: string,
+  ctx?: LabelContext,
+): Record<string, string> {
+  const fill = (ctx && dl?.colorOf?.(ctx)) || dl?.color || fallbackFill;
+  return { fill, 'font-size': dl?.fontSize ? dataLabelFontSize(dl) : size, ...dataLabelTextAttrs(dl) };
+}
+
+/**
  * Whether the point at `index` of its series gets a label under
  * `dl.every`: points 0, n, 2n …; every point when unset or below 2.
  */
@@ -160,6 +175,14 @@ export function pointLabelOptions(
 }
 
 /** Draw a single data label with the series' styling options. */
+/** Boxes of the labels drawn so far in a chart's render, per renderer: a
+ * label that would overlap one already there is left out. Only while the
+ * chart has begun a layout (`beginLabelLayout`), so labels drawn on their
+ * own keep drawing. */
+const labelBoxes = new WeakMap<Renderer, Array<{ x: number; y: number; w: number; h: number }>>();
+export function beginLabelLayout(renderer: Renderer): void { labelBoxes.set(renderer, []); }
+export function endLabelLayout(renderer: Renderer): void { labelBoxes.delete(renderer); }
+
 export function drawDataLabel(
   renderer: Renderer,
   parent: SVGElement,
@@ -189,6 +212,19 @@ export function drawDataLabel(
   if (place.verticalAlign) attrs['dominant-baseline'] = place.verticalAlign;
   Object.assign(attrs, dataLabelTextAttrs(dl));
   if (dl.rotation) attrs.transform = `rotate(${dl.rotation} ${place.x} ${place.y})`;
+
+  // Keep clear of labels already drawn (unless the label allows overlap or
+  // is turned, where its box isn't a plain rectangle).
+  const boxes = labelBoxes.get(renderer);
+  if (boxes && !dl.allowOverlap && !dl.rotation) {
+    const size = renderer.measureText(text, attrs as Record<string, string>);
+    const w = Math.max(size.width, dl.backgroundColor ? text.length * 6.5 + 8 : 0);
+    const h = Math.max(size.height || parseFloat(String(attrs['font-size'])) || 11, 11);
+    const x = anchor === 'start' ? place.x : anchor === 'end' ? place.x - w : place.x - w / 2;
+    const y = place.verticalAlign === 'middle' ? place.y - h / 2 : place.verticalAlign === 'hanging' ? place.y : place.y - h * 0.8;
+    if (boxes.some((b) => x < b.x + b.w - 1 && b.x < x + w - 1 && y < b.y + b.h - 1 && b.y < y + h - 1)) return;
+    boxes.push({ x, y, w, h });
+  }
 
   if (dl.backgroundColor) {
     // Approximate chip sized from the text length.

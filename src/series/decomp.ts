@@ -76,12 +76,23 @@ export class DecompSeries extends BaseSeries {
       const x = plot.x + ci * colW;
       const head = o.levels?.[ci] ?? '';
       if (head) renderer.text(head, x, plot.y + 12, { ...FONTS.axisTitle, 'font-size': scaledFontPx(12), 'font-weight': 600, 'dominant-baseline': 'middle' }, g);
-      const nodes = byLevel.get(l)!.slice(0, fit);
+      // Past the room, the opened node and a “more” node always stay (else
+      // the next column loses its links); the rest that don't fit are
+      // counted in a “+k not shown” line under the column.
+      const all = byLevel.get(l)!;
+      let nodes = all;
+      if (all.length > fit) {
+        const must = all.filter((p) => p.options.opened || p.options.more);
+        const rest = all.filter((p) => !must.includes(p)).slice(0, Math.max(0, fit - 1 - must.length));
+        const keep = new Set([...rest, ...must]);
+        nodes = all.filter((p) => keep.has(p));
+      }
+      const hidden = all.length - nodes.length;
       const max = Math.max(...nodes.map((p) => Math.abs(p.y ?? 0)), 0);
       // A column shorter than the one before sits level with its opened node.
       const prev = placed[ci - 1];
       const opened = prev?.find((n) => n.p.options.opened);
-      const height = nodes.length * (NODE_H + GAP) - GAP;
+      const height = (nodes.length + (hidden ? 1 : 0)) * (NODE_H + GAP) - GAP;
       let y0 = top;
       if (opened) y0 = Math.max(top, Math.min(opened.y + NODE_H / 2 - height / 2, plot.y + plot.height - height));
       const col: { p: Point; x: number; y: number }[] = [];
@@ -110,6 +121,11 @@ export class DecompSeries extends BaseSeries {
         node.addEventListener('mouseout', (e: Event) => ctx.onPointEvent('mouseOut', p, e));
         col.push({ p, x, y });
       });
+      if (hidden) {
+        renderer.text(`+${hidden} not shown`, x + 4, y0 + nodes.length * (NODE_H + GAP) + 11, {
+          ...FONTS.axisLabel, 'font-size': scaledFontPx(11), 'font-style': 'italic', 'dominant-baseline': 'middle', class: 'facet-decomp-hidden',
+        }, g);
+      }
       // Curves from the opened node to each of its parts.
       if (opened) {
         const x1 = opened.x + barW;

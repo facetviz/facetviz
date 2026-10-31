@@ -109,6 +109,14 @@ export class LineSeries extends BaseSeries {
         'stroke-linecap': 'round',
         ...(this.options.dashStyle ? { 'stroke-dasharray': this.options.dashStyle } : {}),
       }, marks);
+      // A lone point between gaps has no line to draw: without markers it
+      // would vanish, so it gets a dot as wide as the line.
+      if (segment.length === 1 && this.options.marker?.enabled !== true) {
+        const w = this.options.lineWidth ?? this.options.size ?? 2;
+        renderer.create('circle', {
+          cx: segment[0].pt.x, cy: segment[0].pt.y, r: Math.max(2, w), fill: segment[0].p.color ?? this.color, class: 'facet-line-lone',
+        }, marks);
+      }
     }
 
     this.renderMarkers(ctx, marks, data);

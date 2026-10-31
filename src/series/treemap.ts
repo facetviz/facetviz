@@ -9,7 +9,8 @@
  */
 
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
-import { paletteColor, shade } from '../core/colors.js';
+import { paletteColor, shade, textOn } from '../core/colors.js';
+import { cellLabelAttrs } from './data-label.js';
 import { FONTS } from '../core/defaults.js';
 import { scaledFontPx } from '../core/theme.js';
 import type { Point } from '../core/point.js';
@@ -85,14 +86,6 @@ export function squarify(values: number[], rect: TreemapRect): TreemapRect[] {
   return out;
 }
 
-/** Light text on a dark fill, dark text on a light one. */
-function textOn(fill: string): string {
-  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(fill);
-  if (!m) return '#fff';
-  const [r, g, b] = [m[1], m[2], m[3]].map((h) => parseInt(h, 16) / 255);
-  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  return lum > 0.6 ? '#1f2328' : '#fff';
-}
 
 /** `text` cut to about `width` px at the label size, with an ellipsis. */
 function fit(text: string, width: number): string {
@@ -159,7 +152,7 @@ export class TreemapSeries extends BaseSeries {
         const fill = n.point?.color ?? (base ? shade(own, n.depth * 0.1 + (i % 3) * 0.05) : own);
         if (n.children.length) {
           const frame = renderer.create('rect', {
-            x: r.x, y: r.y, width: r.width, height: r.height, fill: shade(own, -0.15), stroke: '#fff', 'stroke-width': 1, class: 'facet-point facet-treemap-group',
+            x: r.x, y: r.y, width: r.width, height: r.height, fill: shade(own, -0.15), stroke: ctx.background ?? '#fff', 'stroke-width': 1, class: 'facet-point facet-treemap-group',
           }, g);
           wire(frame, n);
           const header = r.height > HEADER * 2 && r.width > 24 ? HEADER : 0;
@@ -176,18 +169,20 @@ export class TreemapSeries extends BaseSeries {
           return;
         }
         const el = renderer.create('rect', {
-          x: r.x, y: r.y, width: r.width, height: r.height, fill, stroke: '#fff', 'stroke-width': 1, class: 'facet-point',
+          x: r.x, y: r.y, width: r.width, height: r.height, fill, stroke: ctx.background ?? '#fff', 'stroke-width': 1, class: 'facet-point',
         }, g);
         wire(el, n);
         if (labels && r.width > 36 && r.height > 18) {
-          const color = textOn(fill);
+          const p = n.point;
+          const lctx = p ? { x: p.x ?? '', y: n.value, point: p.options, series: this.name, name: n.name, index: p.index, color: fill } : undefined;
+          const style = { ...FONTS.dataLabel, ...cellLabelAttrs(dl, textOn(fill), scaledFontPx(10), lctx) };
           const name = fit(n.name, r.width - 8);
           const ox = r.x + 4 + (dl?.offsetX || 0);
           const oy = r.y + (dl?.offsetY || 0);
-          if (name) renderer.text(name, ox, oy + 12, { ...FONTS.dataLabel, fill: color, 'font-size': scaledFontPx(10) }, g);
+          if (name) renderer.text(name, ox, oy + 12, style, g);
           if (r.height > 34) {
             const v = fit(valueText(n, fill), r.width - 8);
-            if (v) renderer.text(v, ox, oy + 26, { ...FONTS.dataLabel, fill: color, 'font-size': scaledFontPx(10), opacity: 0.85 }, g);
+            if (v) renderer.text(v, ox, oy + 26, { ...style, opacity: style.opacity ?? 0.85 }, g);
           }
         }
       });

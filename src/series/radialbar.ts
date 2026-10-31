@@ -7,6 +7,7 @@
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
 import { paletteColor, alpha } from '../core/colors.js';
 import { FONTS } from '../core/defaults.js';
+import { cellLabelAttrs } from './data-label.js';
 import { scaledFontPx } from '../core/theme.js';
 import { roundedSectorPath } from './polar.js';
 
@@ -67,6 +68,7 @@ export class RadialBarSeries extends BaseSeries {
     }
     const startAngle = (startAngleDegrees * Math.PI) / 180;
     const fullSweep = (sweepDegrees * Math.PI) / 180;
+    const labelStep = Math.max(1, Math.ceil(12 / Math.max(ringWidth, 0.1)));
     // Common x for every category label so they stack in a vertical column.
     const labelX = cx - 8;
 
@@ -92,10 +94,14 @@ export class RadialBarSeries extends BaseSeries {
       // Ring geometry always draws; only the label backs off on a chart too
       // small for data-style labels (see `Chart.suppressDataLabels`).
       if (ctx.suppressDataLabels) return;
+      // Rings thinner than a line of text label only every so many, so
+      // neighbouring labels don't pile on each other.
+      if (index % labelStep) return;
       renderer.text(label, labelX, cy - (rInner + rOuter) / 2 + 4, {
         'text-anchor': 'end',
         ...FONTS.dataLabel,
-        'font-size': scaledFontPx(10),
+        // Its size, colour and text style from the series' dataLabels.
+        ...cellLabelAttrs(this.options.dataLabels, FONTS.dataLabel.fill, scaledFontPx(10)),
         class: 'facet-radialbar-label',
       }, g);
     };

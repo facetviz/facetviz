@@ -727,7 +727,7 @@ describe('configuration option wiring', () => {
     const labels = [...el.querySelectorAll<SVGTextElement>('.facet-pie text')];
     const large = labels.find((label) => label.textContent === 'Large');
     const small = labels.find((label) => label.textContent === 'A label too wide for this small sector');
-    expect(large?.getAttribute('fill')).toBe('#ffffff');
+    expect(large?.getAttribute('fill')).toBe('#fff');
     expect(small?.getAttribute('fill')).toBe('#333333');
     expect(el.querySelectorAll('.facet-pie polyline')).toHaveLength(1);
   });

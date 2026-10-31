@@ -56,6 +56,10 @@ export interface SeriesRenderContext {
    * so they decline at the same chart size a data-label-driven series would.
    */
   suppressDataLabels: boolean;
+  /** The theme's background colour: separators between touching pieces
+   * (slices, rings, tiles, stages) are drawn in it, so they read in dark
+   * mode too. */
+  background?: string;
 }
 
 /**
