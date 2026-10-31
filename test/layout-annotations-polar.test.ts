@@ -332,6 +332,21 @@ describe("layout, annotations, responsive rules, and polar projection", () => {
     ).toContain("chart.polar_grid_shape.unknown");
   });
 
+  it("formats polar ring and spoke labels with the axes' own formatters", () => {
+    const element = container();
+    new FacetViz(element, {
+      chart: { ...chart, type: "line", polar: true },
+      xAxis: { categories: ["n", "e", "s", "w"], labels: { formatter: (v) => String(v).toUpperCase() } },
+      yAxis: { min: 0, max: 40000000, labels: { formatter: (v) => `${Number(v) / 1e6}M` } },
+      series: [{ data: [10e6, 20e6, 30e6, 40e6] }],
+    });
+    const values = [...element.querySelectorAll(".facet-polar-value-label")].map((n) => n.textContent);
+    expect(values).toContain("40M");
+    expect(values.some((v) => v === "40000000")).toBe(false);
+    const spokes = [...element.querySelectorAll(".facet-polar-category-label")].map((n) => n.textContent);
+    expect(spokes).toEqual(["N", "E", "S", "W"]);
+  });
+
   it("leaves a polar line with a gap open", () => {
     const element = container();
     new FacetViz(element, {

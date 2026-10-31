@@ -3235,6 +3235,14 @@ export class FacetViz {
     });
     const xTicks = xScale.ticks();
     const yTicks = yScale.ticks();
+    // An axis's own label formatter or format, as on a flat chart.
+    const tickText = (scale: Scale, options: AxisOptions, tick: number | string) => {
+      if (options.labels?.formatter) return String(options.labels.formatter(tick));
+      const base = scale.tickLabel(tick);
+      return options.labels?.format
+        ? formatString(options.labels.format, { value: typeof tick === "number" ? tick : base })
+        : base;
+    };
     const annotationProject = inverted
       ? (radial: number, angle: number) => project(angle, radial)
       : project;
@@ -3254,7 +3262,7 @@ export class FacetViz {
         if (radial < 0 || radial > radius + 0.5) continue;
         const label = project(-Math.PI / 2, radial);
         this.renderer.text(
-          xScale.tickLabel(tick),
+          tickText(xScale, xOptions, tick),
           label.x + (xOptions.labels?.offset ?? 6),
           label.y + 4,
           {
@@ -3329,7 +3337,7 @@ export class FacetViz {
             },
             text,
           );
-          textPath.textContent = xScale.tickLabel(tick);
+          textPath.textContent = tickText(xScale, xOptions, tick);
         }
         return;
       }
@@ -3339,7 +3347,7 @@ export class FacetViz {
         const label = project(angle, labelRadius);
         const cosine = Math.cos(angle);
         this.renderer.text(
-          xScale.tickLabel(tick),
+          tickText(xScale, xOptions, tick),
           label.x,
           label.y,
           {
@@ -3529,7 +3537,7 @@ export class FacetViz {
             );
             const cosine = Math.cos(angle);
             this.renderer.text(
-              yScale.tickLabel(tick),
+              tickText(yScale, yOptions, tick),
               label.x,
               label.y,
               {
@@ -3588,7 +3596,7 @@ export class FacetViz {
             // category label above the top spoke; a halo keeps it clear of
             // the grid lines.
             this.renderer.text(
-              yScale.tickLabel(tick),
+              tickText(yScale, yOptions, tick),
               center.x + 4,
               center.y - radial + 3,
               {
