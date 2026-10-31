@@ -1060,7 +1060,10 @@ series: [{
 
 A gauge series renders one dial for every point in `data`. It defaults to a
 180° arc, but `startAngle` and `endAngle` can define any positive sweep up to
-a complete circle. Dials are
+a complete circle (`135`–`405` for a three-quarter dial open at the bottom,
+`270`–`630` for a full circle from 12 o'clock). An arc other than the half
+circle is sized to fit its own extent, its end labels under its ends and, when
+wider than a half, the value at its centre. Dials are
 arranged left-to-right by default and top-to-bottom with
 `chart.inverted: true`. Values outside `min`–`max` are clamped when rendered.
 

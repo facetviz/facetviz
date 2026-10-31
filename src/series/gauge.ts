@@ -156,6 +156,23 @@ function pointOnCircle(
   return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
 }
 
+/** The box (unit radius, centre at 0,0) holding an arc from `s` to `e`
+ * degrees and its centre: its ends and the 3/6/9/12 o'clock points it
+ * passes. */
+function arcExtent(s: number, e: number): { x0: number; x1: number; y0: number; y1: number } {
+  const xs = [0];
+  const ys = [0];
+  const add = (deg: number) => {
+    const a = (deg * Math.PI) / 180;
+    xs.push(Math.cos(a));
+    ys.push(Math.sin(a));
+  };
+  add(s);
+  add(e);
+  for (let k = Math.ceil(s / 90) * 90; k <= e; k += 90) add(k);
+  return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+}
+
 /** Band thickness in pixels: a number as is, a percentage string of the
  * radius, else the automatic ~18% (at least 4px). */
 function gaugeThickness(thickness: number | string | undefined, radius: number): number {
@@ -242,13 +259,29 @@ export class GaugeSeries extends BaseSeries {
     const isFullCircle = SWEEP_DEG >= 360 - 1e-6;
     const namePosition = opts.namePosition ?? "center";
 
-    const cx = plot.x + plot.width / 2;
-    // A semicircle sits above a lower centre; a full circle needs equal room
-    // on every side of a true centre.
-    const cy = plot.y + plot.height * (isFullCircle ? 0.5 : 0.7);
-    const radius = isFullCircle
+    // The default semicircle (9 to 3 o'clock) sits above a lower centre; a
+    // full circle needs equal room on every side of a true centre; any other
+    // arc is fitted by its own extent (ends, the 3/6/9/12 o'clock points it
+    // passes, and the centre), with room under it for the end labels.
+    const isHalf = START_DEG === 180 && END_DEG === 360;
+    // Wider than a half: the value sits at the centre, as in a full circle.
+    const isWide = SWEEP_DEG > 180 + 1e-6;
+    let cx = plot.x + plot.width / 2;
+    let cy = plot.y + plot.height * (isFullCircle ? 0.5 : 0.7);
+    let radius = isFullCircle
       ? Math.min(plot.width, plot.height) * 0.42
       : Math.min(plot.width * 0.42, plot.height * 0.55);
+    if (!isHalf && !isFullCircle) {
+      const ext = arcExtent(START_DEG, END_DEG);
+      // Room under the ends for their labels, which drop by half the band
+      // (its thickness follows the radius: sized twice).
+      const fit = (below: number) => Math.max(4, Math.min((plot.width * 0.84) / (ext.x1 - ext.x0), (plot.height - below - 8) / (ext.y1 - ext.y0)));
+      const below = Math.min(gaugeThickness(opts.thickness, fit(22)), fit(22) * 0.8) / 2 + 22;
+      radius = fit(below);
+      const used = (ext.y1 - ext.y0) * radius + below;
+      cx = plot.x + plot.width / 2 - ((ext.x0 + ext.x1) / 2) * radius;
+      cy = plot.y + (plot.height - used) / 2 - ext.y0 * radius;
+    }
     const requestedThickness = gaugeThickness(opts.thickness, radius);
     const thickness = Math.min(requestedThickness, radius * 0.8);
     const rOuter = radius;
@@ -468,6 +501,9 @@ export class GaugeSeries extends BaseSeries {
       const labelRadius = isFullCircle
         ? rOuter + Math.max(14, thickness * 0.75)
         : rOuter - (rOuter - rInner) / 2;
+      // Under each end: a slanted end (any arc but the half) reaches lower,
+      // by half the band's thickness.
+      const endLabelDrop = isFullCircle ? 4 : isHalf ? 20 : thickness / 2 + 14;
       const minPt = pointOnCircle(
         cx, cy, labelRadius, isFullCircle ? START_DEG - 18 : START_DEG,
       );
@@ -475,7 +511,7 @@ export class GaugeSeries extends BaseSeries {
         renderer.text(
           minLabel,
           minPt.x,
-          minPt.y + (isFullCircle ? 4 : 20),
+          minPt.y + endLabelDrop,
           {
             "text-anchor": "middle",
             ...FONTS.dataLabel,
@@ -493,7 +529,7 @@ export class GaugeSeries extends BaseSeries {
         renderer.text(
           maxLabel,
           maxPt.x,
-          maxPt.y + (isFullCircle ? 4 : 20),
+          maxPt.y + endLabelDrop,
           {
             "text-anchor": "middle",
             ...FONTS.dataLabel,
@@ -522,7 +558,7 @@ export class GaugeSeries extends BaseSeries {
         ? cy + rInner * 0.5
         : cy + hubRadius + centerFontSize + 2
       : namePosition === "center"
-        ? isFullCircle
+        ? isFullCircle || isWide
           ? cy - 4
           : cy - rInner / 2 + centerFontSize / 2
         : cy;
@@ -535,6 +571,9 @@ export class GaugeSeries extends BaseSeries {
         ...FONTS.title,
         "font-size": `${centerFontSize}px`,
         fill: THEME.axis.titleColor,
+        // Round a full circle the needle can cross the value: an outline in
+        // the background keeps it readable.
+        ...(needle && isFullCircle ? { stroke: THEME.backgroundColor, "stroke-width": 3, "paint-order": "stroke", "stroke-linejoin": "round" } : {}),
         class: "facet-gauge-value",
       },
       g,
@@ -550,7 +589,7 @@ export class GaugeSeries extends BaseSeries {
           ? plot.y + plot.height - nameFontSize / 2
           : needle
             ? valueY + nameFontSize + 2
-            : isFullCircle
+            : isFullCircle || isWide
             ? cy + centerFontSize + 4
             : cy;
       renderer.text(
