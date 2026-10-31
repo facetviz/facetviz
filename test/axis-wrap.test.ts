@@ -25,13 +25,16 @@ describe('wrapped axis labels', () => {
 
   it('breaks a label too wide for its slot onto two lines with labels.wrap', () => {
     const el = render({ xAxis: { categories: ['Home Office', 'Consumer', 'Corporate'], labels: { wrap: true } } }, 260);
-    const home = labels(el).find((t) => t.textContent?.replace(/\s/g, '') === 'HomeOffice');
-    expect(home).toBeTruthy();
-    expect([...home!.querySelectorAll('tspan')].map((s) => s.textContent)).toEqual(['Home', 'Office']);
+    // Each line its own text, hanging from its top (WebKit drops the
+    // baseline in tspans, lifting the first line over the axis).
+    const home = labels(el).filter((t) => t.getAttribute('data-fv-path') === 'Home Office');
+    expect(home.map((t) => t.textContent)).toEqual(['Home', 'Office']);
+    expect(home.every((t) => t.getAttribute('dominant-baseline') === 'hanging' && !t.querySelector('tspan'))).toBe(true);
+    expect(Number(home[1].getAttribute('y'))).toBeGreaterThan(Number(home[0].getAttribute('y')));
   });
 
   it('cuts labels short as before without it', () => {
     const el = render({}, 150);
-    expect(labels(el).some((t) => t.querySelector('tspan'))).toBe(false);
+    expect(new Set(labels(el).map((t) => t.getAttribute('data-fv-path'))).size).toBe(labels(el).length);
   });
 });

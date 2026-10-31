@@ -75,6 +75,21 @@ export interface ColumnOptions {
 const clampPadding = (v: number | undefined, fallback: number) =>
   v == null || !Number.isFinite(v) ? fallback : Math.min(0.95, Math.max(0, v));
 
+/** A bar's shape drawn inside its rectangle by half its outline's width, so
+ *  the outline (centred on the edge) ends on the bar's value and the zero
+ *  line instead of spilling past them. `by` is how far it moved in. */
+function insetForBorder(
+  rect: { x: number; y: number; width: number; height: number },
+  strokeWidth: number | undefined,
+): { inner: { x: number; y: number; width: number; height: number }; by: number } {
+  const by = Math.max(0, Math.min((strokeWidth ?? 0) / 2, rect.width / 2, rect.height / 2));
+  if (!by) return { inner: rect, by: 0 };
+  return {
+    inner: { x: rect.x + by, y: rect.y + by, width: rect.width - 2 * by, height: rect.height - 2 * by },
+    by,
+  };
+}
+
 /** Rect path with only the two corners on `side` rounded; the opposite pair
  *  stays square. `side` names the edge whose corners get rounded, or `all`. */
 function roundedBarPath(
@@ -178,14 +193,16 @@ export class ColumnSeries extends BaseSeries {
     this.labelEnds = undefined;
     for (const { p, rect, fill, borderRadius, side } of this.bars(ctx)) {
       let el: SVGElement;
+      const border = this.borderAttr(fill);
+      const { inner, by } = insetForBorder(rect, border["stroke-width"]);
       if (borderRadius > 0) {
         el = ctx.renderer.create(
           "path",
           {
-            d: roundedBarPath(rect, borderRadius, side),
+            d: roundedBarPath(inner, borderRadius - by, side),
             fill,
             ...this.fillOpacityAttr(),
-            ...this.borderAttr(fill),
+            ...border,
             class: "facet-point",
           },
           g,
@@ -193,7 +210,7 @@ export class ColumnSeries extends BaseSeries {
       } else {
         el = ctx.renderer.create(
           "rect",
-          { ...rect, rx: 1, fill, ...this.fillOpacityAttr(), ...this.borderAttr(fill), class: "facet-point" },
+          { ...inner, rx: by ? 0 : 1, fill, ...this.fillOpacityAttr(), ...border, class: "facet-point" },
           g,
         );
       }
@@ -229,24 +246,26 @@ export class ColumnSeries extends BaseSeries {
       return hits;
     }
     for (const { p, rect, fill, borderRadius, side } of bars) {
-      // As the SVG rect's `rx: 1`, where a bar is wide and tall enough.
+      const border = this.borderAttr(fill);
+      const { inner, by } = insetForBorder(rect, border["stroke-width"]);
+      // As the SVG rect's `rx: 1`, where a bar is wide and tall enough
+      // and has no outline (one would round it past the zero line).
       let shape: Path2D | null = null;
-      if (borderRadius > 0) shape = new Path2D(roundedBarPath(rect, borderRadius, side));
-      else if (rect.width >= 2 && rect.height >= 2 && typeof Path2D.prototype.roundRect === "function") {
+      if (borderRadius > 0) shape = new Path2D(roundedBarPath(inner, borderRadius - by, side));
+      else if (!by && inner.width >= 2 && inner.height >= 2 && typeof Path2D.prototype.roundRect === "function") {
         shape = new Path2D();
-        shape.roundRect(rect.x, rect.y, rect.width, rect.height, 1);
+        shape.roundRect(inner.x, inner.y, inner.width, inner.height, 1);
       }
       c.globalAlpha = opacity;
       c.fillStyle = fill;
       if (shape) c.fill(shape);
-      else c.fillRect(rect.x, rect.y, rect.width, rect.height);
+      else c.fillRect(inner.x, inner.y, inner.width, inner.height);
       c.globalAlpha = 1;
-      const border = this.borderAttr(fill);
       if (border.stroke) {
         c.strokeStyle = border.stroke;
         c.lineWidth = border["stroke-width"] ?? 1;
         if (shape) c.stroke(shape);
-        else c.strokeRect(rect.x, rect.y, rect.width, rect.height);
+        else c.strokeRect(inner.x, inner.y, inner.width, inner.height);
       }
       hits.push({ point: p, x: rect.x + rect.width / 2, y: rect.y, rect });
       if (g) this.drawDataLabel(ctx, p, rect, g);

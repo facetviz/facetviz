@@ -757,12 +757,19 @@ export class Axis {
       ...style,
     }, g);
     if (lines) {
-      // Two lines: the first as drawn, the second under it.
-      el.textContent = '';
-      lines.forEach((line, i) => {
-        const span = renderer.create('tspan', { x, ...(i ? { dy: '1.15em' } : {}) }, el);
-        span.textContent = line;
-      });
+      // Two lines: the first as drawn, the second its own text under it.
+      // Not tspans: WebKit doesn't carry the hanging baseline into them, so
+      // the first line would rise over the axis.
+      const size = parseFloat(style['font-size'] ?? '') || 12;
+      const second = renderer.text(lines[1], x, y + size * 1.15, {
+        'text-anchor': anchor,
+        'dominant-baseline': baseline,
+        ...style,
+      }, g);
+      if (category !== undefined) {
+        second.classList.add('facet-axis-label');
+        second.setAttribute('data-fv-path', category);
+      }
     }
     if (rotation) el.setAttribute('transform', `rotate(${rotation} ${x} ${y})`);
     if (category !== undefined) {

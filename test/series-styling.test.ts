@@ -158,6 +158,21 @@ describe('series borders', () => {
     expect(el.querySelector('.facet-column.P .facet-point')!.getAttribute('stroke')).toBeNull();
   });
 
+  it('keeps a bar outline inside the bar, so it stops on the zero line', () => {
+    const el = render({
+      chart: { type: 'column' },
+      xAxis: { categories: ['A', 'B'] },
+      series: [{ name: 'B', borderWidth: 8, data: [1, 2] }, { name: 'P', data: [1, 2] }],
+    });
+    const box = (r: Element) => ['y', 'width', 'height'].map((k) => Number(r.getAttribute(k)));
+    const [y, w, h] = box(el.querySelector('.facet-column.B .facet-point')!);
+    const [py, pw, ph] = box(el.querySelector('.facet-column.P .facet-point')!);
+    // Moved in by half the outline: its outer edge is the plain bar's.
+    expect(y - 4).toBeCloseTo(py, 6);
+    expect(y + h + 4).toBeCloseTo(py + ph, 6);
+    expect(w + 8).toBeCloseTo(pw, 6);
+  });
+
   it('rounds both ends of a column with borderRadiusEnds both', () => {
     const el = render({
       chart: { type: 'column' },
