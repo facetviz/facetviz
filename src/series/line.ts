@@ -2,10 +2,10 @@
 
 import { BaseSeries, SeriesCapabilities, SeriesRenderContext } from './base.js';
 import type { Point } from '../core/point.js';
-import { linePath, splinePath, stepPath, Pt } from './paths.js';
+import { closedSplinePath, linePath, polarStepPath, splinePath, stepPath, Pt } from './paths.js';
 import { drawMarker } from './marker.js';
 import { drawPointLabels } from './data-label.js';
-import { polarPoint } from "./polar.js";
+import { polarCenter, polarPoint } from "./polar.js";
 
 let blendGradientId = 0;
 
@@ -62,6 +62,23 @@ export class LineSeries extends BaseSeries {
     }
   }
 
+  /**
+   * One segment's path. On a polar chart a step holds each value as an arc
+   * and a closed spline stays smooth where the last point meets the first.
+   */
+  protected segmentPath(ctx: SeriesRenderContext, segment: Array<{ pt: Pt; p: Point }>, closed: boolean): string {
+    const pts = segment.map((d) => d.pt);
+    if (ctx.polar && !ctx.inverted && this.type === 'step') {
+      return polarStepPath(
+        polarCenter(ctx),
+        segment.map(({ p }) => ({ angle: ctx.xScale.scale(p.x), radius: ctx.yScale.scale(p.stackHigh ?? p.y ?? 0) })),
+        closed,
+      );
+    }
+    if (!closed) return this.buildPath(pts);
+    return this.type === 'spline' ? closedSplinePath(pts) : `${linePath(pts)} Z`;
+  }
+
   override render(ctx: SeriesRenderContext): void {
     const { renderer } = ctx;
     const opacity = this.options.opacity;
@@ -81,12 +98,10 @@ export class LineSeries extends BaseSeries {
       return;
     }
     for (const segment of segments) {
-      const points =
-        ctx.polar && !ctx.inverted && segments.length === 1 && segment.length > 2
-          ? [...segment.map((d) => d.pt), segment[0].pt]
-          : segment.map((d) => d.pt);
+      // A polar line with no gaps goes all the way round.
+      const closed = ctx.polar && !ctx.inverted && segments.length === 1 && segment.length > 2;
       renderer.create('path', {
-        d: this.buildPath(points),
+        d: this.segmentPath(ctx, segment, closed),
         fill: 'none',
         stroke: this.color,
         'stroke-width': this.options.lineWidth ?? this.options.size ?? 2,

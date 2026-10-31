@@ -7,7 +7,7 @@
 import { LineSeries } from './line.js';
 import { CanvasHit, SeriesRenderContext } from './base.js';
 import { alpha } from '../core/colors.js';
-import { linePath, splinePath, Pt } from './paths.js';
+import { closedSplinePath, linePath, splinePath, Pt } from './paths.js';
 import type { Point } from '../core/point.js';
 import { drawPointLabels } from './data-label.js';
 import { polarPoint } from "./polar.js";
@@ -85,22 +85,28 @@ export class AreaSeries extends LineSeries {
         ? ctx.xScale
         : ctx.yScale;
 
+    // A polar area with no gaps goes all the way round: its fill is the ring
+    // between the closed top and the closed floor.
+    const round =
+      ctx.polar &&
+      !ctx.inverted &&
+      this.points.length > 2 &&
+      this.points.every((p) => (p.stackHigh ?? p.y) !== undefined);
     const drawSegment = () => {
       if (!top.length) return;
       const line = this.smooth() ? splinePath : linePath;
+      const loop = (pts: Pt[]) => (this.smooth() ? closedSplinePath(pts) : `${linePath(pts)} Z`);
       const reversedBottom = [...bottom].reverse();
-      const topD = line(top);
+      const topD = round ? loop(top) : line(top);
       const bottomD = line(reversedBottom).replace(/^M/, 'L');
       renderer.create('path', {
-        d: `${topD} ${bottomD} Z`,
+        d: round ? `${topD} ${loop(reversedBottom)}` : `${topD} ${bottomD} Z`,
         fill,
         stroke: 'none',
+        ...(round ? { 'fill-rule': 'evenodd' } : {}),
       }, g);
       renderer.create('path', {
-        d:
-          ctx.polar && !ctx.inverted && top.length > 2
-            ? line([...top, top[0]])
-            : topD,
+        d: topD,
         fill: 'none',
         stroke: this.color,
         'stroke-width': this.options.lineWidth ?? this.options.size ?? 2,

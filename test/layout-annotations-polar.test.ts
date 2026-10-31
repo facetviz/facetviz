@@ -254,6 +254,65 @@ describe("layout, annotations, responsive rules, and polar projection", () => {
     expect(dumbbellElement.innerHTML).not.toContain("NaN");
   });
 
+  it("keeps polar value labels inside their rings, clear of the top category label", () => {
+    const element = container();
+    new FacetViz(element, {
+      chart: { ...chart, type: "line", polar: true },
+      xAxis: { categories: ["Jan", "Feb", "Mar", "Apr"] },
+      yAxis: { min: 0, max: 100 },
+      series: [{ data: [40, 60, 80, 100] }],
+    });
+    const top = [...element.querySelectorAll<SVGTextElement>(".facet-polar-category-label")]
+      .find((node) => node.textContent === "Jan")!;
+    const outer = [...element.querySelectorAll<SVGTextElement>(".facet-polar-value-label")]
+      .find((node) => node.textContent === "100")!;
+    const ring = [...element.querySelectorAll<SVGCircleElement>(".facet-polar-ring")]
+      .reduce((a, b) => (Number(b.getAttribute("r")) > Number(a.getAttribute("r")) ? b : a));
+    const ringTop = Number(ring.getAttribute("cy")) - Number(ring.getAttribute("r"));
+    expect(outer.getAttribute("dominant-baseline")).toBe("hanging");
+    expect(Number(outer.getAttribute("y"))).toBeGreaterThan(ringTop);
+    expect(Number(top.getAttribute("y"))).toBeLessThan(ringTop);
+  });
+
+  it("closes polar spline, step and area spline loops", () => {
+    const path = (type: "spline" | "step" | "areaspline") => {
+      const element = container();
+      new FacetViz(element, {
+        chart: { ...chart, type, polar: true },
+        xAxis: { categories: ["N", "E", "S", "W"] },
+        series: [{ data: [4, 7, 5, 8] }],
+      });
+      return element;
+    };
+    const spline = path("spline").querySelector(".facet-line path")!.getAttribute("d")!;
+    // Four curves: three between points and one from the last back to the first.
+    expect(spline.match(/C/g)).toHaveLength(4);
+    expect(spline.trim().endsWith("Z")).toBe(true);
+
+    // A step holds each value on an arc: two arcs per step, four steps round.
+    const step = path("step").querySelector(".facet-line path")!.getAttribute("d")!;
+    expect(step.match(/A/g)).toHaveLength(8);
+    expect(step.trim().endsWith("Z")).toBe(true);
+    expect(step).not.toContain("NaN");
+
+    const area = path("areaspline");
+    const fill = area.querySelector(".facet-area path[fill-rule='evenodd']")!;
+    expect(fill.getAttribute("d")!.match(/Z/g)).toHaveLength(2);
+    const outline = area.querySelector(".facet-area path[fill='none']")!.getAttribute("d")!;
+    expect(outline.trim().endsWith("Z")).toBe(true);
+  });
+
+  it("leaves a polar line with a gap open", () => {
+    const element = container();
+    new FacetViz(element, {
+      chart: { ...chart, type: "step", polar: true },
+      xAxis: { categories: ["N", "E", "S", "W"] },
+      series: [{ data: [4, 7, null, 8] }],
+    });
+    const paths = [...element.querySelectorAll(".facet-line path")].map((node) => node.getAttribute("d")!);
+    expect(paths.some((d) => d.includes("Z"))).toBe(false);
+  });
+
   it("creates a donut-style polar chart with a configurable centre fill", () => {
     const element = container();
     new FacetViz(element, {

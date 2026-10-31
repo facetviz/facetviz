@@ -3571,14 +3571,22 @@ export class FacetViz {
             axes,
           );
           if (yOptions.labels?.enabled !== false) {
+            // Just inside its ring, so the outer value never meets the
+            // category label above the top spoke; a halo keeps it clear of
+            // the grid lines.
             this.renderer.text(
               yScale.tickLabel(tick),
               center.x + 4,
-              center.y - radial - 3,
+              center.y - radial + 3,
               {
                 ...FONTS.axisLabel,
                 ...sanitizeStyle(yOptions.labels?.style),
                 fill: THEME.axis.labelColor,
+                stroke: holeColor,
+                "stroke-width": 3,
+                "stroke-linejoin": "round",
+                "paint-order": "stroke",
+                "dominant-baseline": "hanging",
                 class: "facet-polar-value-label",
               },
               axes,
