@@ -2655,6 +2655,15 @@ export class FacetViz {
         : this.continuousX(xOpts, this.xNumericDomain(t.sharedX === false && cellSeries.length ? cellSeries : allVisible), catRange, !inverted && lastColumn > 0, inverted, this.xMinGap(allVisible));
       const valRange: [number, number] = inverted ? [cell.x, cell.x + cell.width] : [cell.y + cell.height, cell.y];
       const measureId = measureOfPane.get(pane.key) ?? 0;
+      // Plot lines and bands of one panel (`panel`) are left out of the others.
+      const here: Record<string, string> = {};
+      if (rowDim) here[rowDim] = String(grid.rows.leaves[row]?.values[0] ?? "");
+      if (colDim) here[colDim] = String(grid.columns.leaves[column]?.values[0] ?? "");
+      const inPanel = (o: { panel?: Record<string, string> }) => !o.panel || Object.entries(o.panel).every(([f, v]) => here[f] === String(v));
+      const panelOnly = (o: AxisOptions): AxisOptions =>
+        !o.plotLines?.some((l) => l.panel) && !o.plotBands?.some((b) => b.panel)
+          ? o
+          : { ...o, plotLines: o.plotLines?.filter(inPanel), plotBands: o.plotBands?.filter(inPanel) };
       // Short panes still get a few ticks to read values by: about one per
       // 28px of the pane (one more where the top tick is dropped below), or
       // across a bar chart's, one per 70px.
@@ -2666,7 +2675,7 @@ export class FacetViz {
             // Across a narrow pane, labels need more room than up a short one.
             ? { ...o, tickCount: Math.max(2, Math.min(6, Math.round(paneSpan / 70))) }
             : { ...o, tickCount: Math.max(3, Math.min(6, Math.round(paneSpan / 28))) + (repeat || gap > 0 ? 0 : 1) };
-      const valOpts = ticksFor(measured ? measureAxis(measureId) : yOpts0);
+      const valOpts = panelOnly(ticksFor(measured ? measureAxis(measureId) : yOpts0));
       const valScale = dropLastTick(
         this.valueScale(valOpts, measured ? measureRange(measureId) : valueRange(row, column), valRange, true, preserveZeroMin),
         valRange,
@@ -2717,8 +2726,8 @@ export class FacetViz {
         plot: cell,
         grid: !!xOpts.gridLineWidth,
         options: catLabelled
-          ? { ...xOpts, ticks: false, ...(inverted && !leftOnce ? {} : { title: undefined }) }
-          : bareOf(xOpts),
+          ? { ...panelOnly(xOpts), ticks: false, ...(inverted && !leftOnce ? {} : { title: undefined }) }
+          : bareOf(panelOnly(xOpts)),
         id: xOpts.id ?? "xAxis[0]",
         instance: pane.key,
       });
@@ -2746,7 +2755,7 @@ export class FacetViz {
           plot: cell,
           grid: false,
           cross: catScale,
-          options: repeat || column === lastColumn ? yOpts1 : { ...bareOf(yOpts1), gridLineWidth: 0, minorTickInterval: undefined },
+          options: repeat || column === lastColumn ? panelOnly(yOpts1) : { ...bareOf(panelOnly(yOpts1)), gridLineWidth: 0, minorTickInterval: undefined },
           id: yOpts1.id ?? "yAxis[1]",
           instance: pane.key,
         });

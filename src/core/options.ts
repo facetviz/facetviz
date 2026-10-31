@@ -597,6 +597,12 @@ export interface PlotLineOptions {
   group?: Array<number | string>;
   /** With `group`: the part of a category step left clear at each end (0–0.5). */
   groupPadding?: number;
+  /**
+   * Small multiples (`trellis`): drawn only in the panel whose split
+   * fields have these values, by field (`{ Region: 'South' }`); `group`
+   * then picks categories inside it. Unset: in every panel.
+   */
+  panel?: Record<string, string>;
   label?: {
     text: string;
     /**
@@ -633,6 +639,8 @@ export interface PlotBandOptions {
   group?: Array<number | string>;
   /** With `group`: the part of a category step left clear at each end (0–0.5). */
   groupPadding?: number;
+  /** Only in one panel of small multiples, as a plot line's `panel`. */
+  panel?: Record<string, string>;
   /**
    * Whiskers out of the band's middle to two values, with a cap at each, so
    * a band reads as a box plot's box. Drawn in `borderColor`.

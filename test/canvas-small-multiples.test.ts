@@ -230,3 +230,33 @@ describe('small multiples on the canvas', () => {
   });
 });
 
+
+describe('plot lines and bands of one panel', () => {
+  beforeEach(() => { document.body.innerHTML = ''; });
+
+  it('draws a line or band with `panel` only in that panel; others in every panel', () => {
+    const el = render({
+      trellis: { columns: 'cat' },
+      yAxis: {
+        plotLines: [
+          { value: 4, panel: { cat: 'Tech' } },
+          { value: 3, panel: { cat: 'Office' }, group: ['Feb'] },
+          { value: 1 },
+        ],
+        plotBands: [{ from: 1, to: 2, panel: { cat: 'Office' } }],
+      },
+    });
+    // Two panels: the shared line in each, each panel's own once.
+    expect(el.querySelectorAll('.facet-plotline')).toHaveLength(4);
+    expect(el.querySelectorAll('.facet-plotband')).toHaveLength(1);
+    // Office's line spans its Feb category alone: narrower than Tech's.
+    const lines = [...el.querySelectorAll('.facet-plotline')].map((l) => Math.abs(num(l, 'x2') - num(l, 'x1')));
+    const sorted = [...lines].sort((a, b) => a - b);
+    expect(sorted[0]).toBeLessThan(sorted[sorted.length - 1] / 1.5);
+  });
+
+  it('matches row and column values together', () => {
+    const el = render({ yAxis: { plotLines: [{ value: 4, panel: { cat: 'Tech', region: 'West' } }] } });
+    expect(el.querySelectorAll('.facet-plotline')).toHaveLength(1);
+  });
+});
