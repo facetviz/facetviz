@@ -302,6 +302,36 @@ describe("layout, annotations, responsive rules, and polar projection", () => {
     expect(outline.trim().endsWith("Z")).toBe(true);
   });
 
+  it("draws polygon value rings, a radar's web, when asked", () => {
+    const element = container();
+    new FacetViz(element, {
+      chart: { ...chart, type: "area", polar: true, polarGridShape: "polygon" },
+      xAxis: { categories: ["Price", "Quality", "Delivery", "Support", "Range"] },
+      yAxis: { min: 0, max: 10 },
+      series: [{ data: [7, 9, 6, 8, 7] }],
+    });
+    const rings = [...element.querySelectorAll<SVGPolygonElement>("polygon.facet-polar-ring")];
+    expect(rings.length).toBeGreaterThan(1);
+    expect(element.querySelectorAll("circle.facet-polar-ring")).toHaveLength(0);
+    // A corner per category, the first straight above the centre.
+    const outer = rings[rings.length - 1].getAttribute("points")!.split(" ");
+    expect(outer).toHaveLength(5);
+    expect(Number(outer[0].split(",")[0])).toBeCloseTo(300, 0);
+
+    // Two categories can't make a polygon: circles.
+    const two = container();
+    new FacetViz(two, {
+      chart: { ...chart, type: "line", polar: true, polarGridShape: "polygon" },
+      xAxis: { categories: ["A", "B"] },
+      series: [{ data: [1, 2] }],
+    });
+    expect(two.querySelectorAll("polygon.facet-polar-ring")).toHaveLength(0);
+    expect(two.querySelectorAll("circle.facet-polar-ring").length).toBeGreaterThan(0);
+    expect(
+      validateChartOptions({ chart: { polarGridShape: "star" as never }, series: [] }).issues.map((issue) => issue.code),
+    ).toContain("chart.polar_grid_shape.unknown");
+  });
+
   it("leaves a polar line with a gap open", () => {
     const element = container();
     new FacetViz(element, {

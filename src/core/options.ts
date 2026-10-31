@@ -1203,6 +1203,13 @@ export interface ChartOptions {
      * `sector` draws category boundaries so each wedge is outlined.
      */
     polarGridLineMode?: "spoke" | "sector";
+    /**
+     * Shape of a general polar chart's value rings. `circle` (default), or
+     * `polygon`: straight edges between the categories' spokes, as a radar's
+     * web. Needs categories on the angular axis (3 or more); otherwise
+     * circles. Ignored when inverted.
+     */
+    polarGridShape?: "circle" | "polygon";
     events?: ChartEvents;
     /** Colours cycled through by series without an explicit colour. */
     colors?: string[];

@@ -155,6 +155,16 @@ export function validateChartOptions(options: unknown): ChartValidationResult {
       "chart.polarGridLineMode",
       "polarGridLineMode must be spoke or sector.",
     );
+  if (
+    chartRecord.polarGridShape !== undefined &&
+    !["circle", "polygon"].includes(String(chartRecord.polarGridShape))
+  )
+    add(
+      "chart.polar_grid_shape.unknown",
+      "error",
+      "chart.polarGridShape",
+      "polarGridShape must be circle or polygon.",
+    );
 
   validateTitle(options.title, "title", add);
   validateTitle(options.subtitle, "subtitle", add);

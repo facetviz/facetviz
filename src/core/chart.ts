@@ -3553,15 +3553,28 @@ export class FacetViz {
     } else {
       if (yOptions.visible !== false) {
         drawMinorRings(yScale, yOptions, "facet-polar-minor-ring");
+        // A radar's web: each ring straight from spoke to spoke.
+        const ringAngles =
+          this.options.chart?.polarGridShape === "polygon" &&
+          (categories?.length ?? 0) >= 3
+            ? xTicks.map((tick) => xScale.scale(tick))
+            : null;
         for (const tick of yTicks) {
           const radial = yScale.scale(tick);
           if (radial < 0 || radial > radius + 0.5) continue;
           this.renderer.create(
-            "circle",
+            ringAngles ? "polygon" : "circle",
             {
-              cx: center.x,
-              cy: center.y,
-              r: radial,
+              ...(ringAngles
+                ? {
+                    points: ringAngles
+                      .map((angle) => {
+                        const corner = project(angle, radial);
+                        return `${corner.x},${corner.y}`;
+                      })
+                      .join(" "),
+                  }
+                : { cx: center.x, cy: center.y, r: radial }),
               fill: "none",
               stroke: gridColor,
               "stroke-width": yOptions.gridLineWidth ?? 1,
