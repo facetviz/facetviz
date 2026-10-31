@@ -215,7 +215,7 @@ export interface SeriesOptions
    * data labels have their own (`dataLabels.opacity`). Column/bar series: opacity of the bars' fill;
    * their data labels stay fully opaque. Scatter series: opacity of the
    * points' fill, also of points with their own color; their outline
-   * stays opaque. */
+   * stays opaque. Box plot series: opacity of the boxes' fill. */
   opacity?: number;
   /**
    * Line series: draw each straight segment shading from its start point's

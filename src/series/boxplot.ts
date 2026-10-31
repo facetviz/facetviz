@@ -97,6 +97,9 @@ export class BoxplotSeries extends BaseSeries {
       const bc: BoxColors = { ...this.options.boxColors, ...p.options.boxColors };
       const upperFill = bc.upper ?? shade(base, 0.15);
       const lowerFill = bc.lower ?? shade(base, 0.5);
+      // The series' `opacity` fades the box's fill, as a column's.
+      const opacity = this.options.opacity;
+      const fillOpacity = typeof opacity === 'number' && Number.isFinite(opacity) && opacity < 1 ? { 'fill-opacity': Math.max(0, opacity) } : {};
       const stroke = bc.border ?? this.options.borderColor ?? shade(base, -0.25);
       const boxLine = this.options.borderWidth ?? 1;
       const whisker = bc.whisker ?? stroke;
@@ -132,8 +135,8 @@ export class BoxplotSeries extends BaseSeries {
       renderer.create('line', { ...cap(box.max, half * 0.7), stroke: whisker }, g);
 
       // Interquartile box split at the median into two shades.
-      renderer.create('rect', { ...boxRect(box.median, box.q3), fill: upperFill, ...(boxLine > 0 ? { stroke, 'stroke-width': boxLine } : {}) }, g);
-      renderer.create('rect', { ...boxRect(box.q1, box.median), fill: lowerFill, ...(boxLine > 0 ? { stroke, 'stroke-width': boxLine } : {}) }, g);
+      renderer.create('rect', { ...boxRect(box.median, box.q3), fill: upperFill, ...fillOpacity, ...(boxLine > 0 ? { stroke, 'stroke-width': boxLine } : {}) }, g);
+      renderer.create('rect', { ...boxRect(box.q1, box.median), fill: lowerFill, ...fillOpacity, ...(boxLine > 0 ? { stroke, 'stroke-width': boxLine } : {}) }, g);
 
       // Median line.
       renderer.create('line', { ...medLine(), stroke: medianColor, 'stroke-width': 2 }, g);

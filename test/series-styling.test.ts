@@ -221,6 +221,20 @@ describe('series borders', () => {
   });
 });
 
+describe('box plot fill', () => {
+  beforeEach(() => { document.body.innerHTML = ''; });
+
+  const box = { min: 1, q1: 2, median: 3, q3: 4, max: 5 };
+  it("fades the box's fill by the series' opacity, as a column's", () => {
+    const el = render({ chart: { type: 'boxplot' }, xAxis: { categories: ['A'] }, series: [{ name: 'X', color: '#3366cc', data: [box] }] });
+    const rects = [...el.querySelectorAll('.facet-point rect')];
+    expect(rects[0].getAttribute('fill-opacity')).toBeNull();
+    document.body.innerHTML = '';
+    const faded = render({ chart: { type: 'boxplot' }, xAxis: { categories: ['A'] }, series: [{ name: 'X', color: '#3366cc', opacity: 0.4, data: [box] }] });
+    expect([...faded.querySelectorAll('.facet-point rect')].map((r) => r.getAttribute('fill-opacity'))).toEqual(['0.4', '0.4']);
+  });
+});
+
 describe('line marker symbol', () => {
   beforeEach(() => { document.body.innerHTML = ''; });
 
