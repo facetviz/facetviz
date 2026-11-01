@@ -128,4 +128,27 @@ describe("gauge arcs other than a half circle", () => {
     // Unset: fully opaque, no attribute.
     expect(gauge(180, 360).querySelector(".facet-gauge-value-band")!.getAttribute("opacity")).toBeNull();
   });
+
+  it("keeps the value and its name together at the dial's centre (without a needle)", () => {
+    const at = (el: HTMLElement, sel: string) => Number(el.querySelector(sel)!.getAttribute("y"));
+    const centreY = (el: HTMLElement) => {
+      const pts = coords(el.querySelector(".facet-gauge-track")!.getAttribute("d")!);
+      return (Math.min(...pts.map((p) => p[1])) + Math.max(...pts.map((p) => p[1]))) / 2;
+    };
+    // A full circle: the pair straddles the centre, the name right under the value.
+    const full = gauge(270, 630);
+    const v = at(full, ".facet-gauge-value");
+    const n = at(full, ".facet-gauge-label");
+    expect(n - v).toBeLessThan(24);
+    expect(v).toBeLessThan(centreY(full) + 8);
+    expect(n).toBeGreaterThan(centreY(full));
+    // A half dial: both in the bowl, together, not the name down on the baseline.
+    document.body.innerHTML = "";
+    const half = gauge(180, 360);
+    const hv = at(half, ".facet-gauge-value");
+    const hn = at(half, ".facet-gauge-label");
+    const ends = [...half.querySelectorAll(".facet-gauge-end-label")].map((e) => Number(e.getAttribute("y")));
+    expect(hn - hv).toBeLessThan(24);
+    expect(hn).toBeLessThan(Math.min(...ends) - 20);
+  });
 });

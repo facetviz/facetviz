@@ -420,24 +420,26 @@ export class GaugeSeries extends BaseSeries {
       const valueWidth = renderer.measureText(`${centerValue}${off ? " " + off : ""}`, { ...FONTS.title, "font-size": `${font}px` }).width;
       // The value, and the name under it, in the bowl, under the hub or at
       // the centre; under the dial when a thick band leaves no bowl.
+      // The value and its name as one block at the dial's centre: centred
+      // in a half dial's bowl (its middle, ~0.42 of the way up), on the
+      // centre of a wider one. With a needle, which starts at the centre,
+      // under the hub (a ¾ or full dial's in its lower half).
+      const nameGap = nameFontSize + 4;
+      const block = font + (nameInside ? nameGap : 0);
+      const centredAt = (c: number) => c - block / 2 + font * 0.8;
       let valueY: number;
-      let nameY: number;
       if (needle) {
         valueY = isFullCircle ? Math.max(hub + font, rInner * 0.5) : isWide ? Math.max(hub + font + 2, rInner * 0.55) : hub + font + 2;
-        nameY = valueY + nameFontSize + 4;
-      } else if (namePosition !== "center") {
-        valueY = isFullCircle || isWide ? font / 3 : -rInner / 2 + font / 2;
-        nameY = 0;
       } else if (isFullCircle || isWide) {
-        valueY = -4;
-        nameY = font + 4;
-      } else if (!below) {
-        valueY = -rInner / 2 + font / 2;
-        nameY = 0;
-      } else {
+        valueY = namePosition === "center" ? centredAt(0) : font * 0.3;
+      } else if (below) {
         valueY = font + 8;
-        nameY = valueY + nameFontSize + 4;
+      } else {
+        // In the bowl, clear of the band above and the baseline below.
+        const c = Math.min(Math.max(-0.42 * rInner, -rInner + 6 + block / 2), -block / 2 - 2);
+        valueY = namePosition === "center" ? centredAt(c) : c + font * 0.3;
       }
+      let nameY = valueY + nameGap;
       const valueBox = textBox(0, valueY, valueWidth, font, "middle");
       boxes.push(valueBox);
 
